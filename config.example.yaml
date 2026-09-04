@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────────
+# SLK-bot configuration.  Copy to config.yaml and edit.
+#   cp config.example.yaml config.yaml
+# Secrets (tokens/keys) live in .env — see .env.example.
+# ─────────────────────────────────────────────────────────────────
+
+# Pairs to watch (6-letter FX codes; XAUUSD = gold spot)
+pairs: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, XAUUSD]
+
+# Timeframes to scan (allowed: 1m 5m 15m 30m 1h 4h)
+timeframes: ["15m", "1h"]
+
+# Market data: "auto" uses Twelve Data if TWELVEDATA_API_KEY is set,
+# otherwise falls back to yfinance (no key needed, slightly delayed).
+provider: auto
+candles_limit: 300
+poll_seconds: 30          # idle granularity
+scan_delay_seconds: 10    # wait this long after a candle closes before fetching
+alert_on_boot: false      # alert on setups that already exist at bot start
+
+# Optional symbol overrides for your data source, e.g.:
+# symbol_map:
+#   XAUUSD: "GC=F"        # yfinance ticker
+#   US30: "US30/USD"
+
+strategy:
+  swing_left: 2           # bars left of a swing point
+  swing_right: 2          # bars right (confirmation) of a swing point
+  lookback: 120           # candles analysed per scan
+  sweep_window: 10        # sweep must be within N candles of the trigger
+  mss_window: 12          # market-structure-shift deadline after the sweep
+  atr_period: 14
+  sl_buffer_atr: 0.10     # stop buffer beyond sweep extreme (in ATR)
+  min_risk_atr: 0.20      # discard setups with stop distance < 0.2 * ATR
+  tp_mode: rr             # rr = fixed R multiple | liquidity = opposing swing
+  rr_target: 2.0
+  min_tp_r: 1.0           # discard setups whose TP is closer than 1R
+  use_killzones: true
+  killzones:              # UTC, end exclusive; overnight windows allowed
+    - [London, "07:00", "10:00"]
+    - [NewYork, "12:00", "15:00"]
+
+tracking:
+  db_path: data/signals.db
+  expire_candles: 96      # 96 x 15m = 24h; an open signal expires after this
+  notify_outcomes: true   # push TP HIT / SL HIT / EXPIRED messages
+
+notify:
+  send_startup: true      # "bot online" message on start
