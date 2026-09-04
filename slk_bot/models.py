@@ -29,42 +29,6 @@ class Candle:
     close: float
 
 
-@dataclass
-class Signal:
-    """A trade setup detected by the SLK model."""
-
-    pair: str
-    timeframe: str
-    direction: Direction
-    entry: float
-    stop_loss: float
-    take_profit: float
-    signal_time: datetime  # open time of the trigger (MSS) candle
-    session: str | None = None
-    sweep_level: float | None = None
-    sweep_time: datetime | None = None
-    rr: float | None = None
-    atr: float | None = None
-
-    @property
-    def risk(self) -> float:
-        return abs(self.entry - self.stop_loss)
-
-    @property
-    def dedupe_key(self) -> str:
-        """Unique identity of a signal: one alert per pair/tf/direction/candle."""
-        return (
-            f"{self.pair}:{self.timeframe}:{self.direction.value}:"
-            f"{self.signal_time.isoformat()}"
-        )
-
-    def __str__(self) -> str:  # for logs
-        return (
-            f"{self.direction.value} {self.pair} {self.timeframe} "
-            f"@ {self.entry} (SL {self.stop_loss} / TP {self.take_profit})"
-        )
-
-
 def pip_size(pair: str) -> float:
     """PIP size for a pair symbol like EURUSD / USDJPY / XAUUSD."""
     p = pair.upper().replace("/", "").replace("=X", "")

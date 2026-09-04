@@ -4,7 +4,8 @@ from __future__ import annotations
 import logging
 
 from ..config import Config
-from ..models import Direction, Signal, fmt_pips, fmt_price
+from ..models import Direction, fmt_pips, fmt_price
+from ..slk.types import Alert
 from .discord import DiscordNotifier
 from .telegram import TelegramNotifier
 
@@ -15,32 +16,75 @@ RED = 0xE74C3C
 GREY = 0x95A5A6
 BLUE = 0x3498DB
 
+_KIND_NAMES = {"A": "A-top", "V": "V-bottom", "OC": "Open-Close"}
 
-def format_signal(sig: Signal) -> str:
-    emoji = "🟢" if sig.direction is Direction.LONG else "🔴"
+
+def _paper_tag(a: Alert) -> str:
+    return "🧪 PAPER — " if a.alert_status == "PAPER" else ""
+
+
+def format_alert(a: Alert) -> str:
+    emoji = "🟢" if a.direction is Direction.LONG else "🔴"
+    pair = a.pair
+    lo, hi = a.key_level_bounds
+    kl = f"{_KIND_NAMES.get(a.key_level_type, a.key_level_type)} {fmt_price(pair, lo)}–{fmt_price(pair, hi)}"
+    flags = []
+    if a.key_level_tested:
+        flags.append("tested")
+    if a.key_level_flipped:
+        flags.append("flipped")
+    if a.imbalance_context:
+        flags.append("+FVG")
+    if flags:
+        kl += " · " + ", ".join(flags)
+
     lines = [
-        f"{emoji} SLK SIGNAL — {sig.pair} · {sig.timeframe}",
+        f"{_paper_tag(a)}{emoji} SLK {a.direction.value} — {pair} · {a.entry_tf}"
+        f" (map {a.map_tf})",
         "",
-        f"Direction : {sig.direction.value}",
-        f"Entry     : {fmt_price(sig.pair, sig.entry)}",
-        f"Stop Loss : {fmt_price(sig.pair, sig.stop_loss)} "
-        f"({fmt_pips(sig.pair, sig.entry - sig.stop_loss)})",
-        f"Take Prof : {fmt_price(sig.pair, sig.take_profit)} "
-        f"({fmt_pips(sig.pair, sig.take_profit - sig.entry)}"
-        + (f" · {sig.rr:g}R" if sig.rr else "")
+        f"Story     : {a.environment} · {a.phase} · {a.htf_alignment}",
+        f"Key level : {kl}",
+        f"Entry     : {fmt_price(pair, a.entry)}  (retest close)",
+        f"Stop Loss : {fmt_price(pair, a.stop_loss)} "
+        f"({fmt_pips(pair, a.entry - a.stop_loss)} · beyond sweep extreme)",
+        f"Target 1  : {fmt_price(pair, a.tp_internal)} internal liquidity "
+        f"({fmt_pips(pair, a.tp_internal - a.entry)}"
+        + (f" · {a.rr_internal:g}R" if a.rr_internal else "")
         + ")",
     ]
-    if sig.sweep_level is not None:
-        when = sig.sweep_time.strftime("%H:%M") if sig.sweep_time else "?"
-        lines.append(f"Swept     : {fmt_price(sig.pair, sig.sweep_level)} @ {when} UTC")
-    if sig.session:
-        lines.append(f"Session   : {sig.session} killzone")
-    lines.append("Time      : " + sig.signal_time.strftime("%Y-%m-%d %H:%M UTC"))
+    if a.tp_external is not None:
+        lines.append(
+            f"Target 2  : {fmt_price(pair, a.tp_external)} external liquidity "
+            "(targets beyond the nearest external level are anticipatory)"
+        )
+    if a.draw_on_liquidity is not None:
+        lines.append(f"Draw      : {fmt_price(pair, a.draw_on_liquidity)}")
+    lines.append(
+        "Opp. liq. : "
+        + ("standing ✅" if a.opposing_liquidity_standing else "NOT standing ⚠️")
+    )
+    lines.append(
+        "Path      : sweep "
+        + a.sweep_time.strftime("%H:%M")
+        + " → BOS "
+        + a.bos_time.strftime("%H:%M")
+        + " → retest "
+        + a.return_time.strftime("%H:%M")
+        + " UTC"
+    )
+    if a.session:
+        lines.append(f"Session   : {a.session}")
+    lines.append(
+        f"Setup     : {a.setup_id} · invalidation: close "
+        + (">" if a.direction is Direction.SHORT else "<")
+        + f" {fmt_price(pair, a.invalidation_level)}"
+    )
     return "\n".join(lines)
 
 
 def format_outcome(rec: dict, outcome) -> str:
-    pair = rec["pair"]
+    pair = rec["canonical_symbol"]
+    paper = "🧪 PAPER — " if rec.get("alert_status") == "PAPER" else ""
     r = outcome.r_multiple
     if outcome.status.value == "TP_HIT":
         emoji, label = "✅", "TP HIT"
@@ -49,7 +93,8 @@ def format_outcome(rec: dict, outcome) -> str:
     else:
         emoji, label = "⌛", "EXPIRED"
     return (
-        f"{emoji} {label} — {pair} · {rec['timeframe']} · {rec['direction']}\n"
+        f"{paper}{emoji} {label} — {pair} · {rec['entry_timeframe']} · "
+        f"{rec['direction']} (setup {rec['setup_id']})\n"
         f"Entry {fmt_price(pair, rec['entry'])} → Exit "
         f"{fmt_price(pair, outcome.exit_price)}  ({r:+.2f}R)"
     )
@@ -85,9 +130,9 @@ class NotifierManager:
             except Exception:
                 log.exception("%s: failed to send message", ch.name)
 
-    def notify_signal(self, sig: Signal) -> None:
-        color = GREEN if sig.direction is Direction.LONG else RED
-        self.broadcast(format_signal(sig), color=color)
+    def notify_alert(self, a: Alert) -> None:
+        color = GREEN if a.direction is Direction.LONG else RED
+        self.broadcast(format_alert(a), color=color)
 
     def notify_outcome(self, rec: dict, outcome) -> None:
         color = (

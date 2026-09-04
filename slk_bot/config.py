@@ -16,49 +16,78 @@ from dotenv import load_dotenv
 
 # timeframe label -> seconds per candle
 TF_SECONDS = {
-    "1m": 60,
     "5m": 300,
     "15m": 900,
     "30m": 1800,
+    "45m": 2700,
     "1h": 3600,
+    "2h": 7200,
+    "3h": 10800,
     "4h": 14400,
+    "1d": 86400,
 }
 
 DEFAULT_PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "XAUUSD"]
 
-# Default ICT-style killzones in UTC: London open and New York open.
-DEFAULT_KILLZONES = [["London", "07:00", "10:00"], ["NewYork", "12:00", "15:00"]]
+# Timeframe hierarchy defaults (from the research: monthly/weekly/daily bias,
+# H4 vantage point, H1 or M30 execution; M15 optional, sub-M15 off).
+DEFAULT_ENTRY_TFS = ["1h", "30m"]
+MAP_TF = "4h"                 # map / vantage timeframe (built from source)
+MAP_SOURCE_TF = "1h"          # source candles resampled into the map TF
+CONTEXT_TF = "1d"             # bias context (weekly/monthly derived from this)
 
 
 @dataclass
 class StrategyConfig:
-    """Tunables for the SLK model detection.
+    """Tunables for the SLK engine (structure / liquidity / key levels).
 
-    NOTE: these implement the default interpretation of the SLK model
-    (liquidity sweep -> market structure shift -> entry). Adjust here or in
-    config.yaml to match your exact rules.
+    All volatility-derived thresholds are ATR-normalized per symbol and per
+    timeframe from live data — no universal pip/ATR constants are applied
+    across instruments.
     """
 
-    swing_left: int = 2          # bars left of a swing point
-    swing_right: int = 2         # bars right of a swing point (confirmation lag)
-    lookback: int = 120          # candles analysed per scan
-    sweep_window: int = 10       # sweep must be within this many candles of trigger
-    mss_window: int = 12         # MSS must happen within this many candles of the sweep
+    # structure
+    pivot_left: int = 2
+    pivot_right: int = 2
+    min_swings_env: int = 2    # pivots per side required to call an environment
+    phase_lookback: int = 20   # map-TF candles within which a BOS means "expansion"
     atr_period: int = 14
-    sl_buffer_atr: float = 0.10  # stop placed this many ATRs beyond the sweep extreme
-    min_risk_atr: float = 0.20   # skip setups whose stop distance is < this * ATR
-    tp_mode: str = "rr"          # "rr" (fixed R multiple) | "liquidity" (opposing swing)
-    rr_target: float = 2.0       # R multiple target (and liquidity-mode fallback)
-    min_tp_r: float = 1.0        # skip setups whose TP is closer than this many R
-    use_killzones: bool = True
-    # [name, start, end] in UTC, end exclusive; overnight windows allowed
-    killzones: list = field(default_factory=lambda: [list(k) for k in DEFAULT_KILLZONES])
+
+    # key levels
+    av_len: int = 2                 # half-window for A/V line-chart extrema
+    level_tolerance_atr: float = 0.25   # half-width of A/V level zones
+    level_lookback: int = 120       # how far back (map candles) levels are built
+    decision_atr_mult: float = 1.5  # wide-range candle => Open-Close level + single-candle liquidity
+    flip_margin_atr: float = 0.50   # decisive close-through margin flips a level
+    zone_max_distance_atr: float = 8.0  # origin must be within this of price
+    fvg_lookback: int = 80          # imbalance zones considered (map candles)
+
+    # execution state machine (in entry-TF candles)
+    touch_window: int = 64     # MAP → TOUCH deadline
+    sweep_window: int = 24     # TOUCH → SWEEP deadline
+    bos_window: int = 24       # SWEEP → SHIFT deadline
+    retest_window: int = 64    # SHIFT → RETEST deadline
+    retest_tolerance_atr: float = 0.30
+    setup_window: int = 240    # replay depth per scan
+
+    # trade geometry
+    sl_buffer_atr: float = 0.10   # stop buffer beyond sweep extreme (entry-TF ATR)
+    min_risk_atr: float = 0.10
+    min_tp_r: float = 0.8         # nearest target must be at least this many R
+
+    # alert hygiene
+    cooldown_minutes: int = 240   # per pair+direction
+    sessions_allowlist: list = field(default_factory=list)  # [[name,"07:00","10:00"],...] UTC; empty = all
+
+    # filled by load_config (label used in alert records)
+    map_tf_label: str = MAP_TF
 
 
 @dataclass
 class TrackingConfig:
     db_path: str = "data/signals.db"
-    expire_candles: int = 96     # candles after entry before an open signal expires
+    expire_candles: int = 120    # entry-TF candles before an open alert expires
+    sl_on_close: bool = True     # close-based stop (model prefers close-based invalidation)
     notify_outcomes: bool = True
 
 
@@ -70,12 +99,19 @@ class NotifyConfig:
 @dataclass
 class Config:
     pairs: list[str] = field(default_factory=lambda: list(DEFAULT_PAIRS))
-    timeframes: dict[str, int] = field(default_factory=lambda: {"15m": 900, "1h": 3600})
+    entry_timeframes: dict[str, int] = field(
+        default_factory=lambda: {t: TF_SECONDS[t] for t in DEFAULT_ENTRY_TFS}
+    )
+    map_timeframe: str = MAP_TF
+    map_source_timeframe: str = MAP_SOURCE_TF
+    context_timeframe: str = CONTEXT_TF
+    mode: str = "paper"          # "paper" (validation) | "live" (plain alerts)
+    paper_notify: bool = True    # push paper alerts too (tagged 🧪 PAPER)
     provider: str = "auto"       # auto | yfinance | twelvedata
-    candles_limit: int = 300
-    poll_seconds: int = 30       # idle sleep while waiting for next candle close
-    scan_delay_seconds: int = 10  # extra wait after a candle close before fetching
-    alert_on_boot: bool = False  # alert on setups already formed when the bot starts
+    candles_limit: int = 400
+    poll_seconds: int = 30
+    scan_delay_seconds: int = 10
+    alert_on_boot: bool = False  # deliver setups already formed at bot start
     symbol_map: dict[str, str] = field(default_factory=dict)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     tracking: TrackingConfig = field(default_factory=TrackingConfig)
@@ -113,18 +149,31 @@ def load_config(path: str | None = None) -> Config:
     if raw.get("pairs"):
         cfg.pairs = [str(x).upper().replace("/", "") for x in raw["pairs"]]
 
-    if raw.get("timeframes"):
+    if raw.get("entry_timeframes"):
         tfs: dict[str, int] = {}
-        for label in raw["timeframes"]:
+        for label in raw["entry_timeframes"]:
             label = str(label)
-            if label not in TF_SECONDS:
+            if label not in TF_SECONDS or label == "1d":
                 raise ValueError(
-                    f"unsupported timeframe {label!r}; allowed: {sorted(TF_SECONDS)}"
+                    f"unsupported entry timeframe {label!r}; "
+                    f"allowed: {[k for k in TF_SECONDS if k != '1d']}"
                 )
             tfs[label] = TF_SECONDS[label]
-        cfg.timeframes = tfs
+        if any(s < 900 for s in tfs.values()):
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "entry timeframes below 15m are enabled — the research "
+                "recommends keeping M1/M3/M5 disabled"
+            )
+        cfg.entry_timeframes = tfs
 
     for attr in (
+        "map_timeframe",
+        "map_source_timeframe",
+        "context_timeframe",
+        "mode",
+        "paper_notify",
         "provider",
         "candles_limit",
         "poll_seconds",
@@ -134,8 +183,11 @@ def load_config(path: str | None = None) -> Config:
     ):
         if attr in raw:
             setattr(cfg, attr, raw[attr])
+    if cfg.mode not in ("paper", "live"):
+        raise ValueError("mode must be 'paper' or 'live'")
 
     cfg.strategy = _sub(StrategyConfig, raw.get("strategy"))
+    cfg.strategy.map_tf_label = cfg.map_timeframe
     cfg.tracking = _sub(TrackingConfig, raw.get("tracking"))
     cfg.notify = _sub(NotifyConfig, raw.get("notify"))
 

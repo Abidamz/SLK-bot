@@ -2,48 +2,80 @@
 # SLK-bot configuration.  Copy to config.yaml and edit.
 #   cp config.example.yaml config.yaml
 # Secrets (tokens/keys) live in .env — see .env.example.
+#
+# Model defaults follow the research handoff (docs/SLK_MODEL_SPEC.md):
+# context 1d (W/M derived) → map 4h → execution 1h/30m. Sub-15m execution
+# stays disabled unless you explicitly opt in.
 # ─────────────────────────────────────────────────────────────────
 
-# Pairs to watch (6-letter FX codes; XAUUSD = gold spot)
+# "paper" = validation alerts tagged 🧪 PAPER (default; flip to "live" only
+# after you've reviewed paper alerts and trust the rules)
+mode: paper
+paper_notify: true          # push paper alerts to Telegram/Discord too
+
+# Instruments (6-letter FX codes; XAUUSD = gold spot).
+# Indices work too when your provider has them — map symbols below.
 pairs: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, XAUUSD]
 
-# Timeframes to scan (allowed: 1m 5m 15m 30m 1h 4h)
-timeframes: ["15m", "1h"]
+# Timeframe hierarchy
+entry_timeframes: ["1h", "30m"]   # execution (XYZ) — 15m optional, <15m warns
+map_timeframe: "4h"               # vantage / map TF (built from source below)
+map_source_timeframe: "1h"        # fetched, then resampled into 4h
+context_timeframe: "1d"           # bias context (weekly/monthly derived)
 
 # Market data: "auto" uses Twelve Data if TWELVEDATA_API_KEY is set,
-# otherwise falls back to yfinance (no key needed, slightly delayed).
+# otherwise yfinance (no key needed, slightly delayed).
 provider: auto
-candles_limit: 300
-poll_seconds: 30          # idle granularity
-scan_delay_seconds: 10    # wait this long after a candle closes before fetching
-alert_on_boot: false      # alert on setups that already exist at bot start
+candles_limit: 400
+poll_seconds: 30          # idle granularity between checks
+scan_delay_seconds: 10    # wait after a candle closes before fetching
+alert_on_boot: false      # deliver setups already formed when the bot starts
 
 # Optional symbol overrides for your data source, e.g.:
 # symbol_map:
-#   XAUUSD: "GC=F"        # yfinance ticker
-#   US30: "US30/USD"
+#   XAUUSD: "GC=F"        # yfinance futures proxy
+#   US30: "US30/USD"      # Twelve Data format example
 
 strategy:
-  swing_left: 2           # bars left of a swing point
-  swing_right: 2          # bars right (confirmation) of a swing point
-  lookback: 120           # candles analysed per scan
-  sweep_window: 10        # sweep must be within N candles of the trigger
-  mss_window: 12          # market-structure-shift deadline after the sweep
+  # structure
+  pivot_left: 2
+  pivot_right: 2
+  min_swings_env: 2         # pivots per side needed to call an environment
+  phase_lookback: 20        # H4 candles within which a BOS means "expansion"
   atr_period: 14
-  sl_buffer_atr: 0.10     # stop buffer beyond sweep extreme (in ATR)
-  min_risk_atr: 0.20      # discard setups with stop distance < 0.2 * ATR
-  tp_mode: rr             # rr = fixed R multiple | liquidity = opposing swing
-  rr_target: 2.0
-  min_tp_r: 1.0           # discard setups whose TP is closer than 1R
-  use_killzones: true
-  killzones:              # UTC, end exclusive; overnight windows allowed
-    - [London, "07:00", "10:00"]
-    - [NewYork, "12:00", "15:00"]
+
+  # key levels (A/V line-chart extrema + Open-Close decision candles)
+  av_len: 2                 # half-window for A/V extrema on closes
+  level_tolerance_atr: 0.25 # half-width of A/V zones (x H4 ATR)
+  level_lookback: 120       # H4 candles scanned for levels
+  decision_atr_mult: 1.5    # wide-range candle = OC level + single-candle liquidity
+  flip_margin_atr: 0.50     # decisive close-through margin = level flips
+  zone_max_distance_atr: 8.0
+  fvg_lookback: 80          # imbalance zones tracked
+
+  # execution state machine deadlines (entry-TF candles per stage)
+  touch_window: 64          # MAP → TOUCH
+  sweep_window: 24          # TOUCH → SWEEP
+  bos_window: 24            # SWEEP → SHIFT
+  retest_window: 64         # SHIFT → RETEST
+  retest_tolerance_atr: 0.30
+  setup_window: 240         # replay depth per scan (idempotent)
+
+  # trade geometry (ATR-normalized per symbol/timeframe — research explicitly
+  # warns against universal pip/ATR constants across instruments)
+  sl_buffer_atr: 0.10       # stop buffer beyond the sweep extreme
+  min_risk_atr: 0.10
+  min_tp_r: 0.8             # nearest target must be at least this many R
+
+  # alert hygiene
+  cooldown_minutes: 240     # max one delivered alert per pair+direction per 4h
+  sessions_allowlist: []    # e.g. [[London, "07:00", "10:00"]]; empty = always
 
 tracking:
   db_path: data/signals.db
-  expire_candles: 96      # 96 x 15m = 24h; an open signal expires after this
-  notify_outcomes: true   # push TP HIT / SL HIT / EXPIRED messages
+  expire_candles: 120       # entry-TF candles before an open alert expires
+  sl_on_close: true         # model prefers close-based invalidation
+  notify_outcomes: true     # push TP HIT / SL HIT / EXPIRED follow-ups
 
 notify:
-  send_startup: true      # "bot online" message on start
+  send_startup: true

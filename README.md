@@ -1,41 +1,70 @@
 # SLK-bot
 
-A forex **notification bot** for the **SLK model**. It watches FX pairs around
-the clock, detects SLK-model setups on candle close, and pushes alerts to
-**Telegram and Discord** — then tracks every signal to its TP/SL outcome so you
-can see the model's hit rate.
+A forex/indices **alert bot** for the **SLK model — Structure, Liquidity, Key
+levels**. It watches markets around the clock, and when price completes your
+SLK confirmation sequence it pushes an alert to **Telegram and Discord** —
+then tracks every alert to target/stop so you can review the model's hit rate.
 
 ```
-EURUSD 15m  ─┐                                                      
-GBPUSD 15m  ─┤   ┌────────────┐   sweep -> MSS -> entry   ┌───────────┐
-USDJPY  1h  ─┼──▶│  SLK engine │ ────────────────────────▶ │ Telegram  │
-XAUUSD  1h  ─┤   └────────────┘                            ├───────────┤
-              │        │ signals persisted + tracked       │ Discord   │
-   yfinance / │        ▼                                    └───────────┘
-  Twelve Data │   SQLite (data/signals.db)  ──▶  python -m slk_bot stats
+MT 1D (context) ┐
+H4 (map)        ┼─▶ ABC storyline ──▶ armed key level
+H1/30m (entry) ─┴─▶ XYZ execution:  MAP → TOUCH → SWEEP → SHIFT → RETEST
+                                                          │           │
+                                            INVALID/EXPIRED        ALERT ─▶ Telegram + Discord
+                                                                            │ (SQLite journal,
+                                                                          TP/SL/expiry tracking,
+                                                                            🧪 paper mode first)
 ```
 
-## The SLK setup it detects
+**Status: paper-alert scanner.** Deliberately no trade execution. Rules are
+engineering defaults distilled from research into your source material
+(see [`docs/SLK_MODEL_SPEC.md`](docs/SLK_MODEL_SPEC.md)) — they are not
+creator-issued and no profitability is claimed. Your own chart examples remain
+the authority; if a rule here disagrees with how *you* trade SLK, say so and
+the engine gets adjusted — every rule is one small pure function.
 
-The engine in [`slk_bot/strategy/slk.py`](slk_bot/strategy/slk.py) implements
-the ICT/SMC-style interpretation of the model:
+## The model as implemented
 
-1. **Liquidity sweep** — price wicks beyond a confirmed swing high/low
-   (raiding the stops resting there) but *closes back inside*.
-2. **Market structure shift (CHoCH)** — within `mss_window` candles, price
-   *closes* beyond the internal structure point (pullback low for shorts /
-   pullback high for longs).
-3. **Entry** at the MSS candle close. **Stop** beyond the sweep extreme
-   (plus a small ATR buffer). **Target** at `rr_target` × risk (default 2R),
-   or the opposing liquidity pool with `tp_mode: liquidity`.
-4. **Killzone filter** — alerts only fire when the trigger candle closes
-   inside a configured session window (default: London 07:00–10:00 and
-   New York 12:00–15:00 UTC).
+**Layer 1 — ABC storyline (expectation)** — rebuilt point-in-time at every
+closed H4, from real candles only:
 
-> **Your rules may differ.** `slk.py` is deliberately small and self-contained
-> (the rest of the bot — data, alerts, tracking — is strategy-agnostic).
-> Adjust the numbers in `config.yaml`, or ask for the detection code to be
-> changed to match your exact SLK criteria.
+- H4 **environment** (bullish / bearish / consolidation) from confirmed
+  pivot structure, plus **phase** (expansion / pullback / reversal) from the
+  most recent BOS, plus **M/W/D/H4 alignment**.
+- **Origin key level** on the entry side of price: A-shaped / V-shaped
+  line-chart extrema and Open-Close decision-candle zones — with touch counts,
+  **flip detection** (decisive close through = flipped, not deleted), and
+  **FVG/imbalance overlap** prioritised.
+- **Liquidity map**: external pools (prior day/week/month highs+lows, HTF
+  swings) and internal pools (H4 structural swings, single-candle "decision"
+  pools). **Draw on liquidity** = nearest external pool in the storyline
+  direction. Storyline dies if an H4 **close** breaks opposing structure.
+
+**Layer 2 — XYZ execution (confirmation entry)** — replayed statelessly on
+every closed entry-timeframe candle; every transition is logged:
+
+| State | Meaning |
+|---|---|
+| `MAP` | origin level armed on the correct side of price |
+| `TOUCH` | price enters the zone |
+| `SWEEP` | counter-side internal liquidity swept inside the zone (wick beyond a resting pool, close back inside) |
+| `SHIFT` | entry-TF **BOS** — close beyond the pullback structure; invalidation level freezes at the sweep extreme |
+| `RETEST` | price returns to the origin zone after leaving it → **ALERT** |
+| `INVALID` | close beyond sweep extreme / key level, or HTF story flip |
+| `EXPIRED` | stage deadline hit (touch/sweep/BOS/retest windows) |
+
+**Alert card** carries entry (retest close), stop (sweep extreme + ATR
+buffer), **TP1 = nearest internal liquidity**, **TP2 = nearest external
+target** (deeper targets flagged anticipatory), the full storyline snapshot,
+the sweep→BOS→retest path, whether opposing liquidity still stands, the setup
+id, and the explicit invalidation price.
+
+**Tracking**: every alert persists to `data/signals.db` (dedupe by setup id →
+the bot *cannot* double-alert, even across restarts), resolves to
+**TP_HIT / SL_HIT / EXPIRED** (close-based stops by default — the model's
+preferred invalidation style), and `python -m slk_bot stats` summarizes win
+rate / average R / per-pair results. `python -m slk_bot events` shows the raw
+state-machine audit trail.
 
 ## Quick start
 
@@ -48,75 +77,64 @@ cp config.example.yaml config.yaml   # pairs, timeframes, strategy tuning
 cp .env.example .env                 # tokens (see below)
 ```
 
-Notify plumbing works out of the box with **zero API keys** for market data
-(yfinance fallback). For production data, set `TWELVEDATA_API_KEY`.
-
-Test the whole pipeline without waiting for a live setup:
+Market data works with **zero API keys** (yfinance fallback). Twelve Data is
+used automatically when you set `TWELVEDATA_API_KEY`.
 
 ```bash
-python -m pytest tests/ -q                        # 20 unit/integration tests
-python -m slk_bot test-notify                     # sends a test message
-python -m slk_bot scan-once --ignore-session --fresh-window 6
-python -m slk_bot run                             # ← the actual bot (Ctrl-C to stop)
-python -m slk_bot stats                           # performance summary
-python -m slk_bot stats --send                    # push stats to Telegram/Discord
+python -m pytest tests/ -q        # 38 tests, incl. a full offline pipeline test
+python -m slk_bot test-notify     # delivers a ✅ test message
+python -m slk_bot scan-once       # one full scan pass right now
+python -m slk_bot run             # ← the actual bot (Ctrl-C to stop)
+python -m slk_bot stats           # performance summary ·  --send pushes it
+python -m slk_bot events          # recent MAP/TOUCH/SWEEP/... transitions
 ```
+
+**Paper mode first** (the research's recommendation): with `mode: paper`
+(default) every alert is tagged `🧪 PAPER`; review them against your charts,
+tune `config.yaml`, and flip to `mode: live` only when the rules earn it. Set
+`paper_notify: false` to keep paper alerts log-only.
 
 ## Connecting Telegram
 
-1. In Telegram, message **@BotFather** → `/newbot` → copy the bot token into
-   `TELEGRAM_BOT_TOKEN`.
-2. Send **any message** to your new bot, then open
-   `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy the
-   `"chat": {"id": ...}` value into `TELEGRAM_CHAT_ID`.
-3. `python -m slk_bot test-notify` should deliver a ✅ message.
-
-(For a channel/group: add the bot as admin and use the channel id, e.g.
-`-100xxxxxxxxxx`.)
+1. Message **@BotFather** → `/newbot` → copy the token into `TELEGRAM_BOT_TOKEN`.
+2. Send any message to your bot, open
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`, copy the `"chat":{"id":...}`
+   value into `TELEGRAM_CHAT_ID`.
+3. `python -m slk_bot test-notify` should deliver ✅.
+   (Channel/group: add the bot as admin and use the `-100…` id.)
 
 ## Connecting Discord
 
-1. Server channel → **Edit Channel → Integrations → Webhooks → New Webhook** →
-   Copy Webhook URL.
-2. Paste it into `DISCORD_WEBHOOK_URL`, then `python -m slk_bot test-notify`.
+1. Channel → **Edit Channel → Integrations → Webhooks → New Webhook** → copy URL.
+2. Paste into `DISCORD_WEBHOOK_URL`, then `python -m slk_bot test-notify`.
 
 ## Market data
 
-| Provider    | Cost | Latency | Notes |
-|-------------|------|---------|-------|
-| **Twelve Data** (recommended) | free key, 8 req/min, 800/day | real-time-ish | set `TWELVEDATA_API_KEY`; symbols map automatically (`EURUSD`→`EUR/USD`, `XAUUSD`→`XAU/USD`) |
-| **yfinance** (default) | free, no key | delayed ~minutes | Yahoo tickers `EURUSD=X` etc.; `XAUUSD` falls back to `GC=F` if needed |
+| Provider | Cost | Latency | Notes |
+|---|---|---|---|
+| **Twelve Data** (recommended) | free key: 8 req/min, 800/day | real-time-ish | `EURUSD`→`EUR/USD`, `XAUUSD`→`XAU/USD` automatically |
+| **yfinance** (default) | free, no key | delayed ~minutes | `EURUSD=X` etc.; `XAUUSD` falls back to `GC=F` |
 
-With 6 pairs on 15m+1h the bot makes ~30 requests/hour (scheduled at candle
-close), comfortably inside the Twelve Data free tier.
+The bot fetches 1h (resampled to 4h) + entry TFs at every cycle and the daily
+context once per UTC day — roughly **3 credits/pair/hour** on a 30m/1h stack,
+~450/day for 6 pairs: inside the free tier. Adding 15m execution roughly
+doubles that — trim `pairs:` or upgrade the plan accordingly. Another broker
+feed (OANDA, Polygon, …) plugs in as one `DataProvider` subclass in
+`slk_bot/data/` — that is also where a real **spread check** would hook in
+(none of the current feeds expose spreads).
 
-A different forex/CFD source (OANDA, Polygon, your broker, …) plugs in by
-subclassing `DataProvider` in `slk_bot/data/` — one method.
-
-## How signals are tracked
-
-Every alert is stored in `data/signals.db` with a unique key
-(pair + timeframe + direction + trigger candle), so the bot never sends the
-same setup twice, even across restarts. While a signal is open, each scan
-checks the newest candles against its SL/TP:
-
-- **TP HIT** / **SL HIT** — resolved, and (optionally) a follow-up message is
-  sent with the R-multiple result. If one candle touches both, SL wins
-  (conservative).
-- **EXPIRED** — after `expire_candles` bars with no resolution (default 96 =
-  24h of 15m), closed at market.
-
-`python -m slk_bot stats` reports per-pair counts, win rate (TP vs SL) and
-average R.
+All volatility-sensitive thresholds are **ATR-normalized per symbol and
+timeframe** from live data — the research explicitly warns against universal
+pip/ATR constants across forex and indices, and this codebase follows that.
 
 ## Running 24/7
 
-Any always-on box works — a $5 VPS, a Raspberry Pi, a NAS. Example systemd
-unit (`/etc/systemd/system/slk-bot.service`):
+Any always-on box works — small VPS, Raspberry Pi, NAS. Example systemd unit
+(`/etc/systemd/system/slk-bot.service`):
 
 ```ini
 [Unit]
-Description=SLK forex notification bot
+Description=SLK alert bot
 After=network-online.target
 
 [Service]
@@ -129,32 +147,30 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Then: `sudo systemctl enable --now slk-bot` and watch with
-`journalctl -u slk-bot -f`.
-
-## Config reference
-
-See [`config.example.yaml`](config.example.yaml) — every option is commented.
-Secrets belong in `.env` (never committed); both `config.yaml` and `.env` are
-git-ignored.
+Then `sudo systemctl enable --now slk-bot`, watch with `journalctl -u slk-bot -f`.
 
 ## Project layout
 
 ```
 slk_bot/
-├── config.py            # YAML + env configuration
-├── models.py            # Candle / Signal / Direction types
-├── data/                # yfinance + Twelve Data providers
-├── strategy/slk.py      # ← THE SLK MODEL LIVES HERE
-├── notify/              # Telegram + Discord channels
-├── tracking/tracker.py  # SQLite journal + TP/SL outcome engine
-├── bot.py               # orchestration / main loop
-└── __main__.py          # CLI: run / scan-once / stats / test-notify
-tests/                   # 20 tests, incl. a full no-network pipeline test
+├── config.py              # YAML + env configuration
+├── models.py              # Candle / Direction / price helpers
+├── data/                  # yfinance + Twelve Data providers, closed-candle hygiene
+├── slk/                   # ← THE SLK MODEL LIVES HERE
+│   ├── features.py        #   pivots, environment, phase, BOS, liquidity pools,
+│   │                      #   A/V/OC key levels + flips, FVGs, resampling
+│   ├── storyline.py       #   Layer 1: ABC storyline (point-in-time snapshots)
+│   └── engine.py          #   Layer 2: XYZ state machine (MAP→…→RETEST→ALERT)
+├── notify/                # Telegram + Discord
+├── tracking/tracker.py    # SQLite: alerts (full context), event audit log, outcomes
+├── bot.py                 # orchestration, cooldowns, outcome tracking, loop
+└── __main__.py            # CLI: run / scan-once / stats / events / test-notify
+tests/                     # 38 tests — synthetic fixtures verify LOGIC only
+docs/SLK_MODEL_SPEC.md     # research → rules specification + provenance
 ```
 
 ---
 
-*This bot sends notifications only; it does not execute trades. Nothing here
-is financial advice — past signal performance does not guarantee future
-results.*
+*Research and engineering tooling, not financial advice. No backtest or
+performance statistics are fabricated or claimed anywhere in this project —
+paper alerts exist precisely so you can validate the rules yourself first.*
