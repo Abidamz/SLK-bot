@@ -149,6 +149,42 @@ building blocks, store dedupe/cooldown/outcomes, and four end-to-end
 cron-cycle scenarios (boot gate, delivery + replay dedupe, unfinished-candle
 gate, provider-outage safe failure).
 
+## Operations card (live deployment)
+
+Production instance — deployed 2026-09-05:
+
+- **Worker:** https://slk-alert-worker.abidogundamilola.workers.dev
+- **D1:** `slk-alert-db` (`48ad2f08-d27d-4491-ad6c-13ad741b9ae3`, WEUR)
+- **Cron:** `*/1 * * * *` (UTC) · **Channels:** Telegram → "Trade jounal" channel
+  (Discord activates when `DISCORD_WEBHOOK_URL` is set via `wrangler secret put`)
+
+Routine:
+
+```bash
+# liveness (open)
+curl https://slk-alert-worker.abidogundamilola.workers.dev/health
+
+# alert history / paper stats (Bearer ADMIN_KEY)
+curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/alerts
+curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/stats
+
+# live logs and a manual channel test
+npx wrangler tail
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/test-notify
+```
+
+Changes:
+
+- **Rotate any credential:** `npx wrangler secret put <NAME>` (needs the env vars
+  `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, or `wrangler login`).
+  Dashboard alternative: Workers & Pages → slk-alert-worker → Settings →
+  Variables and Secrets.
+- **Pause scanning:** set `"crons": []` in `wrangler.jsonc` and
+  `npx wrangler deploy`; re-add to resume.
+- **Change pairs/timeframes:** edit `PAIRS` / `ENTRY_TFS` in `wrangler.jsonc`,
+  then `npx wrangler deploy`. Free-tier Twelve Data = 8 credits/min — keep
+  ≤ 3 pairs × 2 TFs, or upgrade the plan first.
+
 ## Notes & limitations
 
 - Cron granularity is 1 minute with UTC semantics; "real-time" means
