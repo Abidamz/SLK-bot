@@ -54,6 +54,12 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   on alerts + `UNIQUE(setup_id, state, candle_time)` on events, both via
   `INSERT OR IGNORE`. The alert row is written **before** any notification,
   so a worker retry can never double-send.
+- **Risk shaping** (`defaultStrategy`): alerts only fire at **≥1:3
+  reward:risk** (`minTpR: 3.0` — the near internal pool is skipped in favour
+  of the external draw when it earns 3R; otherwise the setup is let go), and
+  stops wider than **3.5× entry-TF ATR** are rejected (`maxStopAtr` — on
+  EURUSD/30m ≈ 10–14 pips today; indices self-scale). No universal pip
+  constants: everything stays volatility-normalized per instrument.
 - **Boot gate**: the first-ever scan per pair+TF records transitions but
 - **Watch heads-ups** (`WATCH_NOTIFY=true` in `wrangler.jsonc` vars): an
   optional 👀 message when a setup TOUCHes its zone, SWEEPs liquidity, or
