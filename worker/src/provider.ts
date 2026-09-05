@@ -254,17 +254,31 @@ export async function fetchDukascopy(
   }
 
   const all: Candle[] = [];
-  for (const b of buckets) {
+  // Free-plan Workers cap = 50 subrequests per invocation; a cold start of
+  // 3 index pairs × ~50 day-files would blow through it (real prod error).
+  // Fetch NEWEST buckets first with a hard budget: every tick goes deeper as
+  // immutable history lands in the kv cache; partial history always ends at
+  // the freshest bar so quality gates (freshness, minimum candles) pass early.
+  let fetchBudget = 8;
+  for (const b of [...buckets].reverse()) {
     let j: JettaCandleResponse | null = null;
     if (!b.mutable && kv) {
       const cached = await kv.get(b.key);
       if (cached) j = JSON.parse(cached);
     }
     if (!j) {
-      const resp = await fetchFn(b.url, {
-        headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
-        signal: AbortSignal.timeout(20_000),
-      });
+      if (fetchBudget <= 0) continue; // deeper history fills in on later ticks
+      fetchBudget--;
+      let resp: Response;
+      try {
+        resp = await fetchFn(b.url, {
+          headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+          signal: AbortSignal.timeout(20_000),
+        });
+      } catch (e) {
+        if (String(e).includes("subrequest")) break; // platform ceiling — use what we have
+        throw e;
+      }
       if (resp.status === 404) continue; // pre-instrument-history or empty period — fine
       if (!resp.ok) throw new Error(`Dukascopy ${b.url}: HTTP ${resp.status}`);
       j = (await resp.json()) as JettaCandleResponse;
@@ -272,6 +286,7 @@ export async function fetchDukascopy(
     }
     all.push(...decodeJetta(j));
   }
+  all.sort((a, b) => a.t - b.t); // newest-first fetch order → re-merge ascending
   const out = all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
   const sliced = out.length > limit ? out.slice(-limit) : out;
   // raw source < requested tf → aggregate up (minute→30m, hour→1h/4h…)

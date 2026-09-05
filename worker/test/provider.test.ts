@@ -208,12 +208,13 @@ describe("fetchDukascopy", () => {
     };
     const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
     expect(candles.length).toBe(120);                  // sliced to limit after merge/dedupe
-    expect(urls.length).toBeGreaterThanOrEqual(9);    // day-bucket enumeration
+    expect(urls.length).toBe(8);                      // fetch budget (subrequest cap)
     expect(urls.every((u) => u.includes("/candles/minute/"))).toBe(true);
-    // completed days: /BID/yyyy/m/d with 1-based m/d; today's ACTIVE bucket: ?from=
-    const completed = urls.slice(0, -1);
+    // completed days: /BID/yyyy/m/d with 1-based m/d; today's ACTIVE bucket
+    // (?from=) is fetched FIRST — newest buckets are the priority
+    const completed = urls.slice(1);
+    expect(urls[0]).toMatch(/BID\?from=\d+$/);
     expect(completed.every((u) => /\/BID\/\d{4}\/\d{1,2}\/\d{1,2}$/.test(u))).toBe(true);
-    expect(urls[urls.length - 1]).toMatch(/BID\?from=\d+$/);
   });
 
   it("current-period buckets use the active ?from= URL (year path 400s while active)", async () => {
@@ -226,7 +227,7 @@ describe("fetchDukascopy", () => {
       await fetchDukascopy("US30", tf, 120, {}, fetchFn);
       expect(urls.every((u) => u.includes(`/candles/${src}/`))).toBe(true);
       expect(urls.filter((u) => u.includes("?from="))).toHaveLength(1);
-      expect(urls[urls.length - 1]).toContain("?from="); // active bucket last
+      expect(urls[0]).toContain("?from="); // active bucket fetched first (newest-first)
     }
   });
 
@@ -249,12 +250,12 @@ describe("fetchDukascopy", () => {
       fetches += 1;
       return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
     };
-    await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
-    const firstRun = fetches;
-    expect(store.size).toBeGreaterThan(0);
+    // warm-up ticks: each run fills ≤8 oldest-missing buckets into the cache
+    for (let i = 0; i < 10; i++) await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
+    expect(store.size).toBeGreaterThan(6);
     fetches = 0;
     await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
-    expect(fetches).toBeLessThan(firstRun / 2);        // only the mutable buckets refetch
+    expect(fetches).toBe(2);                           // steady state: today + yesterday only
   });
 });
 
