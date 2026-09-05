@@ -1,7 +1,10 @@
 {
   "name": "slk-alert-worker",
   "main": "src/index.ts",
-  "compatibility_date": "2026-09-05",
+  // Compatibility date must not be newer than the wrangler build doing the
+  // deploy ("compatibility date is in the future" error otherwise). The code
+  // uses no compat-flag-gated behavior, so a stable older date is fine.
+  "compatibility_date": "2024-10-01",
   "triggers": {
     // every minute — the engine only scans timeframes whose candle just closed
     "crons": ["*/1 * * * *"]
