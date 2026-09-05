@@ -17,7 +17,7 @@ import { loadConfig, TF_SECONDS } from "./config";
 import { scanEntry } from "./engine";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome } from "./notify";
-import { fetchTwelveData, validateAndClose, DataQualityError } from "./provider";
+import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
 import { makeStore, type D1Like, type Store } from "./store";
@@ -97,6 +97,11 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   for (const pair of cfg.pairs) {
     try {
+      // provider routing: forex/metals → Twelve Data, index CFDs → Yahoo
+      // (a per-pair outage never blocks the other pairs — see catch below)
+      const providerName = providerForPair(pair, cfg.providerMap);
+      const apiKey = env.TWELVEDATA_API_KEY ?? "";
+
       // context feed (cached per UTC day to protect provider rate limits)
       const dayKey = new Date(now).toISOString().slice(0, 10);
       const cacheKey = `cache:1d:${pair}:${dayKey}`;
@@ -104,10 +109,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        d1 = validateAndClose(
-          await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, cfg.contextTimeframe, cfg.candlesLimit, cfg.symbolMap, fetchFn),
-          TF_SECONDS["1d"], now, 25,
-        );
+        const ctx = await fetchMarketData(apiKey, pair, cfg.contextTimeframe, cfg.candlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
+        d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
 
@@ -115,8 +118,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
+      const baseRes = await fetchMarketData(apiKey, pair, cfg.baseTimeframe, cfg.baseCandlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
       const base = validateAndClose(
-        await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, cfg.baseTimeframe, cfg.baseCandlesLimit, cfg.symbolMap, fetchFn),
+        baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
       );
       const feeds: Record<string, Candle[]> = { [cfg.baseTimeframe]: base };
@@ -136,15 +140,13 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
-          candles = validateAndClose(
-            await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, tf, cfg.candlesLimit, cfg.symbolMap, fetchFn),
-            secs, now, cfg.minCandles,
-          );
+          const res = await fetchMarketData(apiKey, pair, tf, cfg.candlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
+          candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
         const { alerts, events } = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
-          cfg: cfg.strategy, mode: cfg.mode, provider: "twelvedata",
+          cfg: cfg.strategy, mode: cfg.mode, provider: providerName,
         });
 
         for (const ev of events) {
@@ -155,7 +157,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         const isFirstScan = lastRawIsEmpty(lastBefore);
 
         for (const alert of alerts) {
-          const inserted = await store.insertAlert(alert, "twelvedata");
+          const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);

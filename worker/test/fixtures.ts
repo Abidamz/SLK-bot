@@ -183,9 +183,37 @@ export function tdJson(candles: Candle[]) {
   };
 }
 
+/** Yahoo Finance wire format helper (v8 chart: epoch seconds + quote arrays). */
+export function yahooJson(candles: Candle[]) {
+  return {
+    chart: {
+      result: [{
+        timestamp: candles.map((c) => Math.floor(c.t / 1000)),
+        indicators: {
+          quote: [{
+            open: candles.map((c) => c.o),
+            high: candles.map((c) => c.h),
+            low: candles.map((c) => c.l),
+            close: candles.map((c) => c.c),
+          }],
+        },
+      }],
+      error: null,
+    },
+  };
+}
+
+/** A flat index-CFD feed (no structure → no storylines → no alerts). */
+export function yahooFlatFeed(): Candle[] {
+  const closes = Array.from({ length: 420 }, (_, i) => 39000 + Math.sin(i / 24) * 8);
+  return fromCloses(closes, 30, T0 + 8 * 3600_000 - 420 * 1800_000, 3);
+}
+
 export interface RecordedCalls {
   telegram: string[];
   discord: string[];
+  /** raw upstream URLs hit (per provider), populated when passed in */
+  dataCalls?: string[];
 }
 
 /** A fetch replacement that serves fixture candles and captures notification
@@ -194,10 +222,16 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("api.twelvedata.com")) {
+      (calls.dataCalls ??= []).push(url);
       if (opts.failData) throw new Error("network down (simulated)");
       const interval = new URL(String(url)).searchParams.get("interval");
       const candles = interval === "1day" ? dailyFeed() : baseFeed();
       return new Response(JSON.stringify(tdJson(candles)), { status: 200 });
+    }
+    if (url.includes("finance.yahoo.com")) {
+      (calls.dataCalls ??= []).push(url);
+      if (opts.failData) throw new Error("network down (simulated)");
+      return new Response(JSON.stringify(yahooJson(yahooFlatFeed())), { status: 200 });
     }
     if (url.includes("api.telegram.org")) {
       calls.telegram.push(JSON.parse(String(init?.body ?? "{}")).text ?? "");

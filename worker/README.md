@@ -25,7 +25,13 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   (`slk_bot/slk/`). Same state machine: `MAP → TOUCH → SWEEP → SHIFT →
   RETEST`, close-based invalidation, V-level flips, internal-then-external
   targets, per-pair ATR-derived tolerances (no universal pip constants).
-- **Data** (`src/provider.ts`): Twelve Data `time_series` REST.
+- **Providers** (`src/provider.ts`): Twelve Data `time_series` REST for
+  forex/metals; **Yahoo Finance** (unofficial v8 chart endpoint) for index
+  CFDs Twelve Data's free plan lacks (US30→`^DJI`, GER40→`^GDAXI`,
+  JAPAN225→`^N225`). Routing is automatic by canonical name; override per
+  pair via the `PROVIDER_MAP` JSON var. Yahoo alerts are research-grade:
+  free index data can lag a broker feed by minutes and skip sessions.
+- **Data quality** (`validateAndClose`):
   1d context feed is cached in `slk_kv` per UTC day (rate-limit friendly);
   1h is resampled to the 4h map feed; entry timeframes are fetched directly.
   All feeds pass data-quality gates: ascending + finite + coherent OHLC,

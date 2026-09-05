@@ -20,8 +20,11 @@
   "vars": {
     // non-secret config — see src/config.ts for what each of these does
     // watchlist — canonical names; forex/metals served by Twelve Data on the
-    // free plan (XAUUSD → XAU/USD, USDZAR → USD/ZAR via the default mapping).
+    // free plan (default mapping XAUUSD → XAU/USD, USDZAR → USD/ZAR).
+    // Index CFDs (US30/GER40/JAPAN225) route to Yahoo Finance automatically;
+    // append them to PAIRS once the Yahoo probe passes.
     "PAIRS": "EURUSD,GBPUSD,XAUUSD,USDZAR",
+    "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\"}",
     "ENTRY_TFS": "30m,1h",
     "MODE": "paper",
     "PAPER_NOTIFY": "true"

@@ -1,7 +1,9 @@
-/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus
- *  data-quality validation. Canonical symbol mapping is explicit: the
- *  research requires normalized symbols per provider. */
+/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus a
+ *  Yahoo Finance fallback for index CFDs, plus data-quality validation.
+ *  Canonical symbol mapping is explicit: the research requires normalized
+ *  symbols per provider. */
 import type { Candle } from "./types";
+import { INDEX_POINT_PAIRS } from "./config";
 
 const TD_INTERVALS: Record<string, string> = {
   "5m": "5min", "15m": "15min", "30m": "30min", "45m": "45min",
@@ -55,6 +57,88 @@ export async function fetchTwelveData(
     l: Number(row.low),
     c: Number(row.close),
   }));
+}
+
+// ---------------------------------------------------------------- Yahoo Finance
+// Fallback source for instruments Twelve Data's free plan lacks (index CFDs).
+// Unofficial free endpoint — can lag the broker or drop sessions; alerts from
+// this provider are research-grade, never broker-exact prices.
+
+/** Yahoo symbols for our canonical index names. */
+const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
+  US30: "^DJI", GER40: "^GDAXI", DE40: "^GDAXI",
+  JAPAN225: "^N225", JP225: "^N225", N225: "^N225",
+  NAS100: "^NDX", US100: "^NDX", SPX500: "^GSPC", US500: "^GSPC", UK100: "^FTSE",
+};
+
+/** Which upstream serves a canonical pair. Default: index CFDs → Yahoo,
+ *  everything else (forex/metals) → Twelve Data. PROVIDER_MAP overrides. */
+export function providerForPair(
+  pair: string, providerMap: Record<string, string> = {},
+): "twelvedata" | "yahoo" {
+  if (providerMap[pair] === "yahoo" || providerMap[pair] === "twelvedata")
+    return providerMap[pair];
+  const p = pair.toUpperCase();
+  return YAHOO_INDEX_SYMBOLS[p] || INDEX_POINT_PAIRS.has(p) ? "yahoo" : "twelvedata";
+}
+
+/** Range long enough to satisfy `limit` even with market-hours gaps. */
+const YAHOO_RANGES: Record<string, string> = {
+  "5m": "5d", "15m": "1mo", "30m": "3mo", "45m": "3mo", "1h": "6mo", "2h": "1y", "4h": "1y", "1d": "2y",
+};
+
+export async function fetchYahoo(
+  pair: string,
+  tf: string,
+  limit: number,
+  symbolMap: Record<string, string> = {},
+  fetchFn: FetchLike = fetch,
+): Promise<Candle[]> {
+  const symbol = symbolMap[pair] ?? YAHOO_INDEX_SYMBOLS[pair.toUpperCase()] ?? symbolFor(pair, symbolMap);
+  const range = YAHOO_RANGES[tf] ?? "3mo";
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
+    + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
+  const resp = await fetchFn(url, {
+    headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const data = (await resp.json()) as {
+    chart?: {
+      error?: { description?: string } | null;
+      result?: {
+        timestamp?: number[];
+        indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
+      }[] | null;
+    };
+  };
+  if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
+  const r = data.chart?.result?.[0];
+  const q = r?.indicators?.quote?.[0];
+  if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
+  const out: Candle[] = [];
+  for (let i = 0; i < r.timestamp.length; i++) {
+    const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
+    if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
+    out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
+  }
+  return out.length > limit ? out.slice(-limit) : out;
+}
+
+/** Unified entry point: route by provider, one argument shape for both. */
+export async function fetchMarketData(
+  apiKey: string,
+  pair: string,
+  tf: string,
+  limit: number,
+  symbolMap: Record<string, string> = {},
+  fetchFn: FetchLike = fetch,
+  providerMap: Record<string, string> = {},
+): Promise<{ provider: "twelvedata" | "yahoo"; candles: Candle[] }> {
+  const provider = providerForPair(pair, providerMap);
+  const candles = provider === "yahoo"
+    ? await fetchYahoo(pair, tf, limit, symbolMap, fetchFn)
+    : await fetchTwelveData(apiKey, pair, tf, limit, symbolMap, fetchFn);
+  return { provider, candles };
 }
 
 export class DataQualityError extends Error {}

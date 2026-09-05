@@ -61,6 +61,7 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
+  providerMap: Record<string, "twelvedata" | "yahoo">;
   strategy: StrategyConfig;
 }
 
@@ -98,7 +99,8 @@ interface EnvVars {
   ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
-  SYMBOL_MAP?: string; // JSON object
+  SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
+  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -132,6 +134,14 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
+  let providerMap: Record<string, "twelvedata" | "yahoo"> = {};
+  if (env.PROVIDER_MAP) {
+    try {
+      providerMap = JSON.parse(env.PROVIDER_MAP);
+    } catch {
+      console.warn(JSON.stringify({ level: "warn", msg: "PROVIDER_MAP is not valid JSON — ignored" }));
+    }
+  }
 
   // fetch once per pair at the smallest entry TF; every coarser feed is a
   // resample → 1 provider credit per pair per boundary (was ~2)
@@ -159,17 +169,19 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     slOnClose: true,
     notifyOutcomes: true,
     symbolMap,
+    providerMap,
     strategy: defaultStrategy(),
   };
 }
 
 // ------------------------------------------------------------ price helpers
 
-const INDEX_POINTS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
+/** Instruments that quote in points, not pips (index CFD canonical names). */
+export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
 
 export function pipSize(pair: string): number {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "");
-  if (INDEX_POINTS.has(p)) return 1.0; // index CFDs quote in points
+  if (INDEX_POINT_PAIRS.has(p)) return 1.0; // index CFDs quote in points
   if (p.includes("JPY")) return 0.01;
   if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.1;
   return 0.0001;

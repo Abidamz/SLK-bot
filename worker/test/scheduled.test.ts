@@ -10,7 +10,7 @@ import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
 
 const NOW = T0 + 8 * 3600_000; // 08:00 — just after the retest candle closed
 
-function makeEnv(): Env {
+function makeEnv(overrides: Record<string, string> = {}): Env {
   return {
     TWELVEDATA_API_KEY: "TESTKEY",
     TELEGRAM_BOT_TOKEN: "TGT",
@@ -20,6 +20,7 @@ function makeEnv(): Env {
     ENTRY_TFS: "30m",
     MODE: "paper",
     PAPER_NOTIFY: "true",
+    ...overrides,
   } as Env;
 }
 
@@ -81,6 +82,26 @@ describe("scheduled scan cycle", () => {
     // 6 events: stale pre-touch MAP (superseded origin) + winning setup's
     // MAP→TOUCH→SWEEP→SHIFT→RETEST — replay above inserted none of them again
     expect(store.events).toHaveLength(6);
+  });
+
+  it("multi-provider: index CFD routes to Yahoo, flat feed yields no alert, TD pair unaffected", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({ PAIRS: "EURUSD,US30", SYMBOL_MAP: "{\"US30\":\"^DJI\"}" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.pairs).toEqual(["EURUSD", "US30"]);
+    expect(summary.alerts).toBe(1);                    // EURUSD storyline only
+    expect(calls.telegram).toHaveLength(1);            // (boot gate off: forced)
+    const yahoo = (calls.dataCalls ?? []).filter((u) => u.includes("finance.yahoo.com"));
+    expect(yahoo.length).toBeGreaterThanOrEqual(2);    // 1d context + 30m base
+    expect(yahoo.every((u) => u.includes("%5EDJI"))).toBe(true);
+    expect((calls.dataCalls ?? []).some((u) => u.includes("api.twelvedata.com"))).toBe(true);
+    expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
+    // alert carries the winning provider in its setup id
+    expect(calls.telegram[0]).toContain("twelvedata:EURUSD");
   });
 
   it("unfinished confirmation candle → no alert", async () => {
