@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "slk-alert-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_ID",
+      "database_id": "48ad2f08-d27d-4491-ad6c-13ad741b9ae3",
       "migrations_dir": "migrations"
     }
   ],
