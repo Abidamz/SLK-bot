@@ -288,11 +288,16 @@ export async function fetchDukascopy(
   }
   all.sort((a, b) => a.t - b.t); // newest-first fetch order → re-merge ascending
   const out = all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
-  const sliced = out.length > limit ? out.slice(-limit) : out;
   // raw source < requested tf → aggregate up (minute→30m, hour→1h/4h…)
-  return tfSec > (src === "minute" ? 60 : src === "hour" ? 3600 : 86400)
-    ? resampleCandles(sliced, tfSec)
-    : sliced;
+  // NB: slicing must happen AFTER resampling — `limit` is counted in
+  // requested-tf bars, not source bars (1010 source minutes ≈ 35 30m bars —
+  // the production "only 35 closed candles" failure).
+  const srcSec = src === "minute" ? 60 : src === "hour" ? 3600 : 86400;
+  if (tfSec > srcSec) {
+    const resampled = resampleCandles(out, tfSec);
+    return resampled.length > limit ? resampled.slice(-limit) : resampled;
+  }
+  return out.length > limit ? out.slice(-limit) : out;
 }
 
 export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy";

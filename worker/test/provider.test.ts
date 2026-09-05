@@ -231,6 +231,19 @@ describe("fetchDukascopy", () => {
     }
   });
 
+  it("resamples true minute-shift buckets to 30m WITHOUT dropping history (limit counts requested-tf bars)", async () => {
+    // 4200 one-minute bars ≈ 140 thirty-minute bars; limit=120 must yield 120,
+    // not 120 source minutes resampled down to 4 candles.
+    const starts = 1_800_000_000_000;
+    const closes = Array.from({ length: 4200 }, (_, i) => 39000 + Math.sin(i / 30) * 40);
+    const minutes: Candle[] = closes.map((c, i) => ({ t: starts + i * 60_000, o: c, h: c + 0.5, l: c - 0.5, c }));
+    const fetchFn = async (): Promise<Response> =>
+      new Response(JSON.stringify(dukaJson(minutes, 60_000)), { status: 200 });
+    const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
+    expect(candles).toHaveLength(120);
+    expect(candles[119].c).toBeCloseTo(closes[4199], 4);
+  });
+
   it("skips 404 buckets (pre-instrument-history) instead of failing", async () => {
     let n = 0;
     const fetchFn = async (_u: RequestInfo | URL): Promise<Response> => {
