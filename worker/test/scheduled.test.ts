@@ -165,3 +165,30 @@ describe("scheduled scan cycle", () => {
     expect(store.scanLog[0].errors).toContain("network down");
   });
 });
+
+  it("index CFD pair goes quietly idle on a weekend stale feed (not an error)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    // T0 is Monday 00:00 UTC — jump to Saturday, when index venues are closed
+    const SAT = T0 + 5 * 86400_000 + 8 * 3600_000;
+    const env = makeEnv({ PAIRS: "US30" });
+    const summary = await scanAll(env, {
+      now: SAT, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    // the duka feed's newest candle is Monday-morning data → stale on Saturday,
+    // but that must be an idle skip, not a scan failure
+    expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
+    expect(calls.telegram).toHaveLength(0);
+  });
+
+  it("same stale feed on a weekday IS an error (real outage signal)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    // Thursday — index venues are open; a week-old feed is a genuine outage
+    const THU = T0 + 21 * 86400_000 + 8 * 3600_000;
+    const env = makeEnv({ PAIRS: "US30" });
+    const summary = await scanAll(env, {
+      now: THU, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
+  });

@@ -13,7 +13,7 @@
  *
  *  The browser dashboard never touches this Worker with secrets — all
  *  provider keys and channel credentials live as Worker secrets only. */
-import { loadConfig, TF_SECONDS } from "./config";
+import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS } from "./config";
 import { scanEntry } from "./engine";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome } from "./notify";
@@ -175,6 +175,13 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Index CFDs genuinely close Fri 21:00 UTC → Sun evening: a stale feed
+      // then is the market being idle, not an outage. Log quietly, skip the
+      // pair; forex/metals staleness still reports loudly (real outage signal).
+      if (msg.includes("stale feed") && isIndexCfdIdleWindow(pair, now)) {
+        console.info(JSON.stringify({ level: "info", msg: "pair idle (market closed)", pair }));
+        continue;
+      }
       errors.push(`${pair}: ${msg}`);
       console.error(JSON.stringify({ level: "error", msg: "pair scan failed", pair, error: msg }));
     }
@@ -273,6 +280,16 @@ async function resolveOutcomes(
 }
 
 // ------------------------------------------------------------------ helpers
+
+/** Index CFDs on the Dukascopy feed genuinely stop quoting between Friday
+ *  21:00 UTC settle and Sunday's re-open (US30 futures ~22:00, JAPAN225
+ *  ~23:00). During that window a "stale feed" is expected silence. */
+export function isIndexCfdIdleWindow(pair: string, now: number): boolean {
+  if (!INDEX_POINT_PAIRS.has(pair.toUpperCase())) return false;
+  const d = new Date(now);
+  const dow = d.getUTCDay();
+  return dow === 6 || dow === 0 || (dow === 5 && d.getUTCHours() >= 21);
+}
 
 function authed(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return false;
