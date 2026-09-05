@@ -101,7 +101,8 @@ export async function fetchOanda(
   const gran = OANDA_GRANULARITIES[tf];
   if (!gran) throw new Error(`unsupported timeframe ${tf} for OANDA`);
   const instrument =
-    symbolMap[pair] ?? OANDA_INSTRUMENTS[pair.toUpperCase()]
+    OANDA_INSTRUMENTS[pair.toUpperCase()]
+    ?? (symbolMap[pair] && /^[A-Z0-9]{2,}_[A-Z]{3}$/.test(symbolMap[pair]) ? symbolMap[pair] : undefined)
     ?? (pair.length === 6 ? `${pair.slice(0, 3)}_${pair.slice(3)}` : pair); // EURUSD → EUR_USD
   const params = new URLSearchParams({
     count: String(Math.min(limit, 5000)),
@@ -154,9 +155,13 @@ const DUKA_INSTRUMENTS: Record<string, string> = {
 };
 
 function dukaCode(pair: string, symbolMap: Record<string, string>): string {
-  if (symbolMap[pair]) return symbolMap[pair];
   const p = pair.toUpperCase();
+  // curated map FIRST: SYMBOL_MAP is shared with Yahoo (^DJI-style) and would
+  // otherwise poison the URL; accept a SYMBOL_MAP override only if it looks
+  // like a Dukascopy code (e.g. USA30.IDX-USD, EUR-USD)
   if (DUKA_INSTRUMENTS[p]) return DUKA_INSTRUMENTS[p];
+  const custom = symbolMap[pair] ?? symbolMap[p];
+  if (custom && /^[A-Z0-9]{2,}(\.IDX)?-[A-Z]{3}$/.test(custom)) return custom;
   return p.length === 6 ? `${p.slice(0, 3)}-${p.slice(3)}` : p;
 }
 

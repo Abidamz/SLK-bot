@@ -241,3 +241,28 @@ describe("fetchDukascopy", () => {
     expect(fetches).toBeLessThan(firstRun / 2);        // only the mutable buckets refetch
   });
 });
+
+describe("SYMBOL_MAP precedence", () => {
+  it("Yahoo-style SYMBOL_MAP values never poison Dukascopy instrument codes", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    await fetchDukascopy("US30", "30m", 120, { US30: "^DJI" }, fetchFn);
+    expect(urls.every((u) => u.includes("USA30.IDX-USD") && !u.includes("%5EDJI"))).toBe(true);
+  });
+
+  it("Yahoo-style SYMBOL_MAP values never poison OANDA instruments", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
+      return new Response(JSON.stringify({ instrument: "X", granularity: "M30", candles: [
+        { complete: true, volume: 0, time: "2024-03-04T00:00:00.000000000Z",
+          mid: { o: "1", h: "1", l: "1", c: "1" } },
+      ] }), { status: 200 });
+    };
+    await fetchOanda("TOK", "US30", "30m", 10, { US30: "^DJI" }, fetchFn);
+    expect(urls[0]).toContain("US30_USD");
+  });
+});
