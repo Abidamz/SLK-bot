@@ -217,10 +217,45 @@ export function oandaJson(candles: Candle[]) {
   };
 }
 
+/** Encode candles into the Dukascopy "jetta" columnar wire format:
+ *  base candle = first bar (full values); per-bar columns hold CUMULATIVE
+ *  deltas in units (multiplier) and shift-sized timestamp steps. Mirrors
+ *  src/provider.ts decodeJetta — keep in sync. */
+export function dukaJson(candles: Candle[], shiftMs = 1800_000) {
+  const mult = 1e-5;
+  const unit = (v: number) => Math.round(v / mult);
+  const first = candles[0] ?? { t: 0, o: 0, h: 0, l: 0, c: 0 };
+  const times: number[] = [0];
+  const opens: number[] = [0];
+  const highs: number[] = [0];
+  const lows: number[] = [0];
+  const closes: number[] = [0];
+  const volumes: number[] = candles.map(() => 0);
+  for (let i = 1; i < candles.length; i++) {
+    const p = candles[i - 1], c = candles[i];
+    times.push(Math.round((c.t - p.t) / shiftMs));
+    opens.push(unit(c.o) - unit(p.o));
+    highs.push(unit(c.h) - unit(p.h));
+    lows.push(unit(c.l) - unit(p.l));
+    closes.push(unit(c.c) - unit(p.c));
+  }
+  return {
+    timestamp: first.t, shift: shiftMs, multiplier: mult,
+    open: first.o, high: first.h, low: first.l, close: first.c,
+    times, opens, highs, lows, closes, volumes,
+  };
+}
+
 /** A flat index-CFD feed (no structure → no storylines → no alerts). */
 export function yahooFlatFeed(): Candle[] {
   const closes = Array.from({ length: 420 }, (_, i) => 39000 + Math.sin(i / 24) * 8);
   return fromCloses(closes, 30, T0 + 8 * 3600_000 - 420 * 1800_000, 3);
+}
+
+/** Same idea at daily cadence (for frame sources that reply with D1 bars). */
+export function dayFlatFeed(): Candle[] {
+  const closes = Array.from({ length: 420 }, (_, i) => 39000 + Math.sin(i / 24) * 8);
+  return fromCloses(closes, 1440, T0 + 8 * 3600_000 - 420 * 86400_000, 3);
 }
 
 export interface RecordedCalls {
@@ -251,6 +286,16 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
       (calls.dataCalls ??= []).push(url);
       if (opts.failData) throw new Error("network down (simulated)");
       return new Response(JSON.stringify(oandaJson(yahooFlatFeed())), { status: 200 });
+    }
+    if (url.includes("jetta.dukascopy.com")) {
+      (calls.dataCalls ??= []).push(url);
+      if (opts.failData) throw new Error("network down (simulated)");
+      // same flat feed for every bucket: 30m-shift for minute files (finer-
+      // than-requested is allowed by decode+resample), day files → 1d buckets
+      const dayFile = url.includes("/candles/day/");
+      return new Response(JSON.stringify(
+        dukaJson(dayFile ? dayFlatFeed() : yahooFlatFeed(), dayFile ? 86400_000 : 1800_000),
+      ), { status: 200 });
     }
     if (url.includes("api.telegram.org")) {
       calls.telegram.push(JSON.parse(String(init?.body ?? "{}")).text ?? "");

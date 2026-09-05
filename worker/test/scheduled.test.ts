@@ -84,10 +84,10 @@ describe("scheduled scan cycle", () => {
     expect(store.events).toHaveLength(6);
   });
 
-  it("multi-provider: index CFD routes to Yahoo, flat feed yields no alert, TD pair unaffected", async () => {
+  it("multi-provider: explicit PROVIDER_MAP route to Yahoo, flat feed yields no alert, TD pair unaffected", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
-    const env = makeEnv({ PAIRS: "EURUSD,US30", SYMBOL_MAP: "{\"US30\":\"^DJI\"}" });
+    const env = makeEnv({ PAIRS: "EURUSD,US30", PROVIDER_MAP: "{\"US30\":\"yahoo\"}", SYMBOL_MAP: "{\"US30\":\"^DJI\"}" });
     const summary = await scanAll(env, {
       now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
     });
@@ -104,7 +104,24 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram[0]).toContain("twelvedata:EURUSD");
   });
 
-  it("auto-routes index CFDs to OANDA when its token exists (preferred over Yahoo)", async () => {
+  it("default index CFD route is the Dukascopy public feed (no token needed)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({ PAIRS: "EURUSD,US30" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.pairs).toEqual(["EURUSD", "US30"]);
+    expect(summary.alerts).toBe(1);                    // EURUSD only (flat duka feed)
+    const duka = (calls.dataCalls ?? []).filter((u) => u.includes("jetta.dukascopy.com"));
+    expect(duka.length).toBeGreaterThanOrEqual(3);    // day-file buckets + 1d year-file
+    expect(duka.every((u) => u.includes("USA30.IDX-USD"))).toBe(true);
+    expect((calls.dataCalls ?? []).some((u) => u.includes("finance.yahoo.com"))).toBe(false);
+    expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
+  });
+
+  it("auto-routes index CFDs to OANDA when its token exists (preferred over Dukascopy/Yahoo)", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     const env = makeEnv({ PAIRS: "EURUSD,US30", OANDA_API_TOKEN: "OANDA_TEST_TOKEN" });
@@ -116,6 +133,7 @@ describe("scheduled scan cycle", () => {
     const oanda = (calls.dataCalls ?? []).filter((u) => u.includes("oanda.com"));
     expect(oanda.length).toBeGreaterThanOrEqual(2);    // 1d context + 30m base
     expect(oanda.every((u) => u.includes("US30_USD"))).toBe(true);
+    expect((calls.dataCalls ?? []).some((u) => u.includes("jetta.dukascopy.com"))).toBe(false);
     expect((calls.dataCalls ?? []).some((u) => u.includes("finance.yahoo.com"))).toBe(false);
     expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
   });

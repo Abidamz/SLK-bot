@@ -99,11 +99,14 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   for (const pair of cfg.pairs) {
     try {
-      // provider routing: forex/metals → Twelve Data, index CFDs → Yahoo
+      // provider routing: forex/metals → Twelve Data, index CFDs → OANDA
+      // (if its token exists) → Dukascopy public feed → Yahoo last resort
       // (a per-pair outage never blocks the other pairs — see catch below)
       const providerName = providerForPair(pair, cfg.providerMap, Boolean(env.OANDA_API_KEY ?? env.OANDA_API_TOKEN));
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
+      // kv adapter for immutable historical buckets (Dukascopy minute/hour/day files)
+      const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
 
       // context feed (cached per UTC day to protect provider rate limits)
       const dayKey = new Date(now).toISOString().slice(0, 10);
@@ -112,7 +115,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
+        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
         d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
@@ -121,7 +124,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
-      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
+      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -143,7 +146,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
-          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
+          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 

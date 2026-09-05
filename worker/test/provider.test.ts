@@ -1,25 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { fetchOanda, fetchYahoo, providerForPair, symbolFor } from "../src/provider";
+import { decodeJetta, fetchDukascopy, fetchOanda, fetchYahoo, providerForPair, symbolFor, DataQualityError } from "../src/provider";
+import { dukaJson, yahooFlatFeed } from "./fixtures";
+import type { Candle } from "../src/types";
 
 describe("provider routing", () => {
-  it("routes forex/metals to Twelve Data and index CFDs to Yahoo", () => {
+  it("routes forex/metals to Twelve Data and index CFDs to the Dukascopy public feed", () => {
     expect(providerForPair("EURUSD")).toBe("twelvedata");
     expect(providerForPair("XAUUSD")).toBe("twelvedata");
     expect(providerForPair("USDZAR")).toBe("twelvedata");
-    expect(providerForPair("US30")).toBe("yahoo");
-    expect(providerForPair("GER40")).toBe("yahoo");
-    expect(providerForPair("JAPAN225")).toBe("yahoo");
+    expect(providerForPair("US30")).toBe("dukascopy");
+    expect(providerForPair("GER40")).toBe("dukascopy");
+    expect(providerForPair("JAPAN225")).toBe("dukascopy");
   });
 
   it("PROVIDER_MAP overrides win over defaults", () => {
     expect(providerForPair("US30", { US30: "twelvedata" })).toBe("twelvedata");
     expect(providerForPair("EURUSD", { EURUSD: "yahoo" })).toBe("yahoo");
+    expect(providerForPair("US30", { US30: "yahoo" })).toBe("yahoo");
   });
 
-  it("index CFDs prefer OANDA when its token exists, Yahoo otherwise; metals stay on Twelve Data", () => {
-    expect(providerForPair("US30", {}, false)).toBe("yahoo");
+  it("index CFDs prefer OANDA when its token exists, then Dukascopy, Yahoo last resort; metals stay on Twelve Data", () => {
+    expect(providerForPair("US30", {}, false)).toBe("dukascopy");
     expect(providerForPair("US30", {}, true)).toBe("oanda");
     expect(providerForPair("JAPAN225", {}, true)).toBe("oanda");
+    expect(providerForPair("US30", {}, false, false)).toBe("yahoo"); // dukascopy disabled → yahoo fallback
     expect(providerForPair("XAUUSD", {}, true)).toBe("twelvedata"); // metals are NOT indices
     expect(providerForPair("XAUUSD", { XAUUSD: "oanda" }, true)).toBe("oanda"); // explicit single-source option
   });
@@ -127,5 +131,113 @@ describe("fetchOanda", () => {
     const fake: typeof fetch = async () =>
       new Response(JSON.stringify({ errorMessage: "Invalid token" }), { status: 401 });
     await expect(fetchOanda("BAD", "US30", "30m", 100, {}, fake)).rejects.toThrow(/OANDA error for US30_USD.*401.*Invalid token/s);
+  });
+});
+
+describe("decodeJetta", () => {
+  const feed = yahooFlatFeed();
+
+  it("decodes cumulative unit deltas back to the exact candles", () => {
+    const out = decodeJetta(dukaJson(feed));
+    expect(out.length).toBe(feed.length);
+    expect(out[0].t).toBe(feed[0].t);
+    expect(out[123].t).toBe(feed[123].t);
+    expect(out[123].c).toBeCloseTo(feed[123].c, 4); // within 1e-5 unit quantisation
+    expect(out[out.length - 1].h).toBeCloseTo(feed[out.length - 1].h, 4);
+  });
+
+  it("never flat-fills gap periods (no fabricated candles)", () => {
+    const withGap: Candle[] = [
+      { t: 1_000_000, o: 10, h: 11, l: 9, c: 10.5 },
+      { t: 1_000_000 + 5 * 60_000, o: 10.5, h: 12, l: 10, c: 11 }, // 4 bars skipped
+    ];
+    const out = decodeJetta(dukaJson(withGap, 60_000));
+    expect(out).toHaveLength(2);                       // gap bars absent, not synthesised
+    expect(out[1].t).toBe(withGap[1].t);
+    expect(out[1].c).toBeCloseTo(11, 6);
+  });
+
+  it("rejects malformed payloads instead of silently mis-decoding", () => {
+    const good = dukaJson(feed);
+    expect(() => decodeJetta({ ...good, opens: good.opens.slice(1) })).toThrow(DataQualityError);
+    expect(() => decodeJetta({ ...good, shift: 0 })).toThrow(DataQualityError);
+    expect(() => decodeJetta({ ...good, multiplier: undefined as unknown as number })).toThrow(DataQualityError);
+  });
+
+  it("empty bucket decodes to zero bars", () => {
+    expect(decodeJetta({
+      timestamp: 0, shift: 60_000, multiplier: 1e-5, open: 0, high: 0, low: 0, close: 0,
+      times: [], opens: [], highs: [], lows: [], closes: [],
+    })).toEqual([]);
+  });
+});
+
+describe("fetchDukascopy", () => {
+  it("maps canonical index aliases to Dukascopy instrument codes", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urls.push(url);
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
+    expect(urls.every((u) => u.includes("USA30.IDX-USD"))).toBe(true);
+    urls.length = 0;
+    await fetchDukascopy("GER40", "30m", 120, {}, fetchFn);
+    expect(urls.every((u) => u.includes("DEU.IDX-EUR"))).toBe(true);
+    urls.length = 0;
+    await fetchDukascopy("JAPAN225", "30m", 120, {}, fetchFn);
+    expect(urls.every((u) => u.includes("JPN.IDX-JPY"))).toBe(true);
+  });
+
+  it("generic 6-letter pairs fall back to AAA-BBB codes", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    await fetchDukascopy("EURUSD", "30m", 120, {}, fetchFn);
+    expect(urls.every((u) => u.includes("EUR-USD"))).toBe(true);
+  });
+
+  it("enumerates one file per UTC day for 30m (minute source), 1-based month/day", async () => {
+    const urls: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
+    expect(candles.length).toBe(120);                  // sliced to limit after merge/dedupe
+    expect(urls.length).toBeGreaterThanOrEqual(9);    // day-bucket enumeration
+    expect(urls.every((u) => u.includes("/candles/minute/"))).toBe(true);
+    // every URL ends /BID/yyyy/m/d with 1-based m and d
+    expect(urls.every((u) => /\/BID\/\d{4}\/\d{1,2}\/\d{1,2}$/.test(u))).toBe(true);
+  });
+
+  it("skips 404 buckets (pre-instrument-history) instead of failing", async () => {
+    let n = 0;
+    const fetchFn = async (_u: RequestInfo | URL): Promise<Response> => {
+      n += 1;
+      if (n <= 3) return new Response("missing", { status: 404 });
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
+    expect(candles.length).toBeGreaterThan(0);
+  });
+
+  it("immutable buckets are cached in kv; mutable (today/yesterday) always refetch", async () => {
+    const store = new Map<string, string>();
+    const kv = { get: async (k: string) => store.get(k) ?? null, set: async (k: string, v: string) => { store.set(k, v); } };
+    let fetches = 0;
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      fetches += 1;
+      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+    };
+    await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
+    const firstRun = fetches;
+    expect(store.size).toBeGreaterThan(0);
+    fetches = 0;
+    await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
+    expect(fetches).toBeLessThan(firstRun / 2);        // only the mutable buckets refetch
   });
 });

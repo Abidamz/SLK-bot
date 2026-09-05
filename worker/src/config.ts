@@ -61,7 +61,7 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
-  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda">;
+  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy">;
   strategy: StrategyConfig;
 }
 
@@ -134,7 +134,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
-  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda"> = {};
+  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy"> = {};
   if (env.PROVIDER_MAP) {
     try {
       providerMap = JSON.parse(env.PROVIDER_MAP);

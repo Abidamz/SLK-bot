@@ -26,12 +26,19 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   RETEST`, close-based invalidation, V-level flips, internal-then-external
   targets, per-pair ATR-derived tolerances (no universal pip constants).
 - **Providers** (`src/provider.ts`): Twelve Data `time_series` REST for
-  forex/metals; **OANDA practice v3 REST** (free demo-account token) for index
-  CFDs — broker-grade live quotes (`US30→US30_USD`, `GER40→DE40_EUR`,
-  `JAPAN225→JP225_USD`); **Yahoo Finance** (unofficial) as keyless fallback
-  when no `OANDA_API_TOKEN` is set. Routing is automatic by canonical name;
-  override per pair via the `PROVIDER_MAP` JSON var. Yahoo alerts are
-  research-grade: free index data can lag a broker feed by minutes.
+  forex/metals; for index CFDs the default is the **Dukascopy public feed**
+  (`jetta.dukascopy.com` — keyless, realtime broker quotes from the Swiss
+  bank; `US30→USA30.IDX-USD`, `GER40→DEU.IDX-EUR`, `JAPAN225→JPN.IDX-JPY`),
+  with **OANDA practice v3 REST** taking precedence when `OANDA_API_TOKEN`
+  exists and **Yahoo Finance** (unofficial) as last resort. Routing is
+  automatic by canonical name; override per pair via the `PROVIDER_MAP` JSON
+  var. The Dukascopy wire format is columnar cumulative deltas over
+  UTC-bucketed files (minute→day files, hour→month files, day→year files);
+  closed files are immutable and cached in `slk_kv`, so a steady-state tick
+  costs ~2 requests per index pair. Gap periods are decoded as gaps — no
+  fabricated flat candles. (Yahoo alerted fine in tests, but its free index
+  feed lags broker quotes by minutes — keep it as escape hatch only, e.g.
+  `PROVIDER_MAP={"US30":"yahoo"}`.)
 - **Data quality** (`validateAndClose`):
   1d context feed is cached in `slk_kv` per UTC day (rate-limit friendly);
   1h is resampled to the 4h map feed; entry timeframes are fetched directly.

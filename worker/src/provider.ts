@@ -3,7 +3,8 @@
  *  Canonical symbol mapping is explicit: the research requires normalized
  *  symbols per provider. */
 import type { Candle } from "./types";
-import { INDEX_POINT_PAIRS } from "./config";
+import { INDEX_POINT_PAIRS, TF_SECONDS } from "./config";
+import { resampleCandles } from "./features";
 
 const TD_INTERVALS: Record<string, string> = {
   "5m": "5min", "15m": "15min", "30m": "30min", "45m": "45min",
@@ -137,22 +138,151 @@ export async function fetchOanda(
   return out;
 }
 
-export type ProviderName = "twelvedata" | "yahoo" | "oanda";
+// ------------------------------------------------------------------ Dukascopy
+// Public jetta API — Swiss-bank realtime quotes, no key/signup. Columnar
+// delta-compressed candles: {timestamp, open, high, low, close, multiplier,
+// shift, times[], opens[], highs[], lows[], closes[], volumes[]}. Buckets are
+// partitioned minute/day, hour/month, day/year by UTC date.
+
+const DUKA_ROOT = "https://jetta.dukascopy.com/v1/candles";
+const DUKA_INSTRUMENTS: Record<string, string> = {
+  US30: "USA30.IDX-USD", GER40: "DEU.IDX-EUR", DE40: "DEU.IDX-EUR",
+  JAPAN225: "JPN.IDX-JPY", JP225: "JPN.IDX-JPY",
+  NAS100: "USATECH.IDX-USD", US100: "USATECH.IDX-USD",
+  SPX500: "USA500.IDX-USD", US500: "USA500.IDX-USD", UK100: "GBR.IDX-GBP",
+  XAUUSD: "XAU-USD", XAGUSD: "XAG-USD",
+};
+
+function dukaCode(pair: string, symbolMap: Record<string, string>): string {
+  if (symbolMap[pair]) return symbolMap[pair];
+  const p = pair.toUpperCase();
+  if (DUKA_INSTRUMENTS[p]) return DUKA_INSTRUMENTS[p];
+  return p.length === 6 ? `${p.slice(0, 3)}-${p.slice(3)}` : p;
+}
+
+interface JettaCandleResponse {
+  timestamp: number;     // epoch ms of bucket base
+  open: number; high: number; low: number; close: number; // base candle
+  multiplier: number;    // price unit
+  shift: number;         // ms per bar
+  times: number[];       // per-bar gaps measured in shifts from previous bar
+  opens: number[]; highs: number[]; lows: number[]; closes: number[]; // unit deltas
+  volumes?: number[];
+}
+
+/** Decode Dukascopy's cumulative-delta columns into plain candles.
+ *  Gap periods are NOT flat-filled (we refuse to fabricate quiet bars). */
+export function decodeJetta(d: JettaCandleResponse): Candle[] {
+  const n = d.times?.length ?? 0;
+  if (!n) return [];
+  for (const col of [d.opens, d.highs, d.lows, d.closes]) {
+    if (!Array.isArray(col) || col.length !== n) throw new DataQualityError("dukascopy column misalignment");
+  }
+  if (!Number.isFinite(d.timestamp) || !Number.isFinite(d.multiplier) || !(d.multiplier > 0) || !(d.shift > 0))
+    throw new DataQualityError("dukascopy malformed header");
+  const out: Candle[] = [];
+  let t = d.timestamp;
+  let oU = Math.round(d.open / d.multiplier);
+  let hU = Math.round(d.high / d.multiplier);
+  let lU = Math.round(d.low / d.multiplier);
+  let cU = Math.round(d.close / d.multiplier);
+  for (let i = 0; i < n; i++) {
+    t += d.times[i] * d.shift;
+    oU += d.opens[i]; hU += d.highs[i]; lU += d.lows[i]; cU += d.closes[i];
+    out.push({ t, o: oU * d.multiplier, h: hU * d.multiplier, l: lU * d.multiplier, c: cU * d.multiplier });
+  }
+  return out;
+}
+
+type KvLike = { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> } | undefined;
+
+export async function fetchDukascopy(
+  pair: string, tf: string, limit: number,
+  symbolMap: Record<string, string> = {}, fetchFn: FetchLike = fetch, kv: KvLike = undefined,
+): Promise<Candle[]> {
+  const code = dukaCode(pair, symbolMap);
+  const tfSec = TF_SECONDS[tf] ?? 1800;
+  const minutes = tfSec / 60;
+  const src = minutes < 60 ? "minute" : minutes < 1440 ? "hour" : "day";
+  const cachePrefix = `duka:${pair}:${src}`;
+
+  // enumerate UTC buckets covering `limit` bars, market-hours thinning ×2.2
+  const calDays = Math.ceil((limit * tfSec) / 86400 * 2.2) + 3;
+  interface Bucket { url: string; key: string; mutable: boolean }
+  const buckets: Bucket[] = [];
+  const now = new Date();
+  if (src === "minute") {
+    for (let i = calDays; i >= 0; i--) {
+      const ref = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+      const y = ref.getUTCFullYear(), m = ref.getUTCMonth() + 1, day = ref.getUTCDate();
+      buckets.push({
+        url: `${DUKA_ROOT}/minute/${code}/BID/${y}/${m}/${day}`,
+        key: `${cachePrefix}:${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+        mutable: i <= 1, // today + yesterday mutable (late ticks)
+      });
+    }
+  } else if (src === "hour") {
+    const monthsBack = Math.ceil(calDays / 30) + 1;
+    for (let i = monthsBack; i >= 0; i--) {
+      const ref = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      const y = ref.getUTCFullYear(), m = ref.getUTCMonth() + 1;
+      buckets.push({ url: `${DUKA_ROOT}/hour/${code}/BID/${y}/${m}`, key: `${cachePrefix}:${y}-${m}`, mutable: i === 0 });
+    }
+  } else {
+    for (let y = now.getUTCFullYear() - 3; y <= now.getUTCFullYear(); y++) {
+      buckets.push({ url: `${DUKA_ROOT}/day/${code}/BID/${y}`, key: `${cachePrefix}:${y}`, mutable: y === now.getUTCFullYear() });
+    }
+  }
+
+  const all: Candle[] = [];
+  for (const b of buckets) {
+    let j: JettaCandleResponse | null = null;
+    if (!b.mutable && kv) {
+      const cached = await kv.get(b.key);
+      if (cached) j = JSON.parse(cached);
+    }
+    if (!j) {
+      const resp = await fetchFn(b.url, {
+        headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (resp.status === 404) continue; // pre-instrument-history or empty period — fine
+      if (!resp.ok) throw new Error(`Dukascopy ${b.url}: HTTP ${resp.status}`);
+      j = (await resp.json()) as JettaCandleResponse;
+      if (!b.mutable && kv && j && j.times?.length) await kv.set(b.key, JSON.stringify(j));
+    }
+    all.push(...decodeJetta(j));
+  }
+  const out = all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
+  const sliced = out.length > limit ? out.slice(-limit) : out;
+  // raw source < requested tf → aggregate up (minute→30m, hour→1h/4h…)
+  return tfSec > (src === "minute" ? 60 : src === "hour" ? 3600 : 86400)
+    ? resampleCandles(sliced, tfSec)
+    : sliced;
+}
+
+export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy";
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
- *  exists, else Yahoo. Everything else → Twelve Data. PROVIDER_MAP overrides. */
+ *  exists (geo-restricted signups), else the keyless Dukascopy public feed
+ *  (realtime broker quotes), with Yahoo as last resort. Everything else →
+ *  Twelve Data. PROVIDER_MAP overrides. */
 export function providerForPair(
   pair: string,
   providerMap: Record<string, string> = {},
   oandaTokenPresent = false,
+  dukascopyEnabled = true,
 ): ProviderName {
   const override = providerMap[pair];
-  if (override === "twelvedata" || override === "yahoo" || override === "oanda") return override;
+  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy") return override;
   const p = pair.toUpperCase();
   // NB: classify by the canonical index-name set only — OANDA_INSTRUMENTS
   // also lists metals (future all-OANDA option) and must NOT affect routing.
   const isIndexCfd = INDEX_POINT_PAIRS.has(p) || Boolean(YAHOO_INDEX_SYMBOLS[p]);
-  if (isIndexCfd) return oandaTokenPresent ? "oanda" : "yahoo";
+  if (isIndexCfd) {
+    if (oandaTokenPresent) return "oanda";
+    return dukascopyEnabled ? "dukascopy" : "yahoo";
+  }
   return "twelvedata";
 }
 
@@ -208,15 +338,19 @@ export interface MarketDataRequest {
   symbolMap?: Record<string, string>;
   providerMap?: Record<string, string>;
   fetchFn?: FetchLike;
+  /** cache for immutable historical buckets (Dukascopy); tests inject MemStore */
+  kv?: { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> };
 }
 
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
   const candles = provider === "oanda"
     ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
-    : provider === "yahoo"
-      ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
-      : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+    : provider === "dukascopy"
+      ? await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv)
+      : provider === "yahoo"
+        ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+        : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
 
