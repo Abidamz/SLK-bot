@@ -111,14 +111,20 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
 
-      // map feed: fetch source (1h), resample into 4h, drop trailing partial
-      const h1 = validateAndClose(
-        await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, cfg.mapSourceTimeframe, cfg.candlesLimit, cfg.symbolMap, fetchFn),
-        TF_SECONDS[cfg.mapSourceTimeframe], now, cfg.minCandles,
+      // ONE intraday fetch per pair at the base (smallest entry) timeframe;
+      // the 4h map and all coarser entry TFs are resampled from it. This is
+      // the rate-limit design: ~1 provider credit per pair per boundary
+      // instead of ~2 with separate 1h/30m fetches.
+      const base = validateAndClose(
+        await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, cfg.baseTimeframe, cfg.baseCandlesLimit, cfg.symbolMap, fetchFn),
+        TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
       );
+      const feeds: Record<string, Candle[]> = { [cfg.baseTimeframe]: base };
+      feeds["1h"] = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], now);
       const h4 = dropIncomplete(
-        resampleCandles(h1, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now,
+        resampleCandles(base, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now,
       );
+      feeds[cfg.mapTimeframe] = h4;
       if (h4.length < 30) throw new DataQualityError(`insufficient H4 data (${h4.length})`);
 
       const snaps = storylineSeries(d1, h4, cfg.strategy);
@@ -126,10 +132,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
       for (const { tf, secs, boundary } of due) {
         let candles: Candle[];
-        if (tf === cfg.mapSourceTimeframe) {
-          candles = h1;
-        } else if (tf === cfg.mapTimeframe) {
-          candles = h4;
+        const derivedFeed = feeds[tf];
+        if (derivedFeed) {
+          candles = derivedFeed;
         } else {
           candles = validateAndClose(
             await fetchTwelveData(env.TWELVEDATA_API_KEY ?? "", pair, tf, cfg.candlesLimit, cfg.symbolMap, fetchFn),

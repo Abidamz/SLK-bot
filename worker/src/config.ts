@@ -48,11 +48,13 @@ export interface WorkerConfig {
   pairs: string[];
   entryTfs: Record<string, number>; // label -> seconds
   mapTimeframe: string; // "4h" (built from mapSource)
-  mapSourceTimeframe: string; // "1h"
+  mapSourceTimeframe: string; // "1h" — derived from base feed (see baseTimeframe)
+  baseTimeframe: string; // smallest entry TF — the only intraday fetch per pair
+  baseCandlesLimit: number; // fetch size for the base feed (~enough for the H4 story)
   contextTimeframe: string; // "1d"
   mode: "paper" | "live";
   paperNotify: boolean;
-  candlesLimit: number;
+  candlesLimit: number; // fetch size for non-base direct fetches (fallbacks)
   scanDelayMs: number;
   minCandles: number; // per-feed sanity floor
   expireCandles: number;
@@ -131,11 +133,22 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     }
   }
 
+  // fetch once per pair at the smallest entry TF; every coarser feed is a
+  // resample → 1 provider credit per pair per boundary (was ~2)
+  const baseEntries = Object.entries(entryTfs);
+  baseEntries.sort((a, b) => a[1] - b[1]);
+  const baseTimeframe = baseEntries.length ? baseEntries[0][0] : "30m";
+  // ~120 H4 bars of runway for the storyline + a buffer
+  const baseSec = TF_SECONDS[baseTimeframe] ?? 1800;
+  const baseCandlesLimit = Math.min(5000, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50);
+
   return {
     pairs,
     entryTfs,
     mapTimeframe: "4h",
     mapSourceTimeframe: "1h",
+    baseTimeframe,
+    baseCandlesLimit,
     contextTimeframe: "1d",
     mode,
     paperNotify,
@@ -152,8 +165,11 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 
 // ------------------------------------------------------------ price helpers
 
+const INDEX_POINTS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
+
 export function pipSize(pair: string): number {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  if (INDEX_POINTS.has(p)) return 1.0; // index CFDs quote in points
   if (p.includes("JPY")) return 0.01;
   if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.1;
   return 0.0001;
@@ -161,7 +177,7 @@ export function pipSize(pair: string): number {
 
 export function fmtPrice(pair: string, price: number): string {
   const ps = pipSize(pair);
-  const dec = ps === 0.01 ? 3 : ps === 0.1 ? 2 : 5;
+  const dec = ps === 1.0 ? 1 : ps === 0.01 ? 3 : ps === 0.1 ? 2 : 5;
   return price.toFixed(dec);
 }
 

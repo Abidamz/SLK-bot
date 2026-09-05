@@ -182,8 +182,9 @@ Changes:
 - **Pause scanning:** set `"crons": []` in `wrangler.jsonc` and
   `npx wrangler deploy`; re-add to resume.
 - **Change pairs/timeframes:** edit `PAIRS` / `ENTRY_TFS` in `wrangler.jsonc`,
-  then `npx wrangler deploy`. Free-tier Twelve Data = 8 credits/min — keep
-  ≤ 3 pairs × 2 TFs, or upgrade the plan first.
+  then `npx wrangler deploy`. The worker fetches ONE feed per pair (smallest
+  entry TF) and derives 1h/4h by resampling, so each pair costs ~1 Twelve
+  Data credit per scan boundary — free tier (8/min) fits ~7 pairs.
 
 ## Notes & limitations
 

@@ -124,6 +124,22 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
       // ---- MAP → TOUCH -------------------------------------------------
       if (cur.state === "MAP") {
         if (brokeLevel) { kill(cur, "INVALID", c, "close beyond key level (level may flip)"); continue; }
+        // Expectation re-evaluation: while still pre-touch, follow the
+        // storyline if it moves to a different (fresher/better) origin.
+        // Without this, a stale MAP armed from an old snapshot wedges the
+        // direction slot and starves newer valid setups. Dedupe-safe:
+        // events are unique on (setup_id, state, candle_time).
+        const origin = story && story.valid && story.direction === d ? story.origin : null;
+        if (origin && (origin.kind !== cur.level.kind || origin.originTime !== cur.level.originTime)) {
+          const onSideNew = isShort ? c.c < origin.zoneLo : c.c > origin.zoneHi;
+          if (onSideNew) {
+            cur.level = origin;
+            cur.setupId = setupId(provider, pair, entryTf, d, origin);
+            cur.mapIndex = i;
+            cur.mapTime = c.t;
+            emit(cur, "MAP", c, `${origin.kind}-level ${origin.originPrice} armed (${story!.environment}/${story!.phase})`, origin.originPrice);
+          }
+        }
         const touched = isShort ? c.h >= z.zoneLo : c.l <= z.zoneHi;
         if (touched) {
           cur.state = "TOUCH";

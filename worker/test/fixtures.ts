@@ -125,42 +125,46 @@ export function dailyFeed(): Candle[] {
 /** H4 closes path: 8 flat bars of lead-in (storylineSeries needs ≥20 bars,
  *  the scan requires ≥30), then a clean bearish structure — lower highs
  *  105.7/104.95, lower lows — with an A-top origin ~104.95–105.01 above
- *  current price ~103.6. Total 32 bars. */
+ *  current price ~103.6. Buckets 0..28 of the base feed map 1:1 to these;
+ *  buckets 29–31 are drift pad + the entry sequence below. */
 export const H4_PATH = [
   106.5, 106.5, 106.5, 106.5, 106.5, 106.5, 106.5, 106.5, // flat lead-in
-  106.5, 106.2, 105.9, 105.6, 105.3,
+  106.5, 106.2, 105.9, 105.6, 105.3,                    // swing V needed for env structure
   105.7,                                              // LH (idx 13)
-  105.4, 105.1, 104.8, 104.5, 104.2,                  // LL (idx 18)
-  104.7, 104.9, 104.95,                               // LH (idx 21) → A-top origin
-  104.6, 104.4, 104.2, 104.0, 103.9, 103.8, 103.75, 103.7, 103.65, 103.6,
+  105.4, 105.1, 104.8, 104.5, 104.2,                  // LL (idx 18) → flip origin
+  104.7, 104.9, 104.95,                               // LH (idx 21)
+  104.6, 104.4, 104.2, 104.0, 103.9, 103.8, 103.75, 103.7,
 ];
 
-/** 1h source: four flat candles per H4 path value. Bucket i opens at
- *  T0 + (i-30)*4h, so bucket 30 covers [T0, T0+4h) and bucket 31 closes at
- *  T0+8h (the e2e "now"). */
-export function hourlyFeed(): Candle[] {
+/** Shift applied to SHORT_ROWS inside the e2e base feed. */
+export const E2E_SHIFT = 0.15;
+
+/** Single 30m base feed (mirrors production: the worker fetches the smallest
+ *  entry TF once and resamples 1h/4h out of it). Layout:
+ *  buckets 0..28  → H4_PATH values as flat candles (232 bars)
+ *  bucket 29      → tiny drift pad (103.61 → 103.645)
+ *  bucket 30      → SHORT_ROWS[0..7] − E2E_SHIFT
+ *  bucket 31      → SHORT_ROWS[8..14] − E2E_SHIFT (7 bars; bucket complete
+ *                   exactly at T0+8h = the e2e "now")
+ *  Bucket j spans [T0 + (j−30)·4h, T0 + (j−29)·4h). */
+export function baseFeed(): Candle[] {
   const out: Candle[] = [];
-  H4_PATH.forEach((p, i) => {
-    for (let k = 0; k < 4; k++) {
-      out.push({
-        t: T0 + (i - 30) * 4 * 3600_000 + k * 3600_000,
-        o: p, h: p + 0.06, l: p - 0.06, c: p,
-      });
+  const bucketOpen = (j: number) => T0 + (j - 30) * 4 * 3600_000;
+  for (let j = 0; j <= 28; j++) {
+    const p = H4_PATH[j];
+    for (let k = 0; k < 8; k++) {
+      out.push({ t: bucketOpen(j) + k * 1800_000, o: p, h: p + 0.05, l: p - 0.05, c: p });
     }
+  }
+  for (let k = 0; k < 8; k++) {
+    const prev = k === 0 ? 103.605 : 103.61 + 0.005 * (k - 1);
+    const c = 103.61 + 0.005 * k;
+    out.push({ t: bucketOpen(29) + k * 1800_000, o: prev, h: Math.max(prev, c) + 0.03, l: Math.min(prev, c) - 0.03, c });
+  }
+  SHORT_ROWS.forEach(([o, h, l, c], i) => {
+    out.push({ t: bucketOpen(30) + i * 1800_000, o: o - E2E_SHIFT, h: h - E2E_SHIFT, l: l - E2E_SHIFT, c: c - E2E_SHIFT });
   });
   return out;
-}
-
-/** 30m entry feed: 26 quiet candles, then the SHORT setup shifted −0.15 so
- *  the sweep reaches the storyline's origin zone (A-top ~104.95). */
-export function entryFeed(): Candle[] {
-  const padCloses = Array.from({ length: 26 }, (_, j) => 103.62 + 0.002 * j);
-  const pad = fromCloses(padCloses, 30, T0 - 13 * 3600_000, 0.03);
-  const setupRows = SHORT_ROWS.map(
-    ([o, h, l, c]) => [o - 0.15, h - 0.15, l - 0.15, c - 0.15] as [number, number, number, number],
-  );
-  const setup = mkCandles(setupRows, 30, T0);
-  return [...pad, ...setup];
 }
 
 /** Twelve Data wire format helper (values ascending, "YYYY-MM-DD HH:mm:ss"). */
@@ -191,11 +195,8 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.includes("api.twelvedata.com")) {
       if (opts.failData) throw new Error("network down (simulated)");
-      const interval = new URL(url).searchParams.get("interval");
-      const candles =
-        interval === "1day" ? dailyFeed()
-        : interval === "1h" ? hourlyFeed()
-        : entryFeed();
+      const interval = new URL(String(url)).searchParams.get("interval");
+      const candles = interval === "1day" ? dailyFeed() : baseFeed();
       return new Response(JSON.stringify(tdJson(candles)), { status: 200 });
     }
     if (url.includes("api.telegram.org")) {

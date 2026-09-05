@@ -36,8 +36,15 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram).toHaveLength(0);         // …but boot-gated
     expect(calls.discord).toHaveLength(0);
 
-    expect(store.events.map((e) => e.state))
+    // winning setup walked the full state machine
+    const winning = [...store.alerts.values()][0];
+    expect(store.events.filter((e) => e.setup_id === winning.setup_id).map((e) => e.state))
       .toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
+    // a stale pre-touch arm from an earlier storyline snapshot is recorded
+    // (expected: follow-the-storyline re-arm), never more than MAP
+    const stale = store.events.filter((e) => e.setup_id !== winning.setup_id);
+    expect(stale.length).toBeGreaterThanOrEqual(1);
+    expect(stale.every((e) => e.state === "MAP")).toBe(true);
     expect(store.scanLog).toHaveLength(1);
     expect(store.scanLog[0].note).toBe("ok");
   });
@@ -59,7 +66,7 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
 
     const alert = [...store.alerts.values()][0];
-    expect(alert.tp_internal).toBeCloseTo(104.14, 2);    // H4 structural low
+    expect(alert.tp_internal).toBeCloseTo(104.15, 2);    // H4 structural V-low (104.2 − 0.05 wick)
     expect(Number(alert.tp_external)).toBeLessThan(103.6); // external draw
     expect(alert.alert_status).toBe("PAPER");
 
@@ -71,7 +78,9 @@ describe("scheduled scan cycle", () => {
     expect(again.events).toBe(0);
     expect(calls.telegram).toHaveLength(1);
     expect(calls.discord).toHaveLength(1);
-    expect(store.events).toHaveLength(5);
+    // 6 events: stale pre-touch MAP (superseded origin) + winning setup's
+    // MAP→TOUCH→SWEEP→SHIFT→RETEST — replay above inserted none of them again
+    expect(store.events).toHaveLength(6);
   });
 
   it("unfinished confirmation candle → no alert", async () => {
