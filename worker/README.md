@@ -55,6 +55,10 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   `INSERT OR IGNORE`. The alert row is written **before** any notification,
   so a worker retry can never double-send.
 - **Boot gate**: the first-ever scan per pair+TF records transitions but
+- **Watch heads-ups** (`WATCH_NOTIFY=true` in `wrangler.jsonc` vars): an
+  optional 👀 message when a setup TOUCHes its zone, SWEEPs liquidity, or
+  SHIFTs structure — hours before the confirmed retest close would alert.
+  Same dedupe (UNIQUE events) and boot gate as entry alerts; default off.
   delivers nothing (mirrors the Python `alert_on_boot=false`).
 
 ## Setup IDs

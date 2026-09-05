@@ -54,6 +54,7 @@ export interface WorkerConfig {
   contextTimeframe: string; // "1d"
   mode: "paper" | "live";
   paperNotify: boolean;
+  watchNotify: boolean; // 👀 TOUCH/SWEEP/SHIFT heads-ups before confirmation close
   candlesLimit: number; // fetch size for non-base direct fetches (fallbacks)
   scanDelayMs: number;
   minCandles: number; // per-feed sanity floor
@@ -99,6 +100,7 @@ interface EnvVars {
   ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
+  WATCH_NOTIFY?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
 }
@@ -162,6 +164,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     contextTimeframe: "1d",
     mode,
     paperNotify,
+    watchNotify: (env.WATCH_NOTIFY ?? "false").toLowerCase() === "true",
     candlesLimit: 400,
     scanDelayMs: 10_000,
     minCandles: 40,

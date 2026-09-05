@@ -6,12 +6,13 @@
  *  contains characters like ">" that would need escaping under HTML/Markdown
  *  parse modes. */
 import { fmtPips, fmtPrice } from "./config";
-import type { Alert } from "./types";
+import type { Alert, EngineEvent } from "./types";
 import type { AlertRowish, NotifyEnv, OutcomeLike } from "./notify_types";
 
 const GREEN = 0x2ecc71;
 const RED = 0xe74c3c;
 const GREY = 0x95a5a6;
+const AMBER = 0xe67e22;
 
 export async function sendTelegram(env: NotifyEnv, text: string): Promise<void> {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
@@ -141,6 +142,35 @@ export async function broadcast(
 
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
   return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED);
+}
+
+/** "Setup forming" heads-up (WATCH_NOTIFY=true): a TOUCH/SWEEP/SHIFT
+ *  transition on an entry timeframe, hours before the confirmed retracement
+ *  close would alert. Never fires on the boot scan. */
+export function formatWatch(ev: EngineEvent, entryTf: string): string {
+  const parts = ev.setupId.split(":");
+  const direction = parts[3] ?? "";
+  const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
+  const lines = [
+    `👀 WATCH — ${ev.pair} · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
+    `State     : ${stateEmoji} ${ev.state}`,
+    `Detail    : ${ev.reason}`,
+  ];
+  if (ev.price != null) lines.push(`Price     : ~${fmtPrice(ev.pair, ev.price)}`);
+  lines.push(
+    `Candle    : ${new Date(ev.candleTime).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    `Setup ID  : ${ev.setupId}`,
+    ``,
+    `Watch only — the entry alert fires on the confirmed retest candle close.`,
+    `Research signal only. No order was placed.`,
+  );
+  return lines.join("\n");
+}
+
+export async function notifyWatch(
+  env: NotifyEnv, ev: EngineEvent, entryTf: string,
+): Promise<Record<string, string>> {
+  return broadcast(env, formatWatch(ev, entryTf), AMBER);
 }
 
 export async function notifyOutcome(

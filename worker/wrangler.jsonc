@@ -29,7 +29,9 @@
     "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\"}",
     "ENTRY_TFS": "30m,1h",
     "MODE": "paper",
-    "PAPER_NOTIFY": "true"
+    "PAPER_NOTIFY": "true",
+    // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
+    "WATCH_NOTIFY": "true"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID

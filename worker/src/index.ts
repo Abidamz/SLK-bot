@@ -16,7 +16,7 @@
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS } from "./config";
 import { scanEntry } from "./engine";
 import { evaluateSignal } from "./outcomes";
-import { notifyAlert, notifyOutcome } from "./notify";
+import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
 import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
@@ -37,6 +37,8 @@ export interface Env {
   ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
+  WATCH_NOTIFY?: string;
+  PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
 }
 
@@ -155,12 +157,20 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           cfg: cfg.strategy, mode: cfg.mode, provider: providerName,
         });
 
-        for (const ev of events) {
-          if (await store.insertEvent(ev)) eventCount++;
-        }
-
         const lastBefore = await store.getKv(`last_scan:${pair}:${tf}`);
         const isFirstScan = lastRawIsEmpty(lastBefore);
+
+        for (const ev of events) {
+          const inserted = await store.insertEvent(ev);
+          if (!inserted) continue; // already-known transition (dedupe)
+          eventCount++;
+          // 👀 watch heads-up: setup forming on TOUCH/SWEEP/SHIFT — gated by
+          // WATCH_NOTIFY and the same boot gate as entry alerts
+          if (cfg.watchNotify && WATCH_STATES.has(ev.state)
+              && deliverAllowed(cfg, isFirstScan, opts)) {
+            await notifyWatch({ ...env, fetchFn }, ev, tf);
+          }
+        }
 
         for (const alert of alerts) {
           const inserted = await store.insertAlert(alert, providerName);
@@ -216,6 +226,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     durationMs: Date.now() - startedAt,
   };
 }
+
+/** Transition states that earn a pre-entry "watch" heads-up when enabled.
+ *  MAP is far too early/noisy; RETEST has its own full alert. */
+const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
 
 function lastRawIsEmpty(v: string | null): boolean {
   return v === null || v === "0";

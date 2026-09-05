@@ -192,3 +192,39 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
   });
+
+  it("watch toggle: sends 👀 TOUCH/SWEEP/SHIFT heads-ups ahead of the entry alert", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({ WATCH_NOTIFY: "true" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.alerts).toBe(1);
+    const watch = calls.telegram.filter((m) => m.startsWith("👀 WATCH"));
+    expect(watch.length).toBeGreaterThanOrEqual(1);
+    expect(watch.some((m) => m.includes("🌊 SWEEP"))).toBe(true);
+    expect(watch.every((m) => m.includes("Setup ID  : twelvedata:EURUSD"))).toBe(true);
+    expect(watch.every((m) => m.includes("Watch only"))).toBe(true);
+    // the real entry alert still arrives alongside the heads-ups
+    expect(calls.telegram.some((m) => m.includes("PAPER ALERT"))).toBe(true);
+  });
+
+  it("watch toggle obeys the boot gate (first scan notifies nothing)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const summary = await scanAll(makeEnv({ WATCH_NOTIFY: "true" }), {
+      now: NOW, fetchFn: makeFakeFetch(calls), storeOverride: store, // no force → first scan
+    });
+    expect(summary.alerts).toBeGreaterThanOrEqual(0);
+    expect(calls.telegram).toHaveLength(0);
+  });
+
+  it("watch heads-ups are silent by default (toggle off)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    await scanAll(makeEnv(), {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
+  });
