@@ -203,6 +203,20 @@ export function yahooJson(candles: Candle[]) {
   };
 }
 
+/** OANDA v3 wire format helper (RFC3339 ns timestamps, midpoint candles). */
+export function oandaJson(candles: Candle[]) {
+  return {
+    instrument: "US30_USD",
+    granularity: "M30",
+    candles: candles.map((c) => ({
+      complete: true,
+      volume: 0,
+      time: new Date(c.t).toISOString().replace("Z", "000000Z"),
+      mid: { o: String(c.o), h: String(c.h), l: String(c.l), c: String(c.c) },
+    })),
+  };
+}
+
 /** A flat index-CFD feed (no structure → no storylines → no alerts). */
 export function yahooFlatFeed(): Candle[] {
   const closes = Array.from({ length: 420 }, (_, i) => 39000 + Math.sin(i / 24) * 8);
@@ -232,6 +246,11 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
       (calls.dataCalls ??= []).push(url);
       if (opts.failData) throw new Error("network down (simulated)");
       return new Response(JSON.stringify(yahooJson(yahooFlatFeed())), { status: 200 });
+    }
+    if (url.includes("oanda.com")) {
+      (calls.dataCalls ??= []).push(url);
+      if (opts.failData) throw new Error("network down (simulated)");
+      return new Response(JSON.stringify(oandaJson(yahooFlatFeed())), { status: 200 });
     }
     if (url.includes("api.telegram.org")) {
       calls.telegram.push(JSON.parse(String(init?.body ?? "{}")).text ?? "");

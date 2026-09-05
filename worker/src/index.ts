@@ -26,6 +26,8 @@ import type { Alert, Candle } from "./types";
 export interface Env {
   DB?: D1Like;
   TWELVEDATA_API_KEY?: string;
+  OANDA_API_KEY?: string;
+  OANDA_API_TOKEN?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
@@ -99,8 +101,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     try {
       // provider routing: forex/metals → Twelve Data, index CFDs → Yahoo
       // (a per-pair outage never blocks the other pairs — see catch below)
-      const providerName = providerForPair(pair, cfg.providerMap);
+      const providerName = providerForPair(pair, cfg.providerMap, Boolean(env.OANDA_API_KEY ?? env.OANDA_API_TOKEN));
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
+      const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
 
       // context feed (cached per UTC day to protect provider rate limits)
       const dayKey = new Date(now).toISOString().slice(0, 10);
@@ -109,7 +112,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        const ctx = await fetchMarketData(apiKey, pair, cfg.contextTimeframe, cfg.candlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
+        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
         d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
@@ -118,7 +121,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
-      const baseRes = await fetchMarketData(apiKey, pair, cfg.baseTimeframe, cfg.baseCandlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
+      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -140,7 +143,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
-          const res = await fetchMarketData(apiKey, pair, tf, cfg.candlesLimit, cfg.symbolMap, fetchFn, cfg.providerMap);
+          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn });
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 

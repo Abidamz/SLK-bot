@@ -71,15 +71,89 @@ const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
   NAS100: "^NDX", US100: "^NDX", SPX500: "^GSPC", US500: "^GSPC", UK100: "^FTSE",
 };
 
-/** Which upstream serves a canonical pair. Default: index CFDs → Yahoo,
- *  everything else (forex/metals) → Twelve Data. PROVIDER_MAP overrides. */
+// --------------------------------------------------------------------- OANDA
+// Practice-account v3 REST — free signup, official API, broker-grade live
+// quotes, no per-credit counting. Primary source for index CFDs
+// (US30_USD / DE40_EUR / JP225_USD) and eligible for forex+metals too.
+
+/** OANDA instrument names for our canonical pairs. */
+const OANDA_INSTRUMENTS: Record<string, string> = {
+  US30: "US30_USD", GER40: "DE40_EUR", DE40: "DE40_EUR",
+  JAPAN225: "JP225_USD", JP225: "JP225_USD",
+  NAS100: "NAS100_USD", US100: "NAS100_USD", SPX500: "SPX500_USD", US500: "SPX500_USD",
+  UK100: "UK100_GBP", XAUUSD: "XAU_USD", XAGUSD: "XAG_USD",
+};
+
+const OANDA_GRANULARITIES: Record<string, string> = {
+  "5m": "M5", "15m": "M15", "30m": "M30", "45m": "M45", "1h": "H1", "2h": "H2", "4h": "H4", "1d": "D",
+};
+
+export async function fetchOanda(
+  apiToken: string,
+  pair: string,
+  tf: string,
+  limit: number,
+  symbolMap: Record<string, string> = {},
+  fetchFn: FetchLike = fetch,
+): Promise<Candle[]> {
+  if (!apiToken) throw new Error("OANDA_API_TOKEN is not set");
+  const gran = OANDA_GRANULARITIES[tf];
+  if (!gran) throw new Error(`unsupported timeframe ${tf} for OANDA`);
+  const instrument =
+    symbolMap[pair] ?? OANDA_INSTRUMENTS[pair.toUpperCase()]
+    ?? (pair.length === 6 ? `${pair.slice(0, 3)}_${pair.slice(3)}` : pair); // EURUSD → EUR_USD
+  const params = new URLSearchParams({
+    count: String(Math.min(limit, 5000)),
+    granularity: gran,
+    price: "M", // midpoint candles
+  });
+  const url = `https://api-fxpractice.oanda.com/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
+  const resp = await fetchFn(url, {
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "accept-datetime-format": "RFC3339",
+    },
+    signal: AbortSignal.timeout(20_000),
+  });
+  const data = (await resp.json()) as {
+    errorMessage?: string;
+    candles?: {
+      complete: boolean;
+      time: string;
+      mid?: { o: string; h: string; l: string; c: string };
+    }[];
+  };
+  if (!resp.ok || !data.candles) {
+    throw new Error(`OANDA error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
+  }
+  const out: Candle[] = [];
+  for (const cd of data.candles) {
+    if (!cd.mid) continue; // skipped session gaps come back without prices
+    out.push({
+      t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
+      o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+    });
+  }
+  return out;
+}
+
+export type ProviderName = "twelvedata" | "yahoo" | "oanda";
+
+/** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
+ *  exists, else Yahoo. Everything else → Twelve Data. PROVIDER_MAP overrides. */
 export function providerForPair(
-  pair: string, providerMap: Record<string, string> = {},
-): "twelvedata" | "yahoo" {
-  if (providerMap[pair] === "yahoo" || providerMap[pair] === "twelvedata")
-    return providerMap[pair];
+  pair: string,
+  providerMap: Record<string, string> = {},
+  oandaTokenPresent = false,
+): ProviderName {
+  const override = providerMap[pair];
+  if (override === "twelvedata" || override === "yahoo" || override === "oanda") return override;
   const p = pair.toUpperCase();
-  return YAHOO_INDEX_SYMBOLS[p] || INDEX_POINT_PAIRS.has(p) ? "yahoo" : "twelvedata";
+  // NB: classify by the canonical index-name set only — OANDA_INSTRUMENTS
+  // also lists metals (future all-OANDA option) and must NOT affect routing.
+  const isIndexCfd = INDEX_POINT_PAIRS.has(p) || Boolean(YAHOO_INDEX_SYMBOLS[p]);
+  if (isIndexCfd) return oandaTokenPresent ? "oanda" : "yahoo";
+  return "twelvedata";
 }
 
 /** Range long enough to satisfy `limit` even with market-hours gaps. */
@@ -124,20 +198,25 @@ export async function fetchYahoo(
   return out.length > limit ? out.slice(-limit) : out;
 }
 
-/** Unified entry point: route by provider, one argument shape for both. */
-export async function fetchMarketData(
-  apiKey: string,
-  pair: string,
-  tf: string,
-  limit: number,
-  symbolMap: Record<string, string> = {},
-  fetchFn: FetchLike = fetch,
-  providerMap: Record<string, string> = {},
-): Promise<{ provider: "twelvedata" | "yahoo"; candles: Candle[] }> {
-  const provider = providerForPair(pair, providerMap);
-  const candles = provider === "yahoo"
-    ? await fetchYahoo(pair, tf, limit, symbolMap, fetchFn)
-    : await fetchTwelveData(apiKey, pair, tf, limit, symbolMap, fetchFn);
+/** Unified entry point: route by provider, one argument shape for all. */
+export interface MarketDataRequest {
+  pair: string;
+  tf: string;
+  limit: number;
+  tdKey?: string;
+  oandaToken?: string;
+  symbolMap?: Record<string, string>;
+  providerMap?: Record<string, string>;
+  fetchFn?: FetchLike;
+}
+
+export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
+  const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
+  const candles = provider === "oanda"
+    ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+    : provider === "yahoo"
+      ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+      : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
 

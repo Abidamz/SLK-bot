@@ -104,6 +104,22 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram[0]).toContain("twelvedata:EURUSD");
   });
 
+  it("auto-routes index CFDs to OANDA when its token exists (preferred over Yahoo)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({ PAIRS: "EURUSD,US30", OANDA_API_TOKEN: "OANDA_TEST_TOKEN" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.alerts).toBe(1);                    // EURUSD only
+    const oanda = (calls.dataCalls ?? []).filter((u) => u.includes("oanda.com"));
+    expect(oanda.length).toBeGreaterThanOrEqual(2);    // 1d context + 30m base
+    expect(oanda.every((u) => u.includes("US30_USD"))).toBe(true);
+    expect((calls.dataCalls ?? []).some((u) => u.includes("finance.yahoo.com"))).toBe(false);
+    expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
+  });
+
   it("unfinished confirmation candle → no alert", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [] };
     const store = new MemStore();

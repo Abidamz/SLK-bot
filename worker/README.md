@@ -26,11 +26,12 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   RETEST`, close-based invalidation, V-level flips, internal-then-external
   targets, per-pair ATR-derived tolerances (no universal pip constants).
 - **Providers** (`src/provider.ts`): Twelve Data `time_series` REST for
-  forex/metals; **Yahoo Finance** (unofficial v8 chart endpoint) for index
-  CFDs Twelve Data's free plan lacks (US30→`^DJI`, GER40→`^GDAXI`,
-  JAPAN225→`^N225`). Routing is automatic by canonical name; override per
-  pair via the `PROVIDER_MAP` JSON var. Yahoo alerts are research-grade:
-  free index data can lag a broker feed by minutes and skip sessions.
+  forex/metals; **OANDA practice v3 REST** (free demo-account token) for index
+  CFDs — broker-grade live quotes (`US30→US30_USD`, `GER40→DE40_EUR`,
+  `JAPAN225→JP225_USD`); **Yahoo Finance** (unofficial) as keyless fallback
+  when no `OANDA_API_TOKEN` is set. Routing is automatic by canonical name;
+  override per pair via the `PROVIDER_MAP` JSON var. Yahoo alerts are
+  research-grade: free index data can lag a broker feed by minutes.
 - **Data quality** (`validateAndClose`):
   1d context feed is cached in `slk_kv` per UTC day (rate-limit friendly);
   1h is resampled to the 4h map feed; entry timeframes are fetched directly.
