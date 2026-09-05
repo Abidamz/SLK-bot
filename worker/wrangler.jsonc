@@ -19,7 +19,9 @@
   ],
   "vars": {
     // non-secret config — see src/config.ts for what each of these does
-    "PAIRS": "EURUSD,GBPUSD,XAUUSD",
+    // watchlist — canonical names; forex/metals served by Twelve Data on the
+    // free plan (XAUUSD → XAU/USD, USDZAR → USD/ZAR via the default mapping).
+    "PAIRS": "EURUSD,GBPUSD,XAUUSD,USDZAR",
     "ENTRY_TFS": "30m,1h",
     "MODE": "paper",
     "PAPER_NOTIFY": "true"
