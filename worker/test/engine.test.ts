@@ -68,8 +68,11 @@ describe("long mirror path", () => {
     expect(a.entry).toBe(98.1);
     expect(a.invalidationLevel).toBeCloseTo(96.9);
     expect(a.stopLoss).toBeLessThan(96.9);
-    expect(a.tpInternal).toBe(100.0);
-    expect(a.tpExternal).toBe(103.0);
+    // min 1:3 RR: the close-by 100.0 internal pool (~1.6R) is skipped and the
+    // alert promotes straight to the external draw at 103 (~3.9R)
+    expect(a.tpInternal).toBe(103.0);
+    expect(a.tpExternal).toBeNull();
+    expect(a.rrInternal).toBeGreaterThanOrEqual(3);
     expect(events.map((e) => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
   });
 });
@@ -146,5 +149,27 @@ describe("target selection (regression: stale external draw must never sit on th
       nearestExternalTarget: 90,
     });
     expect(t).toEqual({ tp1: 90, tp2: null });
+  });
+});
+
+describe("risk shaping (min 1:3 RR + ATR-normalized stop ceiling)", () => {
+  it("skips setups whose best target is under 3R", () => {
+    const { alerts } = runShort(SHORT_ROWS, { minTpR: 999 });
+    expect(alerts).toHaveLength(0);
+  });
+
+  it("skips setups whose structural stop is wider than 3.5× entry-TF ATR", () => {
+    const { alerts } = runShort(SHORT_ROWS, { maxStopAtr: 0.05 });
+    expect(alerts).toHaveLength(0);
+  });
+
+  it("the exact same setup still fires when the cap is reasonable", () => {
+    const { alerts } = runShort(SHORT_ROWS, { maxStopAtr: 3.5 });
+    expect(alerts.length).toBeGreaterThanOrEqual(1);
+    for (const a of alerts) {
+      expect(a.rrInternal).toBeGreaterThanOrEqual(3); // minTpR default
+      // stop width never exceeds 3.5 ATR from entry
+      expect(Math.abs(a.entry - a.stopLoss)).toBeLessThanOrEqual(3.5 * a.atrEntry + 1e-9);
+    }
   });
 });

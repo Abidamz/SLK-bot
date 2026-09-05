@@ -38,7 +38,11 @@ export interface StrategyConfig {
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
-  minTpR: number;
+  /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
+   *  In EURUSD 30m terms that's ≈8–12 pips; on US30 it scales to the
+   *  index's own volatility (no universal pip constant across markets). */
+  maxStopAtr: number;
+  minTpR: number; // minimum reward:risk to the selected target (1:3 ⇒ 3.0)
   cooldownMinutes: number;
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;
@@ -88,7 +92,8 @@ export function defaultStrategy(): StrategyConfig {
     setupWindow: 240,
     slBufferAtr: 0.1,
     minRiskAtr: 0.1,
-    minTpR: 0.8,
+    maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
+    minTpR: 3.0,     // 1:3 minimum reward:risk
     cooldownMinutes: 240,
     sessionsAllowlist: [],
     mapTfLabel: "4h",

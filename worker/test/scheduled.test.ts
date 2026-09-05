@@ -67,8 +67,13 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
 
     const alert = [...store.alerts.values()][0];
-    expect(alert.tp_internal).toBeCloseTo(104.15, 2);    // H4 structural V-low (104.2 − 0.05 wick)
-    expect(Number(alert.tp_external)).toBeLessThan(103.6); // external draw
+    // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so Target 1 is
+    // promoted to the external draw and tp2 is left empty
+    expect(alert.tp_internal).toBeCloseTo(97.42, 2);
+    expect(alert.tp_external).toBeNull();
+    // ≥3R computed from the stored entry/stop/target triple
+    const risk = Math.abs(Number(alert.entry) - Number(alert.stop_loss));
+    expect(Math.abs(Number(alert.tp_internal) - Number(alert.entry)) / risk).toBeGreaterThanOrEqual(3);
     expect(alert.alert_status).toBe("PAPER");
 
     // identical re-run: dedupe → nothing new, no extra messages

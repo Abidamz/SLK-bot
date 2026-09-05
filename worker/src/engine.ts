@@ -297,6 +297,9 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const sl = isShort ? s.invLevel + buf : s.invLevel - buf;
   const risk = isShort ? sl - entry : entry - sl;
   if (risk <= 0 || risk < cfg.minRiskAtr * atrE) return null;
+  // stop-width ceiling: beyond 2× ATR the entry is structurally too far from
+  // its invalidation — re-enter later rather than alert with a fat stop
+  if (risk > cfg.maxStopAtr * atrE) return null;
 
   // targets: internal liquidity first, then the nearest external target
   const targets = selectTargets({
