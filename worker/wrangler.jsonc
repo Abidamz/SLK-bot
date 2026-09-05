@@ -1,0 +1,27 @@
+{
+  "name": "slk-alert-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-05",
+  "triggers": {
+    // every minute — the engine only scans timeframes whose candle just closed
+    "crons": ["*/1 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "slk-alert-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // non-secret config — see src/config.ts for what each of these does
+    "PAIRS": "EURUSD,GBPUSD,XAUUSD",
+    "ENTRY_TFS": "30m,1h",
+    "MODE": "paper",
+    "PAPER_NOTIFY": "true"
+  }
+  // secrets (set via `npx wrangler secret put ...`):
+  //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
+  //   DISCORD_WEBHOOK_URL ADMIN_KEY
+}

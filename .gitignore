@@ -12,3 +12,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+
+# node (cloudflare worker)
+node_modules/
+worker/.wrangler/
