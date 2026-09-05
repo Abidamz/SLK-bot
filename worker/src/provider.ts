@@ -216,14 +216,19 @@ export async function fetchDukascopy(
   interface Bucket { url: string; key: string; mutable: boolean }
   const buckets: Bucket[] = [];
   const now = new Date();
+  // ACTIVE periods (today's minute file, this hour's month, this year's days)
+  // only exist as `?from=<bucketStartMs>` — the /y/m[/d] path 400s for them.
   if (src === "minute") {
     for (let i = calDays; i >= 0; i--) {
       const ref = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
       const y = ref.getUTCFullYear(), m = ref.getUTCMonth() + 1, day = ref.getUTCDate();
+      const url = i === 0
+        ? `${DUKA_ROOT}/minute/${code}/BID?from=${ref.getTime()}`
+        : `${DUKA_ROOT}/minute/${code}/BID/${y}/${m}/${day}`;
       buckets.push({
-        url: `${DUKA_ROOT}/minute/${code}/BID/${y}/${m}/${day}`,
+        url,
         key: `${cachePrefix}:${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-        mutable: i <= 1, // today + yesterday mutable (late ticks)
+        mutable: i <= 1, // today (active) + yesterday may still receive late ticks
       });
     }
   } else if (src === "hour") {
@@ -231,11 +236,20 @@ export async function fetchDukascopy(
     for (let i = monthsBack; i >= 0; i--) {
       const ref = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
       const y = ref.getUTCFullYear(), m = ref.getUTCMonth() + 1;
-      buckets.push({ url: `${DUKA_ROOT}/hour/${code}/BID/${y}/${m}`, key: `${cachePrefix}:${y}-${m}`, mutable: i === 0 });
+      buckets.push({
+        url: i === 0 ? `${DUKA_ROOT}/hour/${code}/BID?from=${ref.getTime()}` : `${DUKA_ROOT}/hour/${code}/BID/${y}/${m}`,
+        key: `${cachePrefix}:${y}-${m}`,
+        mutable: i === 0,
+      });
     }
   } else {
     for (let y = now.getUTCFullYear() - 3; y <= now.getUTCFullYear(); y++) {
-      buckets.push({ url: `${DUKA_ROOT}/day/${code}/BID/${y}`, key: `${cachePrefix}:${y}`, mutable: y === now.getUTCFullYear() });
+      const y0 = Date.UTC(y, 0, 1);
+      buckets.push({
+        url: y === now.getUTCFullYear() ? `${DUKA_ROOT}/day/${code}/BID?from=${y0}` : `${DUKA_ROOT}/day/${code}/BID/${y}`,
+        key: `${cachePrefix}:${y}`,
+        mutable: y === now.getUTCFullYear(),
+      });
     }
   }
 

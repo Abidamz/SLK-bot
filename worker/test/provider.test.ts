@@ -210,8 +210,24 @@ describe("fetchDukascopy", () => {
     expect(candles.length).toBe(120);                  // sliced to limit after merge/dedupe
     expect(urls.length).toBeGreaterThanOrEqual(9);    // day-bucket enumeration
     expect(urls.every((u) => u.includes("/candles/minute/"))).toBe(true);
-    // every URL ends /BID/yyyy/m/d with 1-based m and d
-    expect(urls.every((u) => /\/BID\/\d{4}\/\d{1,2}\/\d{1,2}$/.test(u))).toBe(true);
+    // completed days: /BID/yyyy/m/d with 1-based m/d; today's ACTIVE bucket: ?from=
+    const completed = urls.slice(0, -1);
+    expect(completed.every((u) => /\/BID\/\d{4}\/\d{1,2}\/\d{1,2}$/.test(u))).toBe(true);
+    expect(urls[urls.length - 1]).toMatch(/BID\?from=\d+$/);
+  });
+
+  it("current-period buckets use the active ?from= URL (year path 400s while active)", async () => {
+    for (const [tf, src] of [["1h", "hour"], ["1d", "day"]] as const) {
+      const urls: string[] = [];
+      const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+        urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
+        return new Response(JSON.stringify(dukaJson(yahooFlatFeed(), 3600_000)), { status: 200 });
+      };
+      await fetchDukascopy("US30", tf, 120, {}, fetchFn);
+      expect(urls.every((u) => u.includes(`/candles/${src}/`))).toBe(true);
+      expect(urls.filter((u) => u.includes("?from="))).toHaveLength(1);
+      expect(urls[urls.length - 1]).toContain("?from="); // active bucket last
+    }
   });
 
   it("skips 404 buckets (pre-instrument-history) instead of failing", async () => {
