@@ -15,6 +15,11 @@ export function evaluateSignal(
 ): Outcome | null {
   const risk = Math.abs(entry - stop);
   if (risk <= 0) return null;
+  // corrupt-target guard: a TP on the wrong side of entry can never be a
+  // legitimate take-profit (see engine.selectTargets for the prevention);
+  // rows created before that fix simply never resolve rather than spamming
+  // "TP HIT" with a negative R.
+  if (direction === "SHORT" ? tp >= entry : tp <= entry) return null;
   const sign = direction === "LONG" ? 1 : -1;
   const rMultiple = (price: number) => (sign * (price - entry)) / risk;
 

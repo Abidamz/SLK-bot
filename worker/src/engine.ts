@@ -256,6 +256,40 @@ interface BuildAlertArgs {
   mode: "paper" | "live"; standing: boolean; provider: string;
 }
 
+/** Pick the internal-liquidity target (tp1) and external drawback (tp2) for
+ *  a setup. Exported for tests. Direction-sanity: the external draw is picked
+ *  at STORYLINE-map time and price can run past it before the retest entry
+ *  fires — a target on the wrong side of the entry is meaningless, so it is
+ *  dropped rather than stored (production: a SHORT XAUUSD alert shipped with
+ *  tp above entry and later "resolved" as TP_HIT at -1.2R). */
+export function selectTargets(args: {
+  isShort: boolean; entry: number; risk: number; minTpR: number;
+  internalPools: { side: string; price: number }[];
+  nearestExternalTarget: number | null;
+}): { tp1: number; tp2: number | null } | null {
+  const side = args.isShort ? "sellside" : "buyside";
+  const inner = args.internalPools
+    .filter((p) => p.side === side && (args.isShort ? p.price < args.entry : p.price > args.entry))
+    .map((p) => p.price);
+  let tp1: number | null = inner.length
+    ? (args.isShort ? Math.max(...inner) : Math.min(...inner))
+    : null;
+  let tp2 = args.nearestExternalTarget;
+  if (tp2 !== null && (args.isShort ? tp2 >= args.entry : tp2 <= args.entry)) tp2 = null;
+  if (tp1 === tp2) tp2 = null;
+  if (tp1 === null) { tp1 = tp2; tp2 = null; }
+  if (tp1 === null) return null;
+  let rr1 = Math.abs(tp1 - args.entry) / args.risk;
+  if (rr1 < args.minTpR && tp2 !== null) {
+    // internal target too close — target the external draw directly
+    tp1 = tp2;
+    tp2 = null;
+    rr1 = Math.abs(tp1 - args.entry) / args.risk;
+  }
+  if (rr1 < args.minTpR) return null;
+  return { tp1, tp2 };
+}
+
 function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
   const entry = c.c;
@@ -265,25 +299,12 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   if (risk <= 0 || risk < cfg.minRiskAtr * atrE) return null;
 
   // targets: internal liquidity first, then the nearest external target
-  const side = isShort ? "sellside" : "buyside";
-  const inner = s.internalPools
-    .filter((p) => p.side === side && (isShort ? p.price < entry : p.price > entry))
-    .map((p) => p.price);
-  let tp1: number | null = inner.length
-    ? isShort ? Math.max(...inner) : Math.min(...inner)
-    : null;
-  let tp2 = s.nearestExternalTarget;
-  if (tp1 === tp2) tp2 = null;
-  if (tp1 === null) { tp1 = tp2; tp2 = null; }
-  if (tp1 === null) return null;
-  let rr1 = Math.abs(tp1 - entry) / risk;
-  if (rr1 < cfg.minTpR && tp2 !== null) {
-    // internal target too close — target the external draw directly
-    tp1 = tp2;
-    tp2 = null;
-    rr1 = Math.abs(tp1 - entry) / risk;
-  }
-  if (rr1 < cfg.minTpR) return null;
+  const targets = selectTargets({
+    isShort, entry, risk, minTpR: cfg.minTpR,
+    internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
+  });
+  if (!targets) return null;
+  const { tp1, tp2 } = targets;
 
   let sess: string | null = null;
   if (cfg.sessionsAllowlist.length) sess = F.sessionFor(closeTime, cfg.sessionsAllowlist);
@@ -319,7 +340,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     invalidationLevel: s.invLevel, invalidationReason: null,
     parameterVersion: PARAM_VERSION,
     alertStatus: status, suppressReason, session: sess,
-    atrEntry: atrE, rrInternal: Math.round(rr1 * 100) / 100,
+    atrEntry: atrE, rrInternal: Math.round((Math.abs(tp1 - entry) / risk) * 100) / 100,
     cycleStage: "entry_alert", entryMode: "confirmation",
   };
 }

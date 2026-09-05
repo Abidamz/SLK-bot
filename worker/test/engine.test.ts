@@ -2,7 +2,7 @@
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
 import { defaultStrategy } from "../src/config";
-import { scanEntry } from "../src/engine";
+import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
   LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
@@ -111,5 +111,40 @@ describe("failure paths", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertStatus).toBe("SUPPRESSED");
     expect(alerts[0].suppressReason).toBe("outside session allowlist");
+  });
+});
+
+describe("target selection (regression: stale external draw must never sit on the wrong side of entry)", () => {
+  const base = { risk: 5.83, minTpR: 0.5, internalPools: [] as { side: string; price: number }[] };
+
+  it("SHORT with external draw ABOVE entry → no alert (the XAUUSD 4444.64 case)", () => {
+    expect(selectTargets({ ...base, isShort: true, entry: 4437.65, nearestExternalTarget: 4444.64 })).toBeNull();
+  });
+
+  it("LONG with external draw BELOW entry → no alert", () => {
+    expect(selectTargets({ ...base, isShort: false, entry: 1.16, nearestExternalTarget: 1.15 })).toBeNull();
+  });
+
+  it("SHORT keeps a same-ticking external draw that is below entry", () => {
+    const t = selectTargets({ ...base, isShort: true, entry: 4437.65, nearestExternalTarget: 4430.0 });
+    expect(t).toEqual({ tp1: 4430.0, tp2: null });
+  });
+
+  it("internal pool preferred; external kept as tp2 when farther", () => {
+    const t = selectTargets({
+      ...base, isShort: true, entry: 100,
+      internalPools: [{ side: "sellside", price: 97 }, { side: "buyside", price: 105 }],
+      nearestExternalTarget: 90,
+    });
+    expect(t).toEqual({ tp1: 97, tp2: 90 });
+  });
+
+  it("upsizes tp1 to the external draw when the internal pool is too close", () => {
+    const t = selectTargets({
+      ...base, isShort: true, entry: 100,
+      internalPools: [{ side: "sellside", price: 99.5 }],  // < minTpR away
+      nearestExternalTarget: 90,
+    });
+    expect(t).toEqual({ tp1: 90, tp2: null });
   });
 });
