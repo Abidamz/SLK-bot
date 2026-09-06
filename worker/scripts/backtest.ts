@@ -122,7 +122,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     const close = m30[i].t + 1_800_000;
     if (close < scanStart || close > now.getTime()) continue;
 
-    const base = m30.filter((c) => c.t + 1_800_000 <= close).slice(-1010); // prod: baseCandlesLimit
+    // m30 is sorted and this loop is chronological; slicing avoids rescanning
+    // the entire history for every production tick.
+    const end = i + 1;
+    const base = m30.slice(Math.max(0, end - 1010), end); // prod: baseCandlesLimit
     if (base.length < 40) continue;                                          // prod: minCandles
     const h4 = dropIncomplete(resampleCandles(base, TF_SECONDS["4h"]), TF_SECONDS["4h"], close);
     if (h4.length < 30) continue;                                            // prod gate
@@ -215,8 +218,16 @@ async function main() {
   if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
 
   const strategy = defaultStrategy();   // the SAME gates the live worker uses
+  // scanEntry logs every storyline transition, which is useful in production
+  // but can overwhelm a long replay. Opt in with BACKTEST_VERBOSE=1.
+  const originalInfo = console.info;
+  if (process.env.BACKTEST_VERBOSE !== "1") console.info = () => {};
   const all: Trade[] = [];
-  for (const pair of pairs) all.push(...await replay(pair, days, strategy));
+  try {
+    for (const pair of pairs) all.push(...await replay(pair, days, strategy));
+  } finally {
+    console.info = originalInfo;
+  }
 
   const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
