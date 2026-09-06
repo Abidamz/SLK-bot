@@ -16,3 +16,4 @@ __pycache__/
 # node (cloudflare worker)
 node_modules/
 worker/.wrangler/
+backtest-report-*.md
