@@ -102,10 +102,14 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   const r = oc.rMultiple;
   const [emoji, label] =
     oc.status === "TP_HIT" ? ["✅", "TP HIT"] : oc.status === "SL_HIT" ? ["❌", "SL HIT"] : ["⌛", "EXPIRED"];
-  return [
+  const lines = [
     `${paper}${emoji} ${label} — ${pair} · ${rec.entry_timeframe} · ${rec.direction} (setup ${rec.setup_id})`,
     `Entry ${fmtPrice(pair, Number(rec.entry))} → Exit ${fmtPrice(pair, oc.exitPrice)}  (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)`,
-  ].join("\n");
+  ];
+  if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
+  if (rec.tp_internal != null) lines.push(`Target 1 ${fmtPrice(pair, Number(rec.tp_internal))}`);
+  if (rec.tp_external != null) lines.push(`Target 2 ${fmtPrice(pair, Number(rec.tp_external))}`);
+  return lines.join("\n");
 }
 
 /** Fan out to every configured channel; a failing channel is logged and

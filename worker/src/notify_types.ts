@@ -14,6 +14,9 @@ export interface AlertRowish {
   entry_timeframe: unknown;
   direction: unknown;
   entry: unknown;
+  stop_loss?: unknown;
+  tp_internal?: unknown;
+  tp_external?: unknown;
   setup_id: unknown;
   alert_status: unknown;
 }
