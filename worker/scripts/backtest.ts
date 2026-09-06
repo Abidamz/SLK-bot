@@ -11,6 +11,10 @@
  *    npx tsx scripts/backtest.ts US30 30         # one pair, 30 days
  *
  *  Report also lands in backtest-report-<date>.md (gitignored).
+ *
+ *  Per pair + total it reports alerts/TP/SL/EXP/open, win%, avgR, profit factor,
+ *  max drawdown in R and the longest win/lose streak — the latter two measured
+ *  on the equity curve ordered by EXIT time, not by discovery order.
  */
 import { writeFileSync } from "node:fs";
 import { decodeJetta } from "../src/provider";
@@ -155,6 +159,39 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
   return trades;
 }
 
+/** Closed trades in EXIT order. Drawdown and streaks are only meaningful on the
+ *  sequence an account would actually have lived through — this replay walks
+ *  one pair at a time, so discovery order says nothing about time. Rows still
+ *  open (or expired) are excluded, matching the avgR/PF basis above. */
+function exitOrdered(rows: Trade[]): Trade[] {
+  return rows
+    .filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT") && Number.isFinite(r.r))
+    .sort((a, b) => a.exitTime.localeCompare(b.exitTime)); // "YYYY-MM-DD HH:MM" UTC sorts lexicographically
+}
+
+/** Largest peak-to-trough decline of the cumulative-R equity curve, in R.
+ *  (R-normalised, so it means the same thing on forex and indices.) */
+function maxDrawdownR(ordered: Trade[]): number {
+  let equity = 0, peak = 0, worst = 0;
+  for (const t of ordered) {
+    equity += t.r;
+    if (equity > peak) peak = equity;
+    if (peak - equity > worst) worst = peak - equity;
+  }
+  return worst;
+}
+
+/** Longest run of consecutive TP hits / SL hits on the exit-ordered curve. */
+function streaks(ordered: Trade[]): { win: number; lose: number } {
+  let win = 0, lose = 0, runWin = 0, runLose = 0;
+  for (const t of ordered) {
+    if (t.status === "TP_HIT") { runWin++; runLose = 0; } else { runLose++; runWin = 0; }
+    if (runWin > win) win = runWin;
+    if (runLose > lose) lose = runLose;
+  }
+  return { win, lose };
+}
+
 function stats(rows: Trade[]) {
   const tp = rows.filter((r) => r.status === "TP_HIT");
   const sl = rows.filter((r) => r.status === "SL_HIT");
@@ -164,12 +201,17 @@ function stats(rows: Trade[]) {
   const wins = tp.map((t) => t.r);
   const losses = sl.map((t) => Math.abs(t.r));
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const ordered = exitOrdered(rows);
+  const streak = streaks(ordered);
   return {
     alerts: rows.length, tp: tp.length, sl: sl.length, expired: ex.length,
     open: rows.length - tp.length - sl.length - ex.length,
     winrate: closed.length ? (tp.length / closed.length) * 100 : NaN,
     avgR: r.length ? sum(r) / r.length : NaN,
     pf: losses.length && sum(losses) > 0 ? sum(wins) / sum(losses) : NaN,
+    maxDD: maxDrawdownR(ordered),
+    winStreak: streak.win,
+    loseStreak: streak.lose,
   };
 }
 
@@ -186,21 +228,21 @@ async function main() {
   const all: Trade[] = [];
   for (const pair of pairs) all.push(...await replay(pair, days, strategy));
 
-  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF"];
+  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD R", "strk W/L"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
   let lines = `# SLK walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
-  lines += `| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | profit factor |\n|---|---|---|---|---|---|---|---|---|\n`;
+  lines += `| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | profit factor | maxDD (R) | longest streak W/L |\n|---|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const pair of pairs) {
     const rows = all.filter((t) => t.pair === pair);
     const s = stats(rows);
     const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
-      f(s.winrate, 1), f(s.avgR), f(s.pf)];
+      f(s.winrate, 1), f(s.avgR), f(s.pf), f(s.maxDD), `${s.winStreak}/${s.loseStreak}`];
     console.log(line.map((c) => c.padStart(9)).join(""));
     lines += `| ${line.join(" | ")} |\n`;
   }
   const t = stats(all);
   const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
-    f(t.winrate, 1), f(t.avgR), f(t.pf)];
+    f(t.winrate, 1), f(t.avgR), f(t.pf), f(t.maxDD), `${t.winStreak}/${t.loseStreak}`];
   console.log(tot.map((c) => c.padStart(9)).join(""));
   lines += `| **${tot.join(" | ")}** |\n\n`;
 
@@ -211,7 +253,7 @@ async function main() {
   }
   const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;
   writeFileSync(name, lines);
-  console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|)`);
+  console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|;\n maxDD = deepest peak-to-trough drop of the cumulative-R curve in EXIT order; streaks W/L = longest\n consecutive TP / SL run on that same ordered curve)`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
