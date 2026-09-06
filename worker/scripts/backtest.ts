@@ -243,7 +243,14 @@ async function main() {
   if (args.length && /^[A-Z]/.test(args[0])) { pairs = args[0].split(","); args.shift(); }
   if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
 
-  const strategy = defaultStrategy();   // the SAME gates the live worker uses
+  const requestedMinTpR = Number(process.env.BACKTEST_MIN_TP_R ?? "");
+  const strategy = Number.isFinite(requestedMinTpR) && requestedMinTpR > 0
+    ? { ...defaultStrategy(), minTpR: requestedMinTpR }
+    : defaultStrategy();   // the SAME gates the live worker uses
+  if (strategy.minTpR !== defaultStrategy().minTpR) {
+    console.log(`
+*** BACKTEST OVERRIDE: minTpR=${strategy.minTpR} (research comparison only) ***`);
+  }
   // scanEntry logs every storyline transition, which is useful in production
   // but can overwhelm a long replay. Opt in with BACKTEST_VERBOSE=1.
   const originalInfo = console.info;
