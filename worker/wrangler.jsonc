@@ -1,0 +1,39 @@
+{
+  "name": "slk-alert-worker",
+  "main": "src/index.ts",
+  // Compatibility date must not be newer than the wrangler build doing the
+  // deploy ("compatibility date is in the future" error otherwise). The code
+  // uses no compat-flag-gated behavior, so a stable older date is fine.
+  "compatibility_date": "2024-10-01",
+  "triggers": {
+    // every minute — the engine only scans timeframes whose candle just closed
+    "crons": ["*/1 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "slk-alert-db",
+      "database_id": "48ad2f08-d27d-4491-ad6c-13ad741b9ae3",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // non-secret config — see src/config.ts for what each of these does
+    // watchlist — canonical names; forex/metals served by Twelve Data on the
+    // free plan (default mapping XAUUSD → XAU/USD, USDZAR → USD/ZAR).
+    // Index CFDs route automatically: OANDA if OANDA_API_TOKEN exists, else
+    // the keyless Dukascopy public feed (USA30.IDX-USD / DEU.IDX-EUR /
+    // JPN.IDX-JPY); SYMBOL_MAP doubles as an escape-hatch override (e.g.
+    // PROVIDER_MAP + these ^DJI-style Yahoo symbols).
+    "PAIRS": "EURUSD,GBPUSD,XAUUSD,USDZAR,US30,GER40,JAPAN225",
+    "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\"}",
+    "ENTRY_TFS": "30m,1h",
+    "MODE": "paper",
+    "PAPER_NOTIFY": "true",
+    // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
+    "WATCH_NOTIFY": "true"
+  }
+  // secrets (set via `npx wrangler secret put ...`):
+  //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
+  //   DISCORD_WEBHOOK_URL ADMIN_KEY
+}

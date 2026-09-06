@@ -1,0 +1,20 @@
+{
+  "name": "slk-alert-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SLK (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "db:init": "wrangler d1 execute slk-alert-db --file=migrations/0001_init.sql",
+    "db:init:local": "wrangler d1 execute slk-alert-db --local --file=migrations/0001_init.sql"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9",
+    "wrangler": ">=3.80.0"
+  }
+}

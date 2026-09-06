@@ -1,0 +1,19 @@
+# secrets & local config
+.env
+config.yaml
+
+# runtime data (signal DB) — repo root only, NOT slk_bot/data/
+/data/
+*.db
+*.db-journal
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# node (cloudflare worker)
+node_modules/
+worker/.wrangler/
+backtest-report-*.md
