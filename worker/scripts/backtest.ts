@@ -98,6 +98,7 @@ interface Trade {
   pair: string; tf: string; setupId: string;
   entryTime: string; entry: number; stop: number; tp: number;
   status: string; exit: number; exitTime: string; r: number;
+  limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
 }
 
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
@@ -149,6 +150,17 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
         const tfCandles = tf === "1h" ? h1 : m30;
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
         const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120);
+        // Shadow-only pending limit: origin-zone midpoint, valid for the next
+        // two entry-TF candles. Production alerts remain close-entry alerts.
+        const limitEntry = (a.keyLevelBounds[0] + a.keyLevelBounds[1]) / 2;
+        const limitSideValid = a.direction === "LONG" ? limitEntry <= a.entry : limitEntry >= a.entry;
+        const fillIndex = limitSideValid
+          ? after.slice(0, 2).findIndex((c) => a.direction === "LONG" ? c.l <= limitEntry : c.h >= limitEntry)
+          : -1;
+        const fill = fillIndex >= 0 ? after[fillIndex] : undefined;
+        const limitOc = fill
+          ? evaluateSignal(a.direction, limitEntry, a.stopLoss, a.tpInternal, after.slice(fillIndex), 120)
+          : null;
         trades.push({
           pair, tf, setupId: a.setupId,
           entryTime: new Date(a.candleCloseTime).toISOString().slice(0, 16).replace("T", " "),
@@ -157,6 +169,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
           exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
           exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
           r: oc?.rMultiple ?? NaN,
+          limitStatus: limitOc?.status ?? (fill ? "OPEN" : "EXPIRED"),
+          limitEntry,
+          limitExitTime: limitOc ? new Date(limitOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+          limitR: limitOc?.rMultiple ?? NaN,
         });
       }
     }
@@ -210,6 +226,16 @@ function rack(rows: Trade[]) {
 
 const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
 
+function limitShadowRows(rows: Trade[]): Trade[] {
+  return rows.map((t) => ({
+    ...t,
+    entry: t.limitEntry,
+    status: t.limitStatus,
+    exitTime: t.limitExitTime,
+    r: t.limitR,
+  }));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   let days = 60;
@@ -260,6 +286,17 @@ async function main() {
   const adj = emit(true);
   lines += `### Raw fills (mid touch)\n\n${raw.block}\n\n`;
   lines += `### Spread-adjusted (est. per-pair spread cost, 2× round trip)\n\n${adj.block}\n\n`;
+
+  const limitRaw = stats(limitShadowRows(all), false);
+  const limitAdj = stats(limitShadowRows(all), true);
+  const limitNote = (s: ReturnType<typeof stats>) =>
+    `alerts ${s.alerts} · filled ${s.tp + s.sl + (s.open)} · unfilled ${s.expired} · ` +
+    `avg ${f(s.avgR)}R · PF ${f(s.pf)} · maxDD ${f(s.maxDD)}R · net ${f(s.finalR)}R`;
+  console.log(`\nPENDING-LIMIT SHADOW (origin midpoint, 2 candles) raw: ${limitNote(limitRaw)}`);
+  console.log(`PENDING-LIMIT SHADOW (origin midpoint, 2 candles) adj: ${limitNote(limitAdj)}`);
+  lines += `### Pending-limit shadow (origin-zone midpoint, valid for 2 entry-TF candles)\n\n`;
+  lines += `This is a comparison only; production alerts still use retest-close entries.\n\n`;
+  lines += `- raw: ${limitNote(limitRaw)}\n- adj: ${limitNote(limitAdj)}\n\n`;
   lines += `\n## Risk over time (raw / spread-adjusted)\n\n- raw: ${raw.riskNote}\n- adj: ${adj.riskNote}\n\n`;
   lines += `\n## Trades (pair, tf, entry time UTC, entry → exit, status, R)\n\n`;
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
