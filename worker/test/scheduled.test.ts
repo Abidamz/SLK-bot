@@ -50,7 +50,7 @@ describe("scheduled scan cycle", () => {
     expect(store.scanLog[0].note).toBe("ok");
   });
 
-  it("forced scan delivers confirmed alert to Telegram only", async () => {
+  it("forced scan delivers exactly one Telegram + one Discord message", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [] };
     const store = new MemStore();
     const summary = await scanAll(makeEnv(), {
@@ -58,7 +58,7 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBe(1);
     expect(calls.telegram).toHaveLength(1);
-    expect(calls.discord).toHaveLength(0);
+    expect(calls.discord).toHaveLength(1);
     const msg = calls.telegram[0];
     expect(msg).toContain("SLK 🧪 PAPER ALERT — EURUSD");
     expect(msg).toContain("Direction   : SHORT");
@@ -83,7 +83,7 @@ describe("scheduled scan cycle", () => {
     expect(again.alerts).toBe(0);
     expect(again.events).toBe(0);
     expect(calls.telegram).toHaveLength(1);
-    expect(calls.discord).toHaveLength(0);
+    expect(calls.discord).toHaveLength(1);
     // 6 events: stale pre-touch MAP (superseded origin) + winning setup's
     // MAP→TOUCH→SWEEP→SHIFT→RETEST — replay above inserted none of them again
     expect(store.events).toHaveLength(6);

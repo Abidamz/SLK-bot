@@ -140,23 +140,11 @@ export async function broadcast(
   return results;
 }
 
-/** Confirmed entry alerts are Telegram-only. Watch heads-ups, outcomes, and
- * the admin test endpoint continue to use broadcast() and may still reach
- * Discord. This keeps the high-signal confirmed channel focused. */
+/** Confirmed entry alerts fan out to every configured channel. The alert
+ * includes the candidate entry, stop-loss, internal/external targets, and
+ * invalidation level; it is still research-only and places no order. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
-  const results: Record<string, string> = {};
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
-    console.info(JSON.stringify({ level: "info", msg: "confirmed alert has no Telegram channel configured", setupId: a.setupId }));
-    return results;
-  }
-  try {
-    await sendTelegram(env, formatAlert(a));
-    results.telegram = "ok";
-  } catch (err) {
-    results.telegram = `error: ${err instanceof Error ? err.message : String(err)}`;
-    console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram, setupId: a.setupId }));
-  }
-  return results;
+  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED);
 }
 
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a TOUCH/SWEEP/SHIFT
