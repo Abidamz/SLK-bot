@@ -31,7 +31,7 @@
     "MODE": "paper",
     "PAPER_NOTIFY": "true",
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
-    "WATCH_NOTIFY": "true"
+    "WATCH_NOTIFY": "false"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
