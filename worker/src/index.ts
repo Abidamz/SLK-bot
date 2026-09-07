@@ -167,6 +167,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           // 👀 watch heads-up: setup forming on TOUCH/SWEEP/SHIFT — gated by
           // WATCH_NOTIFY and the same boot gate as entry alerts
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
+              && watchEventFresh(ev, tf, now)
               && deliverAllowed(cfg, isFirstScan, opts)) {
             await notifyWatch({ ...env, fetchFn }, ev, tf);
           }
@@ -230,6 +231,17 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 /** Transition states that earn a pre-entry "watch" heads-up when enabled.
  *  MAP is far too early/noisy; RETEST has its own full alert. */
 const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
+
+/** Watch events are transient heads-ups, not durable alerts. Only notify when
+ * the source candle closed recently; this prevents isolate cold-start replay
+ * from re-sending stale TOUCH/SWEEP/SHIFT events hours later. */
+export function watchEventFresh(ev: { candleTime: number }, tf: string, now: number): boolean {
+  const secs = TF_SECONDS[tf];
+  if (!secs) return false;
+  const close = ev.candleTime + secs * 1000;
+  const age = now - close;
+  return age >= 0 && age <= 2 * secs * 1000;
+}
 
 function lastRawIsEmpty(v: string | null): boolean {
   return v === null || v === "0";

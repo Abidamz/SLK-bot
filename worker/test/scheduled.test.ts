@@ -4,7 +4,7 @@
  *  outage. Synthetic fixtures only — logic verification, not performance
  *  evidence. */
 import { describe, expect, it } from "vitest";
-import { scanAll, type Env } from "../src/index";
+import { scanAll, watchEventFresh, type Env } from "../src/index";
 import { MemStore } from "../src/store";
 import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
 
@@ -198,7 +198,7 @@ describe("scheduled scan cycle", () => {
     expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
   });
 
-  it("watch toggle: sends 👀 TOUCH/SWEEP/SHIFT heads-ups ahead of the entry alert", async () => {
+  it("watch toggle suppresses stale replayed heads-ups", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     const env = makeEnv({ WATCH_NOTIFY: "true" });
@@ -207,12 +207,15 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBe(1);
     const watch = calls.telegram.filter((m) => m.startsWith("👀 WATCH"));
-    expect(watch.length).toBeGreaterThanOrEqual(1);
-    expect(watch.some((m) => m.includes("🌊 SWEEP"))).toBe(true);
-    expect(watch.every((m) => m.includes("Setup ID  : twelvedata:EURUSD"))).toBe(true);
-    expect(watch.every((m) => m.includes("Watch only"))).toBe(true);
-    // the real entry alert still arrives alongside the heads-ups
+    expect(watch).toHaveLength(0);
+    // the confirmed entry alert still arrives independently of watch freshness
     expect(calls.telegram.some((m) => m.includes("PAPER ALERT"))).toBe(true);
+  });
+
+  it("watch freshness allows a just-closed candle and rejects cold-start replay", () => {
+    const candle = { candleTime: T0 };
+    expect(watchEventFresh(candle, "30m", T0 + 30 * 60_000 + 60_000)).toBe(true);
+    expect(watchEventFresh(candle, "30m", T0 + 30 * 60_000 + 61 * 60_000)).toBe(false);
   });
 
   it("watch toggle obeys the boot gate (first scan notifies nothing)", async () => {
