@@ -33,6 +33,8 @@ export interface Env {
   DISCORD_WEBHOOK_URL?: string;
   ADMIN_KEY?: string;
   PROVIDER_WEBHOOK_SECRET?: string;
+  SIGNAL_API_KEY?: string;
+  SIGNAL_SIGNING_SECRET?: string;
   PAIRS?: string;
   ENTRY_TFS?: string;
   MODE?: string;
@@ -329,6 +331,15 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+async function signHex(raw: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 async function verifySignature(raw: string, signature: string, secret: string): Promise<boolean> {
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(secret),
@@ -352,6 +363,39 @@ export default {
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
         time: new Date().toISOString(),
       });
+    }
+
+    if (url.pathname === "/signals/confirmed" && request.method === "GET") {
+      if (!env.SIGNAL_API_KEY || request.headers.get("authorization") !== `Bearer ${env.SIGNAL_API_KEY}`)
+        return json({ error: "unauthorized" }, 401);
+      if (!env.SIGNAL_SIGNING_SECRET)
+        return json({ error: "signal signing is not configured" }, 503);
+      const limit = Math.min(Number(url.searchParams.get("limit") ?? 20) || 20, 50);
+      const now = Date.now();
+      const rows = (await makeStore(env.DB).recentAlerts(200))
+        .filter((r) => (r.alert_status === "PAPER" || r.alert_status === "SENT") && r.status === "OPEN")
+        .filter((r) => {
+          const close = Date.parse(String(r.candle_close_time));
+          const tfSeconds = TF_SECONDS[String(r.entry_timeframe)] ?? 0;
+          return Number.isFinite(close) && close + Math.max(tfSeconds, 1800) * 2 * 1000 >= now;
+        })
+        .sort((a, b) => Date.parse(String(b.candle_close_time)) - Date.parse(String(a.candle_close_time)))
+        .slice(0, limit);
+      const signals = [];
+      for (const r of rows) {
+        const tfSeconds = TF_SECONDS[String(r.entry_timeframe)] ?? 0;
+        const candleClose = Date.parse(String(r.candle_close_time));
+        const body = {
+          signalId: String(r.setup_id), strategyVersion: String(r.parameter_version ?? "unknown"),
+          state: "CONFIRMED", mode: "DEMO", symbol: String(r.canonical_symbol),
+          side: String(r.direction) === "LONG" ? "BUY" : "SELL", orderType: "MARKET",
+          entry: Number(r.entry), stopLoss: Number(r.stop_loss), takeProfit: Number(r.tp_internal),
+          expiresAt: new Date(candleClose + Math.max(tfSeconds, 1800) * 2 * 1000).toISOString(),
+          createdAt: new Date(now).toISOString(),
+        };
+        signals.push({ ...body, signature: await signHex(JSON.stringify(body), env.SIGNAL_SIGNING_SECRET) });
+      }
+      return json({ signals, generatedAt: new Date(now).toISOString(), execution: "DISABLED" });
     }
 
     if (url.pathname === "/alerts" && request.method === "GET") {
