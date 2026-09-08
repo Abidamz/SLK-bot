@@ -59,6 +59,23 @@ describe("MemStore", () => {
     expect(rows[0].status).toBe("TP_HIT");
   });
 
+  it("filters and paginates alert queries with total count", async () => {
+    const s = new MemStore();
+    const a = mkAlert("a1"); a.direction = "SHORT"; await s.insertAlert(a, "dukascopy");
+    const b = mkAlert("a2"); b.direction = "LONG"; b.pair = "GBPUSD"; await s.insertAlert(b, "dukascopy");
+    const result = await s.queryAlerts({ pair: "EURUSD", direction: "SHORT", page: 1, pageSize: 10 });
+    expect(result.total).toBe(1); expect(result.rows[0].setup_id).toBe("a1");
+    const page = await s.queryAlerts({ page: 2, pageSize: 1 });
+    expect(page.total).toBe(2); expect(page.rows).toHaveLength(1);
+  });
+
+  it("isolates notification delivery audit records", async () => {
+    const s = new MemStore();
+    await s.insertNotificationDeliveryAudit({ channel: "telegram", kind: "test", status: "error: timeout" });
+    expect(s.preferenceAudit).toHaveLength(1);
+    expect(s.preferenceAudit[0].delivery).toMatchObject({ channel: "telegram", status: "error: timeout" });
+  });
+
   it("kv roundtrip + scan log", async () => {
     const s = new MemStore();
     await s.setKv("last_boundary:30m", "123");
