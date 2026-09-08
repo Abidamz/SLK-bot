@@ -46,12 +46,20 @@ export interface Store {
   setKv(key: string, value: string): Promise<void>;
   insertScanLog(row: ScanLogRow): Promise<void>;
   recentAlerts(limit: number): Promise<AlertRow[]>;
+  queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
 }
 
+
+
+export interface AlertQuery {
+  pair?: string; timeframe?: string; direction?: string; lifecycle?: string; outcome?: string; provider?: string;
+  from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc"; page: number; pageSize: number;
+}
+export interface AlertQueryResult { rows: AlertRow[]; total: number; }
 
 export interface NotificationPreferences {
   primaryConfirmed: true;
@@ -213,6 +221,19 @@ export class D1Store implements Store {
     await this.db.prepare("INSERT INTO notification_delivery_audit (channel,kind,status,detail,created_utc) VALUES (?,?,?,?,?)").bind(row.channel, row.kind, row.status, row.detail ?? null, new Date().toISOString()).run();
   }
 
+  async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
+    const where: string[] = []; const binds: unknown[] = [];
+    const add = (sql: string, value: unknown) => { where.push(sql); binds.push(value); };
+    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction); if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
+    const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+    const sortMap: Record<string,string> = { candleCloseTime: "candle_close_time", pair: "canonical_symbol", timeframe: "entry_timeframe", direction: "direction", status: "status", provider: "provider" };
+    const order = q.order === "asc" ? "ASC" : "DESC"; const sort = sortMap[q.sort ?? "candleCloseTime"] ?? "candle_close_time";
+    const offset = (q.page - 1) * q.pageSize;
+    const count = await this.db.prepare(`SELECT COUNT(*) AS total FROM slk_alerts${clause}`).bind(...binds).first();
+    const rows = await this.db.prepare(`SELECT * FROM slk_alerts${clause} ORDER BY ${sort} ${order}, id DESC LIMIT ? OFFSET ?`).bind(...binds, q.pageSize, offset).all();
+    return { rows: rows.results as AlertRow[], total: Number((count as Record<string,unknown> | null)?.total ?? 0) };
+  }
+
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     const res = await this.db
       .prepare("SELECT * FROM slk_alerts ORDER BY id DESC LIMIT ?")
@@ -320,6 +341,12 @@ export class MemStore implements Store {
   }
 
   async insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void> { this.preferenceAudit.push({ delivery: row, createdUtc: new Date().toISOString() }); }
+
+  async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
+    let rows = [...this.alerts.values()]; const match = (v: unknown, x?: string) => !x || String(v).toUpperCase() === x.toUpperCase();
+    rows = rows.filter(r => match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to));
+    const total=rows.length; rows=rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize); return { rows, total };
+  }
 
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     return [...this.alerts.values()].slice(-limit).reverse();

@@ -20,7 +20,7 @@ import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
 import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
-import { makeStore, type D1Like, type Store, type NotificationPreferences, DEFAULT_NOTIFICATION_PREFERENCES } from "./store";
+import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
 import type { Alert, Candle } from "./types";
 
 export interface Env {
@@ -506,18 +506,22 @@ export default {
 
     if (url.pathname === "/alerts" && request.method === "GET") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
-      const limit = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 200);
-      const store = makeStore(env.DB);
-      const rows = await store.recentAlerts(limit);
+      const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;
+      const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
+      if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
+      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]);
+      if (bad) return json({ error: bad }, 400);
+      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", page, pageSize };
+      const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
-      return json(rows.map((r) => ({
+      return json({ items: rows.map((r) => ({
         setupId: r.setup_id, pair: r.canonical_symbol, tf: r.entry_timeframe,
         direction: r.direction, entry: r.entry, stopLoss: r.stop_loss,
         tp1: r.tp_internal, tp2: r.tp_external, environment: r.environment,
         phase: r.phase, htfAlignment: r.htf_alignment, keyLevel: r.key_level_type,
         originLevel: r.origin_key_level, status: r.status,
         alertStatus: r.alert_status, candleCloseTime: r.candle_close_time,
-      })));
+      })), page, pageSize, total: result.total, sort: query.sort, order: query.order });
     }
 
     if (url.pathname === "/stats" && request.method === "GET") {
