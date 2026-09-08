@@ -6,6 +6,9 @@ export interface NotifyEnv {
   DISCORD_WEBHOOK_URL?: string;
   /** Injectable transport (tests pass a fake; production uses global fetch). */
   fetchFn?: typeof fetch;
+  watchOnly?: boolean;
+  WATCH_TELEGRAM?: string;
+  WATCH_DISCORD?: string;
 }
 
 /** Row-shaped subset used when formatting outcomes (matches slk_alerts). */

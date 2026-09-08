@@ -20,7 +20,7 @@ import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
 import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
-import { makeStore, type D1Like, type Store } from "./store";
+import { makeStore, type D1Like, type Store, type NotificationPreferences, DEFAULT_NOTIFICATION_PREFERENCES } from "./store";
 import type { Alert, Candle } from "./types";
 
 export interface Env {
@@ -78,6 +78,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const errors: string[] = [];
   let alertCount = 0;
   let eventCount = 0;
+  const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
 
   // which entry TFs closed a candle since the previous successful scan?
@@ -172,7 +173,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
               && watchEventFresh(ev, tf, now)
               && deliverAllowed(cfg, isFirstScan, opts)) {
-            await notifyWatch({ ...env, fetchFn }, ev, tf);
+            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: notificationPrefs.telegramWatch ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false" }, ev, tf);
           }
         }
 
@@ -431,6 +432,23 @@ export default {
         signals.push({ ...body, signature: await signHex(JSON.stringify(body), env.SIGNAL_SIGNING_SECRET) });
       }
       return json({ signals, generatedAt: new Date(now).toISOString(), execution: "DISABLED" });
+    }
+
+    if (url.pathname === "/dashboard/preferences/notifications" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const prefs = await makeStore(env.DB).getNotificationPreferences();
+      return json({ primaryConfirmed: true, telegram: { enabled: true, watchEnabled: prefs.telegramWatch, operationalEnabled: prefs.operationalEnabled }, discord: { enabled: true, watchEnabled: prefs.discordWatch, operationalEnabled: prefs.operationalEnabled }, cooldownMinutes: prefs.cooldownMinutes, updatedUtc: prefs.updatedUtc });
+    }
+    if (url.pathname === "/dashboard/preferences/notifications" && request.method === "PATCH") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      let body: Record<string, unknown>;
+      try { body = await request.json() as Record<string, unknown>; } catch { return json({ error: "invalid JSON" }, 400); }
+      const current = await makeStore(env.DB).getNotificationPreferences();
+      const tg = body.telegram as Record<string, unknown> | undefined;
+      const dc = body.discord as Record<string, unknown> | undefined;
+      const prefs: NotificationPreferences = { ...current, primaryConfirmed: true, telegramWatch: typeof tg?.watchEnabled === "boolean" ? tg.watchEnabled : current.telegramWatch, discordWatch: typeof dc?.watchEnabled === "boolean" ? dc.watchEnabled : current.discordWatch, updatedUtc: new Date().toISOString() };
+      await makeStore(env.DB).saveNotificationPreferences(prefs, "dashboard-admin");
+      return json({ ok: true, primaryConfirmed: true, telegram: { enabled: true, watchEnabled: prefs.telegramWatch, operationalEnabled: prefs.operationalEnabled }, discord: { enabled: true, watchEnabled: prefs.discordWatch, operationalEnabled: prefs.operationalEnabled }, updatedUtc: prefs.updatedUtc });
     }
 
     const chartMatch = url.pathname.match(/^\/dashboard\/signals\/(.+)\/chart$/);

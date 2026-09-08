@@ -120,7 +120,9 @@ export async function broadcast(
   color: number,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+  const telegramAllowed = !env.watchOnly || env.WATCH_TELEGRAM !== "false";
+  const discordAllowed = !env.watchOnly || env.WATCH_DISCORD !== "false";
+  if (telegramAllowed && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
     try {
       await sendTelegram(env, text);
       results.telegram = "ok";
@@ -129,7 +131,7 @@ export async function broadcast(
       console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
     }
   }
-  if (env.DISCORD_WEBHOOK_URL) {
+  if (discordAllowed && env.DISCORD_WEBHOOK_URL) {
     try {
       await sendDiscord(env, text, color);
       results.discord = "ok";

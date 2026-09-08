@@ -47,7 +47,24 @@ export interface Store {
   insertScanLog(row: ScanLogRow): Promise<void>;
   recentAlerts(limit: number): Promise<AlertRow[]>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
+  getNotificationPreferences(): Promise<NotificationPreferences>;
+  saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
 }
+
+
+export interface NotificationPreferences {
+  primaryConfirmed: true;
+  telegramWatch: boolean;
+  discordWatch: boolean;
+  operationalEnabled: boolean;
+  cooldownMinutes: number;
+  updatedUtc: string;
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  primaryConfirmed: true, telegramWatch: false, discordWatch: false,
+  operationalEnabled: true, cooldownMinutes: 30, updatedUtc: "",
+};
 
 export interface ScanLogRow {
   ts: string;
@@ -174,6 +191,23 @@ export class D1Store implements Store {
       .run();
   }
 
+  async getNotificationPreferences(): Promise<NotificationPreferences> {
+    const row = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
+    if (!row) {
+      const prefs = { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
+      await this.saveNotificationPreferences(prefs, "default");
+      return prefs;
+    }
+    return { primaryConfirmed: true, telegramWatch: Boolean(row.telegram_watch), discordWatch: Boolean(row.discord_watch), operationalEnabled: Boolean(row.operational_enabled), cooldownMinutes: Number(row.cooldown_minutes), updatedUtc: String(row.updated_utc) };
+  }
+
+  async saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void> {
+    const previous = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
+    const now = prefs.updatedUtc || new Date().toISOString();
+    await this.db.prepare(`INSERT INTO notification_preferences (preference_id,telegram_watch,discord_watch,operational_enabled,cooldown_minutes,updated_utc) VALUES (1,?,?,?,?,?) ON CONFLICT(preference_id) DO UPDATE SET telegram_watch=excluded.telegram_watch,discord_watch=excluded.discord_watch,operational_enabled=excluded.operational_enabled,cooldown_minutes=excluded.cooldown_minutes,updated_utc=excluded.updated_utc`).bind(prefs.telegramWatch ? 1 : 0, prefs.discordWatch ? 1 : 0, prefs.operationalEnabled ? 1 : 0, prefs.cooldownMinutes, now).run();
+    await this.db.prepare("INSERT INTO notification_preference_audit (previous_value,new_value,source,changed_utc) VALUES (?,?,?,?)").bind(JSON.stringify(previous ?? DEFAULT_NOTIFICATION_PREFERENCES), JSON.stringify(prefs), source, now).run();
+  }
+
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     const res = await this.db
       .prepare("SELECT * FROM slk_alerts ORDER BY id DESC LIMIT ?")
@@ -199,6 +233,8 @@ export class MemStore implements Store {
   kv = new Map<string, string>();
   scanLog: ScanLogRow[] = [];
   private eventKeys = new Set<string>();
+  preferences: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  preferenceAudit: Record<string, unknown>[] = [];
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
     if (this.alerts.has(a.setupId)) return false;
@@ -268,6 +304,14 @@ export class MemStore implements Store {
 
   async insertScanLog(row: ScanLogRow): Promise<void> {
     this.scanLog.push(row);
+  }
+
+  async getNotificationPreferences(): Promise<NotificationPreferences> { return { ...this.preferences }; }
+
+  async saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void> {
+    const previous = { ...this.preferences };
+    this.preferences = { ...prefs, primaryConfirmed: true, updatedUtc: prefs.updatedUtc || new Date().toISOString() };
+    this.preferenceAudit.push({ previous, newValue: this.preferences, source, changedUtc: this.preferences.updatedUtc });
   }
 
   async recentAlerts(limit: number): Promise<AlertRow[]> {
