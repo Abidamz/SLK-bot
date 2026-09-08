@@ -179,6 +179,14 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
+          // Historical replay can discover a confirmation long after its
+          // candle closed. Record it for audit, but never deliver a stale
+          // entry or immediately resolve its old price path.
+          if (!alertEventFresh(alert, tf, now)) {
+            await store.updateAlertStatus(alert.setupId, "SUPPRESSED", "stale confirmation — record-only");
+            console.info(JSON.stringify({ level: "info", msg: "stale confirmation recorded without delivery", setupId: alert.setupId }));
+            continue;
+          }
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
         }
 
@@ -245,6 +253,13 @@ export function watchEventFresh(ev: { candleTime: number }, tf: string, now: num
   return age >= 0 && age <= 2 * secs * 1000;
 }
 
+export function alertEventFresh(alert: { candleCloseTime: number }, tf: string, now: number): boolean {
+  const secs = TF_SECONDS[tf];
+  if (!secs) return false;
+  const age = now - alert.candleCloseTime;
+  return age >= 0 && age <= 2 * secs * 1000;
+}
+
 function lastRawIsEmpty(v: string | null): boolean {
   return v === null || v === "0";
 }
@@ -292,6 +307,7 @@ async function resolveOutcomes(
 ): Promise<void> {
   const open = await store.openAlerts(pair, tf);
   for (const rec of open) {
+    if (rec.alert_status === "SUPPRESSED") continue;
     const entryTime = Date.parse(rec.candle_close_time as string);
     const after = candles.filter((c) => c.t >= entryTime);
     if (!after.length) continue;
