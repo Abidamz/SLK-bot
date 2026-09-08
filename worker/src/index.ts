@@ -32,6 +32,7 @@ export interface Env {
   TELEGRAM_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
   ADMIN_KEY?: string;
+  DASHBOARD_READ_KEY?: string;
   PROVIDER_WEBHOOK_SECRET?: string;
   SIGNAL_API_KEY?: string;
   SIGNAL_SIGNING_SECRET?: string;
@@ -342,6 +343,11 @@ function authed(request: Request, env: Env): boolean {
   return request.headers.get("authorization") === `Bearer ${env.ADMIN_KEY}`;
 }
 
+function readAuthed(request: Request, env: Env): boolean {
+  const auth = request.headers.get("authorization");
+  return authed(request, env) || Boolean(env.DASHBOARD_READ_KEY && auth === `Bearer ${env.DASHBOARD_READ_KEY}`);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -435,7 +441,7 @@ export default {
     }
 
     if (url.pathname === "/dashboard/preferences/notifications" && request.method === "GET") {
-      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const prefs = await makeStore(env.DB).getNotificationPreferences();
       return json({ primaryConfirmed: true, telegram: { enabled: true, watchEnabled: prefs.telegramWatch, operationalEnabled: prefs.operationalEnabled }, discord: { enabled: true, watchEnabled: prefs.discordWatch, operationalEnabled: prefs.operationalEnabled }, cooldownMinutes: prefs.cooldownMinutes, updatedUtc: prefs.updatedUtc });
     }
@@ -453,7 +459,7 @@ export default {
 
     const chartMatch = url.pathname.match(/^\/dashboard\/signals\/(.+)\/chart$/);
     if (chartMatch && request.method === "GET") {
-      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const setupId = decodeURIComponent(chartMatch[1]);
       const row = (await makeStore(env.DB).recentAlerts(500)).find((r) => r.setup_id === setupId);
       if (!row) return json({ error: "signal not found" }, 404);
@@ -505,7 +511,7 @@ export default {
     }
 
     if (url.pathname === "/alerts" && request.method === "GET") {
-      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;
       const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
       if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
@@ -530,7 +536,7 @@ export default {
     }
 
     if (url.pathname === "/stats" && request.method === "GET") {
-      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
       const rows = await store.recentAlerts(500);
       const tp = rows.filter((r) => r.status === "TP_HIT").length;
