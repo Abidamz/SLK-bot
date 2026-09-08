@@ -538,12 +538,16 @@ export default {
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
       const openn = rows.filter((r) => r.status === "OPEN").length;
       const completed = rows.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple))).sort((a,b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
+      const calcCurve = (items: typeof completed) => { let equity = 0; let peak = 0; let drawdown = 0; for (const row of items) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); drawdown = Math.min(drawdown, equity - peak); } return { netR: items.length ? equity : null, maxDD: items.length ? drawdown : null }; };
+      const groups = new Map<string, typeof completed>();
+      for (const row of completed) { const key = `${row.canonical_symbol} · ${row.entry_timeframe}`; const list = groups.get(key) ?? []; list.push(row); groups.set(key, list); }
+      const breakdown = [...groups.entries()].map(([group, items]) => { const curve = calcCurve(items); return { group, pair: items[0].canonical_symbol, timeframe: items[0].entry_timeframe, completed: items.length, tp: items.filter(r => r.status === "TP_HIT").length, sl: items.filter(r => r.status === "SL_HIT").length, winRate: items.filter(r => r.status === "TP_HIT").length / items.length, ...curve }; });
       let equity = 0; let peak = 0; let maxDD = 0;
       for (const row of completed) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); maxDD = Math.min(maxDD, equity - peak); }
       return json({
         total: rows.length, open: openn, tp, sl, expired, completed: completed.length,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
-        netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null,
+        netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null, breakdown,
         note: "paper metrics from completed alert outcomes — research only, not audited performance",
       });
     }
