@@ -264,6 +264,7 @@ interface BuildAlertArgs {
  *  tp above entry and later "resolved" as TP_HIT at -1.2R). */
 export function selectTargets(args: {
   isShort: boolean; entry: number; risk: number; minTpR: number;
+  maxPromotedTpR?: number;
   internalPools: { side: string; price: number }[];
   nearestExternalTarget: number | null;
 }): { tp1: number; tp2: number | null } | null {
@@ -281,9 +282,20 @@ export function selectTargets(args: {
   if (tp1 === null) return null;
   let rr1 = Math.abs(tp1 - args.entry) / args.risk;
   if (rr1 < args.minTpR && tp2 !== null) {
-    // internal target too close — target the external draw directly
-    tp1 = tp2;
-    tp2 = null;
+    // Internal target is too close. Use a bounded execution target when the
+    // external draw is unusually distant; retain the external draw as tp2.
+    const promoted = tp2;
+    const promotedR = Math.abs(promoted - args.entry) / args.risk;
+    const capR = args.maxPromotedTpR ?? args.minTpR;
+    if (promotedR > capR) {
+      tp1 = args.isShort
+        ? args.entry - capR * args.risk
+        : args.entry + capR * args.risk;
+      tp2 = promoted;
+    } else {
+      tp1 = promoted;
+      tp2 = null;
+    }
     rr1 = Math.abs(tp1 - args.entry) / args.risk;
   }
   if (rr1 < args.minTpR) return null;
@@ -303,7 +315,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
 
   // targets: internal liquidity first, then the nearest external target
   const targets = selectTargets({
-    isShort, entry, risk, minTpR: cfg.minTpR,
+    isShort, entry, risk, minTpR: cfg.minTpR, maxPromotedTpR: cfg.maxPromotedTpR,
     internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
   });
   if (!targets) return null;

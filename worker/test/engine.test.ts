@@ -8,7 +8,7 @@ import {
   LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
 } from "./fixtures";
 
-const cfg = defaultStrategy();
+const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
 
 function runShort(rows = SHORT_ROWS, extra = {}) {
   return scanEntry({
@@ -68,10 +68,10 @@ describe("long mirror path", () => {
     expect(a.entry).toBe(98.1);
     expect(a.invalidationLevel).toBeCloseTo(96.9);
     expect(a.stopLoss).toBeLessThan(96.9);
-    // min 1:3 RR: the close-by 100.0 internal pool (~1.6R) is skipped and the
-    // alert promotes straight to the external draw at 103 (~3.9R)
-    expect(a.tpInternal).toBe(103.0);
-    expect(a.tpExternal).toBeNull();
+    // min 1:3 RR: the close-by 100.0 internal pool is skipped; TP1 is
+    // bounded at 3R and the distant external draw remains TP2/context.
+    expect(a.tpInternal).toBeCloseTo(101.8857857143, 5);
+    expect(a.tpExternal).toBe(103.0);
     expect(a.rrInternal).toBeGreaterThanOrEqual(3);
     expect(events.map((e) => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
   });
@@ -142,13 +142,13 @@ describe("target selection (regression: stale external draw must never sit on th
     expect(t).toEqual({ tp1: 97, tp2: 90 });
   });
 
-  it("upsizes tp1 to the external draw when the internal pool is too close", () => {
+  it("bounds a far promoted draw at the minimum execution target", () => {
     const t = selectTargets({
       ...base, isShort: true, entry: 100,
       internalPools: [{ side: "sellside", price: 99.5 }],  // < minTpR away
       nearestExternalTarget: 90,
     });
-    expect(t).toEqual({ tp1: 90, tp2: null });
+    expect(t).toEqual({ tp1: 97.085, tp2: 90 });
   });
 });
 

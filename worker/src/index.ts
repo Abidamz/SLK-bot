@@ -40,6 +40,7 @@ export interface Env {
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
+  MIN_RISK_ATR?: string;
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
 }

@@ -38,6 +38,8 @@ export interface StrategyConfig {
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
+  /** cap synthetic execution targets when a promoted external draw is very far */
+  maxPromotedTpR: number;
   /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
    *  In EURUSD 30m terms that's ≈8–12 pips; on US30 it scales to the
    *  index's own volatility (no universal pip constant across markets). */
@@ -91,7 +93,8 @@ export function defaultStrategy(): StrategyConfig {
     retestToleranceAtr: 0.3,
     setupWindow: 240,
     slBufferAtr: 0.1,
-    minRiskAtr: 0.1,
+    minRiskAtr: 0.8,  // quarantine structurally tiny stops
+    maxPromotedTpR: 3.0, // far external liquidity remains context, not TP1
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
     minTpR: 3.0,     // 1:3 minimum reward:risk
     cooldownMinutes: 240,
@@ -106,6 +109,7 @@ interface EnvVars {
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
+  MIN_RISK_ATR?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
 }
@@ -159,6 +163,10 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const baseSec = TF_SECONDS[baseTimeframe] ?? 1800;
   const baseCandlesLimit = Math.min(5000, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50);
 
+  const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
+  const strategy = defaultStrategy();
+  if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
+
   return {
     pairs,
     entryTfs,
@@ -178,7 +186,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     notifyOutcomes: true,
     symbolMap,
     providerMap,
-    strategy: defaultStrategy(),
+    strategy,
   };
 }
 

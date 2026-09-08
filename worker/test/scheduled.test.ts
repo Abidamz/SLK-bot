@@ -20,6 +20,7 @@ function makeEnv(overrides: Record<string, string> = {}): Env {
     ENTRY_TFS: "30m",
     MODE: "paper",
     PAPER_NOTIFY: "true",
+    MIN_RISK_ATR: "0.1", // fixture uses a deliberately small synthetic stop
     ...overrides,
   } as Env;
 }
@@ -67,10 +68,10 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
 
     const alert = [...store.alerts.values()][0];
-    // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so Target 1 is
-    // promoted to the external draw and tp2 is left empty
-    expect(alert.tp_internal).toBeCloseTo(97.42, 2);
-    expect(alert.tp_external).toBeNull();
+    // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so TP1 is bounded
+    // at 3R and the distant external draw is retained as TP2/context.
+    expect(alert.tp_internal).toBeCloseTo(104.0246428571, 6);
+    expect(alert.tp_external).toBeCloseTo(97.42, 2);
     // ≥3R computed from the stored entry/stop/target triple
     const risk = Math.abs(Number(alert.entry) - Number(alert.stop_loss));
     expect(Math.abs(Number(alert.tp_internal) - Number(alert.entry)) / risk).toBeGreaterThanOrEqual(3);
