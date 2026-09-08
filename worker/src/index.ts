@@ -407,6 +407,17 @@ export default {
           state: "CONFIRMED", mode: "DEMO", symbol: String(r.canonical_symbol),
           side: String(r.direction) === "LONG" ? "BUY" : "SELL", orderType: "MARKET",
           entry: Number(r.entry), stopLoss: Number(r.stop_loss), takeProfit: Number(r.tp_internal),
+          timeframePath: `${String(r.map_timeframe ?? "4h")}>${String(r.entry_timeframe)}`,
+          keyLevelType: String(r.key_level_type),
+          environment: String(r.environment), phase: String(r.phase),
+          htfAlignment: String(r.htf_alignment),
+          confirmationEvent: "RETEST_CLOSE",
+          evidence: [
+            "finalized confirmation candle",
+            "HTF bias and execution context recorded",
+            `typed ${String(r.key_level_type)} key level`,
+            "liquidity sweep and structure shift recorded",
+          ],
           expiresAt: new Date(candleClose + Math.max(tfSeconds, 1800) * 2 * 1000).toISOString(),
           createdAt: new Date(now).toISOString(),
         };
