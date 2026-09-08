@@ -344,7 +344,12 @@ function authed(request: Request, env: Env): boolean {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "Authorization, Content-Type",
+      "access-control-allow-methods": "GET, OPTIONS",
+    },
   });
 }
 
@@ -372,6 +377,8 @@ async function verifySignature(raw: string, signature: string, secret: string): 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecCtxLike): Promise<Response> {
     const url = new URL(request.url);
+
+    if (request.method === "OPTIONS") return json({ ok: true });
 
     if (url.pathname === "/health") {
       const cfg = loadConfig(env);
