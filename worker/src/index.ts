@@ -543,9 +543,22 @@ export default {
 
     if (url.pathname === "/test-notify" && request.method === "POST") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
-      const { broadcast } = await import("./notify");
-      const results = await broadcast(env, "✅ SLK worker test — notification channels are wired up correctly.", 0x3498db);
-      return json({ results });
+      let body: Record<string, unknown> = {};
+      try { if (request.method === "POST") body = await request.json() as Record<string, unknown>; } catch { return json({ error: "invalid JSON" }, 400); }
+      const channel = body.channel === "telegram" || body.channel === "discord" ? body.channel : "all";
+      const text = "SLK TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
+      const { sendTelegram, sendDiscord } = await import("./notify");
+      const results: Record<string, string> = {};
+      const store = makeStore(env.DB);
+      const attempts = channel === "all" ? ["telegram", "discord"] : [channel];
+      for (const target of attempts) {
+        try {
+          if (target === "telegram") { if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) { results.telegram = "not_configured"; } else { await sendTelegram(env, text); results.telegram = "ok"; } }
+          else { if (!env.DISCORD_WEBHOOK_URL) { results.discord = "not_configured"; } else { await sendDiscord(env, text, 0x3498db); results.discord = "ok"; } }
+        } catch (err) { results[target] = `error: ${err instanceof Error ? err.message : String(err)}`; }
+        await store.insertNotificationDeliveryAudit({ channel: target, kind: "test", status: results[target], detail: results[target] });
+      }
+      return json({ ok: Object.values(results).some(v => v === "ok"), isolated: true, results });
     }
 
     if (url.pathname === "/provider-webhook") {

@@ -49,6 +49,7 @@ export interface Store {
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
+  insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
 }
 
 
@@ -208,6 +209,10 @@ export class D1Store implements Store {
     await this.db.prepare("INSERT INTO notification_preference_audit (previous_value,new_value,source,changed_utc) VALUES (?,?,?,?)").bind(JSON.stringify(previous ?? DEFAULT_NOTIFICATION_PREFERENCES), JSON.stringify(prefs), source, now).run();
   }
 
+  async insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void> {
+    await this.db.prepare("INSERT INTO notification_delivery_audit (channel,kind,status,detail,created_utc) VALUES (?,?,?,?,?)").bind(row.channel, row.kind, row.status, row.detail ?? null, new Date().toISOString()).run();
+  }
+
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     const res = await this.db
       .prepare("SELECT * FROM slk_alerts ORDER BY id DESC LIMIT ?")
@@ -313,6 +318,8 @@ export class MemStore implements Store {
     this.preferences = { ...prefs, primaryConfirmed: true, updatedUtc: prefs.updatedUtc || new Date().toISOString() };
     this.preferenceAudit.push({ previous, newValue: this.preferences, source, changedUtc: this.preferences.updatedUtc });
   }
+
+  async insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void> { this.preferenceAudit.push({ delivery: row, createdUtc: new Date().toISOString() }); }
 
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     return [...this.alerts.values()].slice(-limit).reverse();
