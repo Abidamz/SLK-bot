@@ -537,10 +537,14 @@ export default {
       const sl = rows.filter((r) => r.status === "SL_HIT").length;
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
       const openn = rows.filter((r) => r.status === "OPEN").length;
+      const completed = rows.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple))).sort((a,b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
+      let equity = 0; let peak = 0; let maxDD = 0;
+      for (const row of completed) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); maxDD = Math.min(maxDD, equity - peak); }
       return json({
-        total: rows.length, open: openn, tp, sl, expired,
+        total: rows.length, open: openn, tp, sl, expired, completed: completed.length,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
-        note: "paper metrics from alert outcomes — research only, not audited performance",
+        netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null,
+        note: "paper metrics from completed alert outcomes — research only, not audited performance",
       });
     }
 
