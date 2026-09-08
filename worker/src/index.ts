@@ -509,8 +509,13 @@ export default {
       const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;
       const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
       if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
-      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]);
+      const allowedSort = ["candleCloseTime", "pair", "timeframe", "direction", "status", "provider"];
+      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","yahoo","oanda"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
+      const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
+      const fromMs = from ? Date.parse(from) : null; const toMs = to ? Date.parse(to) : null;
       if (bad) return json({ error: bad }, 400);
+      if ((from && !Number.isFinite(fromMs)) || (to && !Number.isFinite(toMs))) return json({ error: "from and to must be valid ISO UTC dates" }, 400);
+      if (fromMs !== null && toMs !== null && fromMs > toMs) return json({ error: "from must be earlier than or equal to to" }, 400);
       const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", page, pageSize };
       const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
