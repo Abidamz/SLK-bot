@@ -50,8 +50,18 @@
     </section>
 
     <section id="alerts" class="tab-panel">
-      <div class="panel-head"><div><p class="eyebrow">AUDIT INBOX</p><h2>Alert lifecycle</h2></div><select id="alertFilter"><option value="all">All states</option><option value="OPEN">Open</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select></div>
+      <div class="panel-head"><div><p class="eyebrow">AUDIT INBOX</p><h2>Alert lifecycle</h2></div><span id="alertTotal" class="pill gray">— results</span></div>
+      <div class="filter-bar">
+        <select id="alertPair" aria-label="Pair"><option value="">All pairs</option></select>
+        <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
+        <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
+        <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All lifecycle states</option><option value="OPEN">Open</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select>
+        <input id="alertSearch" type="search" placeholder="Search setup or pair" aria-label="Search alerts">
+        <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Lifecycle</option></select>
+        <button id="clearAlertFilters" class="secondary">Clear</button>
+      </div>
       <div id="alertsList" class="alert-list"><div class="empty">Connect to the Worker to load paper alerts.</div></div>
+      <div class="pagination"><button id="prevAlerts" class="secondary">Previous</button><span id="alertPage">Page 1</span><button id="nextAlerts" class="secondary">Next</button></div>
     </section>
 
     <section id="performance" class="tab-panel">
