@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLK Radar · Paper Operations</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">SLK</span><div><strong>Radar</strong><small>paper operations</small></div></div>
+    <div class="status"><span id="statusDot" class="dot muted"></span><span id="statusText">Not connected</span></div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">CONFIRMED SIGNAL CONTROL</p>
+        <h1>See the story before the outcome.</h1>
+        <p class="lede">A read-only view of SLK bias, confirmation evidence, paper outcomes, and feed health.</p>
+      </div>
+      <div class="execution-badge"><span>EXECUTION</span><strong>DISABLED</strong><small>No broker order path</small></div>
+    </section>
+
+    <section class="connection panel">
+      <div><h2>Worker connection</h2><p>Use the Worker admin key locally. It is kept only in this browser session.</p></div>
+      <div class="connection-form"><input id="apiUrl" type="url" value="https://slk-alert-worker.abidogundamilola.workers.dev" aria-label="Worker URL"><input id="adminKey" type="password" placeholder="Admin key" aria-label="Admin key"><button id="connectBtn">Connect</button></div>
+      <p id="error" class="error" hidden></p>
+    </section>
+
+    <nav class="tabs" aria-label="Dashboard sections">
+      <button class="tab active" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="alerts">Alert inbox</button>
+      <button class="tab" data-tab="performance">Performance</button>
+      <button class="tab" data-tab="health">Data health</button>
+    </nav>
+
+    <section id="overview" class="tab-panel active">
+      <div class="metric-grid">
+        <article class="metric"><span>Worker mode</span><strong id="mode">—</strong><small>paper / demo only</small></article>
+        <article class="metric"><span>Confirmed alerts</span><strong id="total">—</strong><small>recent ledger window</small></article>
+        <article class="metric"><span>Open setups</span><strong id="open">—</strong><small>awaiting outcome</small></article>
+        <article class="metric"><span>Win rate</span><strong id="winRate">—</strong><small>TP / TP + SL</small></article>
+      </div>
+      <div class="two-col">
+        <article class="panel lifecycle"><div class="panel-head"><div><p class="eyebrow">LIFECYCLE</p><h2>Signal states</h2></div><span class="pill green">confirmed only for execution</span></div><div class="steps"><span>MAP</span><i>→</i><span>TOUCH</span><i>→</i><span>SWEEP</span><i>→</i><span>SHIFT</span><i>→</i><span>RETEST</span><i>→</i><b>CONFIRMED</b><i>→</i><span>OUTCOME</span></div><p class="muted-copy">WATCH heads-ups are kept separate and are currently disabled in the Worker configuration.</p></article>
+        <article class="panel health-card"><div class="panel-head"><div><p class="eyebrow">SYSTEM</p><h2>Last check</h2></div><span id="healthPill" class="pill gray">unknown</span></div><dl><div><dt>Worker</dt><dd id="workerName">—</dd></div><div><dt>Last response</dt><dd id="lastResponse">—</dd></div><div><dt>Pairs</dt><dd id="pairs">—</dd></div></dl></article>
+      </div>
+    </section>
+
+    <section id="alerts" class="tab-panel">
+      <div class="panel-head"><div><p class="eyebrow">AUDIT INBOX</p><h2>Alert lifecycle</h2></div><select id="alertFilter"><option value="all">All states</option><option value="OPEN">Open</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select></div>
+      <div id="alertsList" class="alert-list"><div class="empty">Connect to the Worker to load paper alerts.</div></div>
+    </section>
+
+    <section id="performance" class="tab-panel">
+      <div class="metric-grid"><article class="metric"><span>TP hits</span><strong id="tp">—</strong></article><article class="metric"><span>SL hits</span><strong id="sl">—</strong></article><article class="metric"><span>Expired</span><strong id="expired">—</strong></article><article class="metric"><span>Research note</span><strong class="small-value">paper only</strong></article></div>
+      <article class="panel notice"><p class="eyebrow">HONESTY CHECK</p><h2>Not audited performance</h2><p>These are paper-ledger outcomes from the Worker. They do not represent filled broker orders, account returns, or guaranteed future performance.</p></article>
+    </section>
+
+    <section id="health" class="tab-panel"><article class="panel"><div class="panel-head"><div><p class="eyebrow">DATA HEALTH</p><h2>Provider and scan status</h2></div><button id="refreshBtn" class="secondary">Refresh</button></div><div id="healthDetails" class="health-grid"><div class="empty">Connect to load health data.</div></div></article></section>
+  </main>
+  <footer>SLK Radar · paper mode · no order was placed</footer>
+  <script src="app.js"></script>
+</body>
+</html>
