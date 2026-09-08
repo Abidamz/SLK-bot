@@ -39,6 +39,9 @@ export interface Store {
   insertAlert(a: Alert, provider: string): Promise<boolean>; // false = duplicate
   updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void>;
   insertEvent(ev: EngineEvent): Promise<boolean>;            // false = duplicate
+  /** Flag a detected-but-unactionable alert (arrived too late to trade):
+   *  kept in the audit trail, excluded from the outcome ledger. */
+  markStale(setupId: string, reason: string): Promise<void>;
   openAlerts(pair?: string, tf?: string): Promise<AlertRow[]>;
   lastAlertTime(pair: string, direction: string, excludeSetupId?: string): Promise<number | null>;
   recordOutcome(setupId: string, oc: Outcome): Promise<void>;
@@ -120,6 +123,16 @@ export class D1Store implements Store {
       .bind(ev.setupId, ev.pair, ev.state, iso(ev.candleTime), ev.reason, ev.price, new Date().toISOString())
       .run();
     return res.meta.changes > 0;
+  }
+
+  /** STALE is terminal: it never enters the outcome ledger (resolveOutcomes
+   *  only picks status='OPEN'), so a setup detected days late can't inject a
+   *  phantom win/loss into the paper track record. */
+  async markStale(setupId: string, reason: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE slk_alerts SET status='STALE', alert_status='SUPPRESSED', suppress_reason=? WHERE setup_id=?")
+      .bind(reason, setupId)
+      .run();
   }
 
   async openAlerts(pair?: string, tf?: string): Promise<AlertRow[]> {
@@ -229,6 +242,15 @@ export class MemStore implements Store {
     this.eventKeys.add(key);
     this.events.push({ setup_id: ev.setupId, pair: ev.pair, state: ev.state, candle_time: iso(ev.candleTime), reason: ev.reason, price: ev.price });
     return true;
+  }
+
+  async markStale(setupId: string, reason: string): Promise<void> {
+    const row = this.alerts.get(setupId);
+    if (row) {
+      row.status = "STALE";
+      row.alert_status = "SUPPRESSED";
+      row.suppress_reason = reason;
+    }
   }
 
   async openAlerts(pair?: string, tf?: string): Promise<AlertRow[]> {

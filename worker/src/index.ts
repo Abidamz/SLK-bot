@@ -59,6 +59,10 @@ export interface ScanSummary {
   timeframes: string[];
   pairs: string[];
   alerts: number;
+  /** alerts recorded but never delivered: their entry candle closed more than
+   *  `staleAfterTfMult` entry-timeframe candles before detection (replay of
+   *  history after an outage/cold-boot gap, not a live signal). */
+  stale: number;
   events: number;
   errors: string[];
   durationMs: number;
@@ -74,6 +78,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const store: Store = opts.storeOverride ?? makeStore(env.DB);
   const errors: string[] = [];
   let alertCount = 0;
+  let staleCount = 0;
   let eventCount = 0;
   const pairsScanned: string[] = [];
 
@@ -96,7 +101,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       alerts: 0, events: 0, errors: "", durationMs: Date.now() - startedAt,
       note: "idle (no candle close)",
     });
-    return { ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
+    return { ok: true, timeframes: [], pairs: [], alerts: 0, stale: 0, events: 0, errors, durationMs: Date.now() - startedAt };
   }
 
   for (const pair of cfg.pairs) {
@@ -165,9 +170,23 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           if (!inserted) continue; // already-known transition (dedupe)
           eventCount++;
           // 👀 watch heads-up: setup forming on TOUCH/SWEEP/SHIFT — gated by
-          // WATCH_NOTIFY and the same boot gate as entry alerts
+          // WATCH_NOTIFY, the boot gate, and the freshness gate below.
+          // The engine replays the trailing setupWindow every scan, so after a
+          // cold boot / outage gap it re-emits transitions for candles that
+          // closed hours ago; setup ids can also churn (a sliding data window
+          // re-derives the origin level) which defeats key-based dedupe. The
+          // freshness gate is what actually stops those bursts: only a
+          // transition that closed within the last few candles is news.
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
               && deliverAllowed(cfg, isFirstScan, opts)) {
+            if (!isFresh(now, ev.candleTime + secs * 1000, secs, cfg)) {
+              console.info(JSON.stringify({
+                level: "info", msg: "watch suppressed (stale transition)",
+                pair, tf, setupId: ev.setupId, state: ev.state,
+                candleTime: new Date(ev.candleTime).toISOString(),
+              }));
+              continue;
+            }
             await notifyWatch({ ...env, fetchFn }, ev, tf);
           }
         }
@@ -176,7 +195,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
-          await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
+          const res = await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), now, fetchFn);
+          if (res === "stale") staleCount++;
         }
 
         // resolve open alerts on this pair/tf against fresh candles
@@ -216,11 +236,19 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     note: errors.length ? "partial" : "ok",
   });
 
+  if (staleCount) {
+    console.info(JSON.stringify({
+      level: "info", msg: "stale detections recorded without delivery",
+      count: staleCount, window: `${cfg.staleAfterTfMult}× entry TF`,
+    }));
+  }
+
   return {
     ok: errors.length === 0,
     timeframes: due.map((d) => d.tf),
     pairs: pairsScanned,
     alerts: alertCount,
+    stale: staleCount,
     events: eventCount,
     errors,
     durationMs: Date.now() - startedAt,
@@ -243,11 +271,36 @@ function deliverAllowed(
   return !isFirstScan || opts.force === true;
 }
 
+/** Freshness gate. `closedAt` is the close time of the candle that produced
+ *  the transition/alert; anything older than `staleAfterTfMult` entry-TF
+ *  candles is replay history rather than a live signal. */
+export function isFresh(
+  now: number, closedAt: number, tfSeconds: number,
+  cfg: ReturnType<typeof loadConfig>,
+): boolean {
+  return now - closedAt <= cfg.staleAfterTfMult * tfSeconds * 1000;
+}
+
+type DeliverResult = "delivered" | "recorded" | "suppressed" | "stale";
+
 async function deliver(
   env: Env, store: Store, alert: Alert,
   cfg: ReturnType<typeof loadConfig>, allowed: boolean,
-  fetchFn: typeof fetch = fetch,
-): Promise<void> {
+  now: number, fetchFn: typeof fetch = fetch,
+): Promise<DeliverResult> {
+  // Stale-detection gate (a): the engine replays the trailing setupWindow on
+  // every scan, so after a cold-boot or outage gap it re-finds setups whose
+  // entry candle closed hours ago. Those are history — alerting on them is
+  // how a -1R lands in the ledger 18h after it was tradeable. Recorded as
+  // STALE: visible in the audit trail, never delivered, never outcome-tracked.
+  const tfSec = TF_SECONDS[alert.entryTf] ?? 1800;
+  const ageMs = now - alert.candleCloseTime;
+  if (ageMs > cfg.staleAfterTfMult * tfSec * 1000) {
+    const reason = `stale detection (entry candle closed ${(ageMs / 3_600_000).toFixed(1)}h ago — replay, not a live signal)`;
+    await store.markStale(alert.setupId, reason);
+    console.info(JSON.stringify({ level: "info", msg: "alert stale — recorded, not delivered", setupId: alert.setupId, ageH: +(ageMs / 3_600_000).toFixed(2) }));
+    return "stale";
+  }
   if (alert.alertStatus !== "SUPPRESSED") {
     const last = await store.lastAlertTime(alert.pair, alert.direction, alert.setupId);
     if (last !== null && alert.candleCloseTime - last < cfg.strategy.cooldownMinutes * 60_000) {
@@ -258,17 +311,18 @@ async function deliver(
   }
   if (alert.alertStatus === "SUPPRESSED") {
     console.info(JSON.stringify({ level: "info", msg: "alert suppressed", setupId: alert.setupId, reason: alert.suppressReason }));
-    return;
+    return "suppressed";
   }
   if (!allowed) {
     console.info(JSON.stringify({ level: "info", msg: "first scan — recorded without delivery", setupId: alert.setupId }));
-    return;
+    return "recorded";
   }
   if (cfg.mode === "paper" && !cfg.paperNotify) {
     console.info(JSON.stringify({ level: "info", msg: "paper mode, notifications off — logged only", setupId: alert.setupId }));
-    return;
+    return "recorded";
   }
   await notifyAlert({ ...env, fetchFn }, alert);
+  return "delivered";
 }
 
 async function resolveOutcomes(
@@ -366,10 +420,12 @@ export default {
       const sl = rows.filter((r) => r.status === "SL_HIT").length;
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
       const openn = rows.filter((r) => r.status === "OPEN").length;
+      const stale = rows.filter((r) => r.status === "STALE").length;
       return json({
-        total: rows.length, open: openn, tp, sl, expired,
+        total: rows.length, open: openn, tp, sl, expired, stale,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
-        note: "paper metrics from alert outcomes — research only, not audited performance",
+        note: "paper metrics from alert outcomes — research only, not audited performance. "
+          + "stale = detected too late to act on (excluded from the ledger)",
       });
     }
 

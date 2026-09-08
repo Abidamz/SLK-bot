@@ -61,11 +61,21 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   EURUSD/30m ≈ 10–14 pips today; indices self-scale). No universal pip
   constants: everything stays volatility-normalized per instrument.
 - **Boot gate**: the first-ever scan per pair+TF records transitions but
+  delivers nothing (mirrors the Python `alert_on_boot=false`).
 - **Watch heads-ups** (`WATCH_NOTIFY=true` in `wrangler.jsonc` vars): an
   optional 👀 message when a setup TOUCHes its zone, SWEEPs liquidity, or
   SHIFTs structure — hours before the confirmed retest close would alert.
   Same dedupe (UNIQUE events) and boot gate as entry alerts; default off.
-  delivers nothing (mirrors the Python `alert_on_boot=false`).
+- **Freshness gate**: the engine replays the trailing `setupWindow` on every
+  scan, so after a cold start or an outage gap it re-finds setups whose candle
+  closed hours earlier. Anything older than `STALE_AFTER_TF_MULT` (default
+  `2`) entry-timeframe candles is treated as replay history, not news:
+  - WATCH heads-ups are dropped (this is what stops boot-replay bursts —
+    key-based dedupe alone can't, because a sliding data window can re-derive
+    an origin level and mint a new setup id for an old transition);
+  - entry alerts are still recorded, with `status='STALE'` and a
+    `suppress_reason`, never delivered and never outcome-tracked — so a setup
+    detected 18h late can't land a phantom −1R in the paper ledger.
 
 ## Setup IDs
 
@@ -122,6 +132,7 @@ Plain vars in `wrangler.jsonc` (safe to edit + commit):
 | `MODE` | `paper` | `paper` first; `live` only changes the alert badge |
 | `PAPER_NOTIFY` | `true` | paper alerts still send notifications (that's the point) |
 | `SYMBOL_MAP` | unset | optional JSON like `{"EURUSD":"EUR/USD"}` |
+| `STALE_AFTER_TF_MULT` | `2` | freshness gate, in entry-timeframe candles: a transition/alert older than this is recorded, not delivered (`2` ⇒ 1h on 30m, 2h on 1h) |
 
 ## Endpoints
 
@@ -129,7 +140,7 @@ Plain vars in `wrangler.jsonc` (safe to edit + commit):
 | --- | --- | --- |
 | `GET /health` | open | liveness + config echo (no secrets) |
 | `GET /alerts?limit=50` | `Authorization: Bearer $ADMIN_KEY` | recent alerts from D1 |
-| `GET /stats` | admin key | outcome summary (TP/SL/expiry counts + mean R) |
+| `GET /stats` | admin key | outcome summary (TP/SL/expiry/stale counts + win rate) — `stale` = detected too late to act on, excluded from the ledger |
 | `POST /test-notify` | admin key | sends one message per configured channel |
 | `POST /scan-now` | admin key | force a scan cycle immediately |
 | `POST /provider-webhook` | HMAC if `PROVIDER_WEBHOOK_SECRET` set | scaffold for a future signed provider push (501 otherwise) |
@@ -167,11 +178,39 @@ npm test         # vitest: engine parity, features, store, e2e cron cycle
 npm run typecheck
 ```
 
-25 tests covering: engine parity with the Python fixture bank
+85 tests covering: engine parity with the Python fixture bank
 (SHORT/LONG full state machine, invalidation, determinism), feature
-building blocks, store dedupe/cooldown/outcomes, and four end-to-end
+building blocks, store dedupe/cooldown/outcomes, replay performance math
+(drawdown/streaks/spread conversion), report rendering, and the end-to-end
 cron-cycle scenarios (boot gate, delivery + replay dedupe, unfinished-candle
-gate, provider-outage safe failure).
+gate, provider-outage safe failure, watch freshness, stale-alert handling).
+
+## Backtest (walk-forward replay)
+
+`scripts/backtest.ts` replays the **live engine** over real Dukascopy minute
+candles with the same gates the Worker uses. It fetches from the network, so
+run it where egress is allowed (Codespaces), never in a locked-down sandbox:
+
+```bash
+cd worker
+npm i -D tsx                       # one-time
+npx tsx scripts/backtest.ts        # all 7 pairs, 60 days
+npx tsx scripts/backtest.ts US30 30
+```
+
+Output (also written to `backtest-report-<date>.md`, gitignored):
+
+- **Raw (spread-naive)** — the historical baseline view.
+- **Spread-adjusted (ESTIMATE)** — an estimated round-trip spread
+  (`SPREAD_EST` in `src/perf.ts`) is subtracted from every closed trade's R as
+  `cost(R) = spread / |entry − stop|`, so a tight stop pays more than a wide
+  one. It is an estimate: no slippage, commission or swap is modelled.
+- **Risk over time** — the exit-ordered equity curve with the worst
+  peak→trough drawdown in R (`maxDD-R`, with the peak/trough dates) and the
+  longest losing/winning streaks.
+
+All figures come from the replay alone; per the model spec nothing is
+fabricated, and an empty sample prints `-` rather than a zero.
 
 ## Operations card (live deployment)
 

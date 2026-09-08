@@ -57,6 +57,7 @@ describe("scheduled scan cycle", () => {
       now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
     });
     expect(summary.alerts).toBe(1);
+    expect(summary.stale).toBe(0);             // entry candle closed 30m ago: fresh
     expect(calls.telegram).toHaveLength(1);
     expect(calls.discord).toHaveLength(1);
     const msg = calls.telegram[0];
@@ -198,20 +199,38 @@ describe("scheduled scan cycle", () => {
     expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
   });
 
-  it("watch toggle: sends 👀 TOUCH/SWEEP/SHIFT heads-ups ahead of the entry alert", async () => {
+  it("watch heads-ups fire on the transition candle that just closed", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     const env = makeEnv({ WATCH_NOTIFY: "true" });
+    // 06:00 UTC: the SHIFT (BOS) candle closes right now, TOUCH/SWEEP closed
+    // 30m ago — both inside the 2× entry-TF freshness window (1h on 30m).
     const summary = await scanAll(env, {
-      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+      now: T0 + 6 * 3600_000, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
     });
-    expect(summary.alerts).toBe(1);
+    expect(summary.alerts).toBe(0);                 // retest candle still open
     const watch = calls.telegram.filter((m) => m.startsWith("👀 WATCH"));
     expect(watch.length).toBeGreaterThanOrEqual(1);
     expect(watch.some((m) => m.includes("🌊 SWEEP"))).toBe(true);
     expect(watch.every((m) => m.includes("Setup ID  : twelvedata:EURUSD"))).toBe(true);
     expect(watch.every((m) => m.includes("Watch only"))).toBe(true);
-    // the real entry alert still arrives alongside the heads-ups
+  });
+
+  it("watch heads-ups are suppressed for stale transitions (boot-replay burst guard)", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({ WATCH_NOTIFY: "true" });
+    // Same run 2h later: the engine still replays TOUCH/SWEEP/SHIFT (they sit
+    // inside the trailing setupWindow), but those candles closed 1.5–2h ago —
+    // replay history, not news. This is the 01:00/12:20 burst: a fresh boot
+    // re-derived the same transitions (ids can churn when the sliding data
+    // window re-picks the origin level) and paged the channel again.
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.alerts).toBe(1);
+    expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
+    // the genuinely fresh entry alert (candle closed 30m ago) still goes out
     expect(calls.telegram.some((m) => m.includes("PAPER ALERT"))).toBe(true);
   });
 
@@ -223,6 +242,29 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBeGreaterThanOrEqual(0);
     expect(calls.telegram).toHaveLength(0);
+  });
+
+  it("an alert found long after its entry candle closed is recorded STALE, never delivered", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    // the retest candle closed at T0+07:30; this tick only catches it 2.5h
+    // later (cold-boot gap / outage) → history, not a live entry
+    const summary = await scanAll(makeEnv(), {
+      now: T0 + 10 * 3600_000, fetchFn: makeFakeFetch(calls), force: true,
+      storeOverride: store,
+    });
+    expect(summary.alerts).toBe(1);            // recorded in the audit trail
+    expect(summary.stale).toBe(1);             // …and flagged as stale
+    expect(calls.telegram).toHaveLength(0);    // no dead signal in the channel
+    expect(calls.discord).toHaveLength(0);
+    const alert = [...store.alerts.values()][0];
+    expect(alert.status).toBe("STALE");
+    expect(alert.alert_status).toBe("SUPPRESSED");
+    expect(String(alert.suppress_reason)).toContain("stale detection");
+    // STALE is terminal → the setup can never inject a phantom result
+    // (this is the 9/8 pattern: a 4.3-pip stop alerted 18h late, then
+    // "stopped out" in the same batch and landed as a real-looking -1R)
+    expect(await store.openAlerts()).toHaveLength(0);
   });
 
   it("watch heads-ups are silent by default (toggle off)", async () => {

@@ -62,6 +62,12 @@ export interface WorkerConfig {
   candlesLimit: number; // fetch size for non-base direct fetches (fallbacks)
   scanDelayMs: number;
   minCandles: number; // per-feed sanity floor
+  /** Freshness gate: a transition/alert older than this many entry-timeframe
+   *  candles is replay history, not a live signal — record it, never page.
+   *  2 ⇒ a 30m setup detected >1h late (or a 1h setup >2h late) is stale.
+   *  Guards against boot-replay bursts and against setup-id churn re-sending
+   *  a transition that already fired days ago. */
+  staleAfterTfMult: number;
   expireCandles: number;
   slOnClose: boolean;
   notifyOutcomes: boolean;
@@ -103,6 +109,7 @@ export function defaultStrategy(): StrategyConfig {
 interface EnvVars {
   PAIRS?: string;
   ENTRY_TFS?: string;
+  STALE_AFTER_TF_MULT?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -173,6 +180,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     candlesLimit: 400,
     scanDelayMs: 10_000,
     minCandles: 40,
+    staleAfterTfMult: Number(env.STALE_AFTER_TF_MULT ?? 2) || 2,
     expireCandles: 120,
     slOnClose: true,
     notifyOutcomes: true,

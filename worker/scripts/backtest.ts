@@ -4,6 +4,15 @@
  *  model spec bans invented backtest/performance numbers; this script is how
  *  you produce real ones yourself.)
  *
+ *  Two stats blocks are printed per run:
+ *    • raw          — spread-naive, the historical baseline view
+ *    • spread-adj.  — an ESTIMATED round-trip spread is subtracted from every
+ *                     closed trade's R (see SPREAD_EST in src/perf.ts), so the
+ *                     cost of actually getting filled is visible instead of
+ *                     hidden. Still an estimate: no slippage/commission model.
+ *  Plus a "Risk over time" section: exit-ordered equity curve with the worst
+ *  peak→trough drawdown in R and the longest losing/winning streaks.
+ *
  *  Usage (Codespaces terminal):
  *    cd /workspaces/SLK-bot/worker
  *    npm i -D tsx                      # one-time
@@ -13,12 +22,14 @@
  *  Report also lands in backtest-report-<date>.md (gitignored).
  */
 import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { decodeJetta } from "../src/provider";
 import { defaultStrategy, TF_SECONDS } from "../src/config";
 import { resampleCandles, dropIncomplete } from "../src/features";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
 import { evaluateSignal } from "../src/outcomes";
+import { summarize, spreadFor, type PerfSummary, type TradeRow } from "../src/perf";
 import type { Alert, Candle } from "../src/types";
 
 const ROOT = "https://jetta.dukascopy.com/v1/candles";
@@ -61,8 +72,7 @@ async function loadMinuteHistory(code: string, from: Date, to: Date): Promise<Ca
   for (const d of dayRange(from.getTime(), today.getTime() - 86400_000)) {
     urls.push(`${ROOT}/minute/${code}/BID/${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`);
   }
-  urls.push(activeUrl); // the forming current-day bucket lives at ?from=
-
+  urls.push(activeUrl); // the forming current-day bucket lives at ?from=\n
   const all: Candle[] = [];
   let done = 0;
   for (let i = 0; i < urls.length; i += 6) {          // polite batches of 6
@@ -88,10 +98,10 @@ async function loadDailyContext(code: string, year: number): Promise<Candle[]> {
   return all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
 }
 
-interface Trade {
-  pair: string; tf: string; setupId: string;
-  entryTime: string; entry: number; stop: number; tp: number;
-  status: string; exit: number; exitTime: string; r: number;
+interface Trade extends TradeRow {
+  setupId: string;
+  entryTime: string;
+  tp: number;
 }
 
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
@@ -147,6 +157,7 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
           status: oc?.status ?? "OPEN",
           exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
           exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+          exitMs: oc ? oc.exitTime : NaN,
           r: oc?.rMultiple ?? NaN,
         });
       }
@@ -155,25 +166,37 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
   return trades;
 }
 
-function stats(rows: Trade[]) {
-  const tp = rows.filter((r) => r.status === "TP_HIT");
-  const sl = rows.filter((r) => r.status === "SL_HIT");
-  const ex = rows.filter((r) => r.status === "EXPIRED");
-  const closed = [...tp, ...sl];
-  const r = closed.map((t) => t.r);
-  const wins = tp.map((t) => t.r);
-  const losses = sl.map((t) => Math.abs(t.r));
-  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-  return {
-    alerts: rows.length, tp: tp.length, sl: sl.length, expired: ex.length,
-    open: rows.length - tp.length - sl.length - ex.length,
-    winrate: closed.length ? (tp.length / closed.length) * 100 : NaN,
-    avgR: r.length ? sum(r) / r.length : NaN,
-    pf: losses.length && sum(losses) > 0 ? sum(wins) / sum(losses) : NaN,
-  };
+const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
+export const COLS = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
+
+export function row(pair: string, s: PerfSummary): string[] {
+  return [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
+    f(s.winRate, 1), f(s.avgR), f(s.pf), f(s.maxDdR), String(s.loseStreak)];
 }
 
-const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
+export function tableLines(rows: string[][]): string {
+  return rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
+}
+
+export function pad(r: string[]): string {
+  return r.map((c) => c.padStart(9)).join("");
+}
+
+/** Exit-ordered equity curve table + the two risk lines, for one view. */
+export function riskSection(title: string, s: PerfSummary): string {
+  let out = `\n### ${title}\n\n`;
+  if (!s.curve.length) {
+    out += "_no closed trades with a finite R — nothing to plot._\n";
+    return out;
+  }
+  out += "| # | exit time UTC | pair | tf | R | cum R | peak | DD |\n|---|---|---|---|---|---|---|---|\n";
+  s.curve.forEach((p, i) => {
+    out += `| ${i + 1} | ${p.exitTime} | ${p.pair} | ${p.tf} | ${p.r.toFixed(2)} | ${p.cum.toFixed(2)} | ${p.peak.toFixed(2)} | ${p.dd.toFixed(2)} |\n`;
+  });
+  out += `\n- Max drawdown: **${s.maxDdR.toFixed(2)}R** (equity peak ${s.ddFrom} → trough ${s.ddTo})\n`;
+  out += `- Longest losing streak: **${s.loseStreak}** · longest winning streak: **${s.winStreak}**\n`;
+  return out;
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -186,23 +209,38 @@ async function main() {
   const all: Trade[] = [];
   for (const pair of pairs) all.push(...await replay(pair, days, strategy));
 
-  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF"];
-  console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
-  let lines = `# SLK walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
-  lines += `| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | profit factor |\n|---|---|---|---|---|---|---|---|---|\n`;
-  for (const pair of pairs) {
-    const rows = all.filter((t) => t.pair === pair);
-    const s = stats(rows);
-    const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
-      f(s.winrate, 1), f(s.avgR), f(s.pf)];
-    console.log(line.map((c) => c.padStart(9)).join(""));
-    lines += `| ${line.join(" | ")} |\n`;
+  const views: { label: string; spread: boolean; rows: string[][]; total: PerfSummary }[] = [
+    { label: "Raw (spread-naive)", spread: false, rows: [], total: summarize(all) },
+    { label: "Spread-adjusted (ESTIMATE)", spread: true, rows: [], total: summarize(all, { spread: true }) },
+  ];
+
+  for (const view of views) {
+    for (const pair of pairs) {
+      const rows = all.filter((t) => t.pair === pair);
+      view.rows.push(row(pair, summarize(rows, { spread: view.spread })));
+    }
+    view.rows.push(row("**TOTAL**", view.total));
   }
-  const t = stats(all);
-  const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
-    f(t.winrate, 1), f(t.avgR), f(t.pf)];
-  console.log(tot.map((c) => c.padStart(9)).join(""));
-  lines += `| **${tot.join(" | ")}** |\n\n`;
+
+  let lines = `# SLK walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
+  for (const view of views) {
+    console.log(`\n${view.label}`);
+    console.log(pad(COLS));
+    for (const r of view.rows) console.log(pad(r));
+    lines += `\n## ${view.label}\n\n`;
+    lines += `| ${COLS.join(" | ")} |\n|${COLS.map(() => "---").join("|")}|\n`;
+    lines += tableLines(view.rows) + "\n";
+    lines += `\n(win% = share of closed TP+SL trades with R > 0${view.spread ? " after the estimated spread cost" : ""}; `
+      + `PF = Σwins/Σ|losses|; maxDD-R = worst peak→trough on the exit-ordered equity curve)\n`;
+    lines += riskSection(`Risk over time — ${view.label}`, view.total);
+  }
+
+  lines += `\n\n## Spread cost model (ESTIMATE)\n\n`
+    + `Round-trip spread subtracted from every closed trade's R: cost(R) = spread(price) / |entry − stop|.\n\n`
+    + `| pair | est. round-trip spread (price units) |\n|---|---|\n`
+    + pairs.map((p) => `| ${p} | ${spreadFor(p)} |`).join("\n") + "\n\n"
+    + `Typical-session estimates, not measured fills: no slippage, commission or swap is modelled.\n`
+    + `Pairs with a wide spread relative to their stop (USDZAR, JAPAN225) move the most.\n`;
 
   lines += `\n## Trades (pair, tf, entry time UTC, entry → exit, status, R)\n\n`;
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
@@ -214,4 +252,8 @@ async function main() {
   console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|)`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// run only when invoked directly (`npx tsx scripts/backtest.ts …`), so the
+// report helpers above stay importable by tests without hitting the network
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) main().catch((e) => { console.error(e); process.exit(1); });
