@@ -33,6 +33,7 @@
       <button class="tab" data-tab="alerts">Alert inbox</button>
       <button class="tab" data-tab="performance">Performance</button>
       <button class="tab" data-tab="health">Data health</button>
+      <button class="tab" data-tab="preferences">Notifications</button>
     </nav>
 
     <section id="overview" class="tab-panel active">
@@ -59,6 +60,18 @@
     </section>
 
     <section id="health" class="tab-panel"><article class="panel"><div class="panel-head"><div><p class="eyebrow">DATA HEALTH</p><h2>Provider and scan status</h2></div><button id="refreshBtn" class="secondary">Refresh</button></div><div id="healthDetails" class="health-grid"><div class="empty">Connect to load health data.</div></div></article></section>
+
+    <section id="preferences" class="tab-panel">
+      <article class="panel">
+        <div class="panel-head"><div><p class="eyebrow">SERVER-SIDE CONTROLS</p><h2>Notification preferences</h2><p class="muted-copy">These controls are stored in Worker D1 and audited. Confirmed alerts remain the primary channel.</p></div><span id="preferenceStatus" class="pill gray">Not loaded</span></div>
+        <div class="preference-grid">
+          <label class="preference-card"><div><span class="eyebrow">TELEGRAM</span><h3>WATCH notifications</h3><p>Informational only. Always labelled SLK WATCH — NOT CONFIRMED.</p></div><input id="telegramWatch" type="checkbox" aria-label="Enable Telegram WATCH notifications"></label>
+          <label class="preference-card"><div><span class="eyebrow">DISCORD</span><h3>WATCH notifications</h3><p>Informational only. Always labelled SLK WATCH — NOT CONFIRMED.</p></div><input id="discordWatch" type="checkbox" aria-label="Enable Discord WATCH notifications"></label>
+        </div>
+        <div class="preference-footer"><span id="preferenceMeta" class="muted-copy">Confirmed notifications cannot be disabled here.</span><button id="savePreferences">Save preferences</button></div>
+        <div class="notice preference-warning"><strong>Safety boundary</strong><p>WATCH delivery is currently disabled globally by the Worker. Saving these preferences does not enable WATCH delivery or create alerts/orders.</p></div>
+      </article>
+    </section>
     <div id="chartModal" class="modal" hidden>
       <div class="modal-backdrop" data-close-chart></div>
       <section class="chart-dialog panel" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
