@@ -55,7 +55,11 @@
         <select id="alertPair" aria-label="Pair"><option value="">All pairs</option></select>
         <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
         <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
+        <select id="alertChannel" aria-label="Channel"><option value="">All channels</option><option value="CONFIRMED">Confirmed</option><option value="WATCH">WATCH</option></select>
         <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All lifecycle states</option><option value="OPEN">Open</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select>
+        <select id="alertOutcome" aria-label="Outcome"><option value="">All outcomes</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select>
+        <select id="alertProvider" aria-label="Provider"><option value="">All providers</option><option>twelvedata</option><option>dukascopy</option><option>yahoo</option><option>oanda</option></select>
+        <input id="alertFrom" type="date" aria-label="From UTC"><input id="alertTo" type="date" aria-label="To UTC">
         <input id="alertSearch" type="search" placeholder="Search setup or pair" aria-label="Search alerts">
         <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Lifecycle</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>
