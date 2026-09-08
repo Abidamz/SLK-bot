@@ -433,6 +433,59 @@ export default {
       return json({ signals, generatedAt: new Date(now).toISOString(), execution: "DISABLED" });
     }
 
+    const chartMatch = url.pathname.match(/^\/dashboard\/signals\/(.+)\/chart$/);
+    if (chartMatch && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const setupId = decodeURIComponent(chartMatch[1]);
+      const row = (await makeStore(env.DB).recentAlerts(500)).find((r) => r.setup_id === setupId);
+      if (!row) return json({ error: "signal not found" }, 404);
+      const cfg = loadConfig(env);
+      const rawTf = (url.searchParams.get("timeframe") ?? row.entry_timeframe).toLowerCase();
+      const tf = rawTf === "h1" ? "1h" : rawTf === "h4" ? "4h" : rawTf;
+      const tfSeconds = TF_SECONDS[tf];
+      if (!tfSeconds) return json({ error: "unsupported timeframe" }, 400);
+      const before = Math.min(Math.max(Number(url.searchParams.get("before") ?? 200) || 200, 20), 500);
+      const after = Math.min(Math.max(Number(url.searchParams.get("after") ?? 20) || 20, 0), 100);
+      const candleClose = Date.parse(String(row.candle_close_time));
+      const provider = String(row.provider ?? "");
+      const providerMap = provider ? { ...cfg.providerMap, [String(row.canonical_symbol)]: provider } : cfg.providerMap;
+      let feed: Candle[];
+      try {
+        const result = await fetchMarketData({
+          pair: String(row.canonical_symbol), tf, limit: before + after + 80,
+          tdKey: env.TWELVEDATA_API_KEY, oandaToken: env.OANDA_API_TOKEN,
+          symbolMap: cfg.symbolMap, providerMap, fetchFn: fetch,
+        });
+        feed = validateAndClose(result.candles, tfSeconds, Date.now(), 1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const kind = message.includes("stale feed") ? "MARKET_IDLE" : "HISTORY_INSUFFICIENT";
+        return json({ setupId, status: kind, error: message, candles: [], levels: null }, 200);
+      }
+      const anchor = candleClose - tfSeconds * 1000;
+      const anchorIndex = feed.findIndex((c) => c.t > anchor);
+      const end = anchorIndex < 0 ? feed.length : anchorIndex;
+      const start = Math.max(0, end - before);
+      const selected = feed.slice(start, Math.min(feed.length, end + after));
+      if (!selected.length) return json({ setupId, status: "HISTORY_INSUFFICIENT", candles: [], levels: null }, 200);
+      let bounds: [number, number] | null = null;
+      try {
+        const parsed = JSON.parse(String(row.key_level_bounds ?? "null"));
+        if (Array.isArray(parsed) && parsed.length === 2) bounds = [Number(parsed[0]), Number(parsed[1])];
+      } catch { /* malformed stored evidence is reported through null bounds */ }
+      const events = (await makeStore(env.DB).recentEvents(500))
+        .filter((e) => e.setup_id === setupId)
+        .map((e) => ({ time: String(e.candle_time), type: String(e.state), label: String(e.reason) }));
+      return json({
+        setupId, symbol: String(row.canonical_symbol), provider: provider || "unknown", timeframe: tf,
+        currencyPrecision: String(row.canonical_symbol).startsWith("XAU") ? 2 : 5,
+        candles: selected.map((c) => ({ time: new Date(c.t).toISOString(), open: c.o, high: c.h, low: c.l, close: c.c, volume: 0, isFinal: true })),
+        levels: { entry: Number(row.entry), stop: Number(row.stop_loss), target1: Number(row.tp_internal), target2: row.tp_external == null ? null : Number(row.tp_external), invalidation: null, keyLevelLow: bounds?.[0] ?? null, keyLevelHigh: bounds?.[1] ?? null },
+        evidenceMarkers: events,
+        dataHealth: { freshnessSeconds: Math.max(0, Math.round((Date.now() - feed[feed.length - 1].t - tfSeconds * 1000) / 1000)), missingCandles: 0, isMarketIdle: false, historyComplete: selected.length >= Math.min(before, feed.length) },
+      });
+    }
+
     if (url.pathname === "/alerts" && request.method === "GET") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
       const limit = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 200);
