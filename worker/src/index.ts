@@ -495,7 +495,7 @@ export default {
         .filter((e) => e.setup_id === setupId)
         .map((e) => ({ time: String(e.candle_time), type: String(e.state), label: String(e.reason) }));
       return json({
-        setupId, symbol: String(row.canonical_symbol), provider: provider || "unknown", timeframe: tf,
+        setupId, symbol: String(row.canonical_symbol), provider: provider || "unknown", timeframe: tf, requestedBefore: before,
         currencyPrecision: String(row.canonical_symbol).startsWith("XAU") ? 2 : 5,
         candles: selected.map((c) => ({ time: new Date(c.t).toISOString(), open: c.o, high: c.h, low: c.l, close: c.c, volume: 0, isFinal: true })),
         levels: { entry: Number(row.entry), stop: Number(row.stop_loss), target1: Number(row.tp_internal), target2: row.tp_external == null ? null : Number(row.tp_external), invalidation: row.invalidation_level == null ? null : Number(row.invalidation_level), keyLevelLow: bounds?.[0] ?? null, keyLevelHigh: bounds?.[1] ?? null },
