@@ -59,6 +59,16 @@
     </section>
 
     <section id="health" class="tab-panel"><article class="panel"><div class="panel-head"><div><p class="eyebrow">DATA HEALTH</p><h2>Provider and scan status</h2></div><button id="refreshBtn" class="secondary">Refresh</button></div><div id="healthDetails" class="health-grid"><div class="empty">Connect to load health data.</div></div></article></section>
+    <div id="chartModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-chart></div>
+      <section class="chart-dialog panel" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
+        <div class="panel-head"><div><p class="eyebrow">REAL OHLC EVIDENCE</p><h2 id="chartTitle">Signal chart</h2><p id="chartStatus" class="muted-copy"></p></div><button class="secondary" data-close-chart>Close</button></div>
+        <div id="chartNotice" class="chart-notice" hidden></div>
+        <div class="chart-wrap"><svg id="ohlcChart" viewBox="0 0 1000 460" role="img" aria-label="OHLC evidence chart"></svg></div>
+        <div id="chartLegend" class="chart-legend"></div>
+        <p class="chart-disclaimer">Paper/replay evidence only. A level on this chart is not proof that a broker order was filled. Execution remains disabled.</p>
+      </section>
+    </div>
   </main>
   <footer>SLK Radar · paper mode · no order was placed</footer>
   <script src="app.js"></script>
