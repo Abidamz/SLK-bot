@@ -1,11 +1,11 @@
-/** Report-rendering tests for scripts/backtest.ts.
+/** Report-rendering tests for src/report.ts.
  *
  *  SYNTHETIC trades only — this checks that the drawdown table and the two
  *  risk lines render (and degrade gracefully on an empty sample), not any
- *  market result. The script's `main()` is entry-guarded, so importing these
- *  helpers here never touches the network. */
+ *  market result. The renderers live in `src/` (not in the script) precisely so
+ *  they can be tested without pulling Node globals into the typecheck. */
 import { describe, expect, it } from "vitest";
-import { riskSection, row, tableLines, COLS } from "../scripts/backtest";
+import { riskSection, row, tableLines, COLS } from "../src/report";
 import { summarize, type TradeRow } from "../src/perf";
 
 function t(pair: string, r: number, n: number, status = "TP_HIT"): TradeRow {

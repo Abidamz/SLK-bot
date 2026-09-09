@@ -29,7 +29,8 @@ import { resampleCandles, dropIncomplete } from "../src/features";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
 import { evaluateSignal } from "../src/outcomes";
-import { summarize, spreadFor, type PerfSummary, type TradeRow } from "../src/perf";
+import { summarize, spreadFor, type TradeRow } from "../src/perf";
+import { COLS, pad, riskSection, row, tableLines } from "../src/report";
 import type { Alert, Candle } from "../src/types";
 
 const ROOT = "https://jetta.dukascopy.com/v1/candles";
@@ -164,38 +165,6 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     }
   }
   return trades;
-}
-
-const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
-export const COLS = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
-
-export function row(pair: string, s: PerfSummary): string[] {
-  return [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
-    f(s.winRate, 1), f(s.avgR), f(s.pf), f(s.maxDdR), String(s.loseStreak)];
-}
-
-export function tableLines(rows: string[][]): string {
-  return rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
-}
-
-export function pad(r: string[]): string {
-  return r.map((c) => c.padStart(9)).join("");
-}
-
-/** Exit-ordered equity curve table + the two risk lines, for one view. */
-export function riskSection(title: string, s: PerfSummary): string {
-  let out = `\n### ${title}\n\n`;
-  if (!s.curve.length) {
-    out += "_no closed trades with a finite R — nothing to plot._\n";
-    return out;
-  }
-  out += "| # | exit time UTC | pair | tf | R | cum R | peak | DD |\n|---|---|---|---|---|---|---|---|\n";
-  s.curve.forEach((p, i) => {
-    out += `| ${i + 1} | ${p.exitTime} | ${p.pair} | ${p.tf} | ${p.r.toFixed(2)} | ${p.cum.toFixed(2)} | ${p.peak.toFixed(2)} | ${p.dd.toFixed(2)} |\n`;
-  });
-  out += `\n- Max drawdown: **${s.maxDdR.toFixed(2)}R** (equity peak ${s.ddFrom} → trough ${s.ddTo})\n`;
-  out += `- Longest losing streak: **${s.loseStreak}** · longest winning streak: **${s.winStreak}**\n`;
-  return out;
 }
 
 async function main() {
