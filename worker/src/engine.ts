@@ -7,6 +7,7 @@
  *  Stateless across scans; idempotency comes from the DB (unique setup ids
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
+import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
 import { PARAM_VERSION } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import type {
@@ -41,11 +42,12 @@ function bisectRight(keys: number[], x: number): number {
   return lo;
 }
 
-export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: EngineEvent[] } {
+export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: EngineEvent[]; diagnostics: ReplayDiagnostics } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider } = args;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events };
+  const diagnostics = emptyReplayDiagnostics();
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -63,6 +65,7 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
   const active: { LONG: Setup | null; SHORT: Setup | null } = { LONG: null, SHORT: null };
 
   const emit = (s: Setup, state: string, c: Candle, reason: string, price: number | null = c.c) => {
+    countTransition(diagnostics, state);
     events.push({ setupId: s.setupId, pair, state, candleTime: c.t, reason, price });
     console.info(JSON.stringify({ level: "info", msg: "slk.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
   };
@@ -227,13 +230,15 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
                 ? seg.every((x) => x.l > (cur.drawOnLiquidity as number))
                 : seg.every((x) => x.h < (cur.drawOnLiquidity as number));
             }
+            diagnostics.retestCandidates++;
             const alert = buildAlert({
               pair, entryTf, closeTime, c, s: cur, isShort,
-              atrE, cfg, mode, standing, provider,
+              atrE, cfg, mode, standing, provider, diagnostics,
             });
             if (alert) {
               emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
               alerts.push(alert);
+              diagnostics.confirmedAlerts++;
             }
             active[d] = null;
             continue;
@@ -247,12 +252,13 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
     }
   }
 
-  return { alerts, events };
+  return { alerts, events, diagnostics };
 }
 
 interface BuildAlertArgs {
   pair: string; entryTf: string; closeTime: number; c: Candle; s: Setup;
   isShort: boolean; atrE: number; cfg: StrategyConfig;
+  diagnostics: ReplayDiagnostics;
   mode: "paper" | "live"; standing: boolean; provider: string;
 }
 
@@ -308,17 +314,28 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const buf = cfg.slBufferAtr * atrE;
   const sl = isShort ? s.invLevel + buf : s.invLevel - buf;
   const risk = isShort ? sl - entry : entry - sl;
-  if (risk <= 0 || risk < cfg.minRiskAtr * atrE) return null;
+  if (risk <= 0 || risk < cfg.minRiskAtr * atrE) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons[risk <= 0 ? "nonPositiveRisk" : "belowMinRiskAtr"]++;
+    return null;
+  }
   // stop-width ceiling: beyond 2× ATR the entry is structurally too far from
   // its invalidation — re-enter later rather than alert with a fat stop
-  if (risk > cfg.maxStopAtr * atrE) return null;
+  if (risk > cfg.maxStopAtr * atrE) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons.aboveMaxStopAtr++;
+    return null;
+  }
 
   // targets: internal liquidity first, then the nearest external target
   const targets = selectTargets({
     isShort, entry, risk, minTpR: cfg.minTpR, maxPromotedTpR: cfg.maxPromotedTpR,
     internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
   });
-  if (!targets) return null;
+  if (!targets) {
+    a.diagnostics.targetRejects++;
+    return null;
+  }
   const { tp1, tp2 } = targets;
 
   let sess: string | null = null;

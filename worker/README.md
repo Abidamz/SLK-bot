@@ -219,3 +219,74 @@ Changes:
 - Cron changes take a few minutes to propagate after `wrangler deploy`.
 - The static research dashboard stays a separate, secret-free frontend; only
   this Worker ever sees API keys or channel credentials.
+
+## Scan diagnostics (schema version 1)
+
+Diagnostics are observational only. No strategy, risk, confirmation, freshness,
+notification, boundary, or broker-execution gates have changed. Keep production
+`MODE=paper`, `WATCH_NOTIFY=false`, `PAPER_NOTIFY=true`, `MIN_RISK_ATR=0.8`,
+and MT5/live execution disabled.
+
+Every scan row now carries `slk_scan_log.diagnostics_json`; `/scan-now` returns
+that same object as `diagnostics`. Non-idle scans also emit structured
+`slk.scan.diagnostics` console logs. Do **not** force a production scan just to
+read diagnostics: `/scan-now` retains its existing notification behavior.
+Prefer read-only D1 queries after the next scheduled candle boundary.
+
+- `replay`: MAP, TOUCH, SWEEP, SHIFT, RETEST, INVALID, EXPIRED counts across the
+  trailing engine replay, plus `riskRejects` and `confirmedAlerts`. These are
+  transition/decision counts, **not unique setups or newly occurring events**.
+  Repeated scans of the same history repeat these counts; do not sum them to
+  infer unique activity over time.
+- `byPairTimeframe`: the same replay counters for each completed engine call.
+  A missing pair/timeframe indicates no completed replay, not zero setups.
+- `recorded`: lifecycle counts only after successful new event inserts, plus
+  newly inserted `confirmedAlerts`. These follow D1 deduplication and match the
+  existing top-level `events` (sum of lifecycle counts) and `alerts` fields.
+- `retestCandidates`: returns to the zone that reached alert construction,
+  before stop/target gates. Existing `RETEST` events still mean accepted
+  confirmations only; rejected candidates do not create new lifecycle events.
+- `riskRejects`: rejected stop-risk checks, counted once per candidate. Reasons:
+  `nonPositiveRisk`, `belowMinRiskAtr`, `aboveMaxStopAtr`.
+- `targetRejects`: separate rejection count for absent/invalid targets or
+  insufficient reward:risk. It is **not** included in `riskRejects`.
+- `confirmedAlerts`: structural confirmations, including paper, stale,
+  boot-gated, cooldown-gated, or session-suppressed records. This is **not a
+  notification-delivery or broker-order count**.
+
+All counters are explicit zeros on idle/empty scans. Always read `note`,
+`errors`, and pair/timeframe coverage alongside counts: failed provider scans
+can have zeros too. Historical rows have SQL NULL diagnostics (unavailable).
+Setup `EXPIRED` counts do not include expiry of already-open alert outcomes.
+
+### Validate and roll out
+
+```bash
+# From repository root (Python dependencies installed in your environment):
+python -m pytest tests/ -q
+cd worker
+npm ci
+npm test
+npm run typecheck
+npx wrangler deploy --dry-run
+
+# Only after validation; inspect pending migrations before applying:
+npx wrangler d1 migrations list slk-alert-db --remote
+npx wrangler d1 migrations apply slk-alert-db --remote
+npm run deploy
+```
+
+Apply `0004_scan_diagnostics.sql` **before** deploying this Worker. It adds one
+nullable column, leaving existing rows and old-Worker inserts compatible.
+If code must be rolled back, leave the additive column in place.
+
+Read-only post-deploy check (use the authenticated Wrangler environment):
+
+```bash
+npx wrangler d1 execute slk-alert-db --remote --command "SELECT ts, note, errors, alerts, events, json_extract(diagnostics_json, '$.replay') AS replay, json_extract(diagnostics_json, '$.recorded') AS recorded, json_extract(diagnostics_json, '$.byPairTimeframe') AS by_pair_tf FROM slk_scan_log ORDER BY id DESC LIMIT 10"
+```
+
+Verify paper mode via `/health`, confirm the deployed non-secret vars remain at
+the safety values above, and wait for ordinary cron scans. Expect valid JSON,
+advancing boundaries, no schema errors, and zero newly recorded counts on
+identical forced replays (covered offline; do not force production replays).

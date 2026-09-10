@@ -15,6 +15,7 @@
  *  provider keys and channel credentials live as Worker secrets only. */
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS } from "./config";
 import { scanEntry } from "./engine";
+import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
 import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
@@ -59,6 +60,7 @@ export interface ScanOptions {
 }
 
 export interface ScanSummary {
+  diagnostics: ScanDiagnostics;
   ok: boolean;
   timeframes: string[];
   pairs: string[];
@@ -79,6 +81,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const errors: string[] = [];
   let alertCount = 0;
   let eventCount = 0;
+  const diagnostics = emptyScanDiagnostics();
   const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
 
@@ -99,9 +102,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     await store.insertScanLog({
       ts: new Date(now).toISOString(), timeframes: "", pairs: "",
       alerts: 0, events: 0, errors: "", durationMs: Date.now() - startedAt,
-      note: "idle (no candle close)",
+      note: "idle (no candle close)", diagnostics,
     });
-    return { ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
+    return { diagnostics, ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
   }
 
   for (const pair of cfg.pairs) {
@@ -157,10 +160,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
-        const { alerts, events } = scanEntry({
+        const { alerts, events, diagnostics: replay } = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
           cfg: cfg.strategy, mode: cfg.mode, provider: providerName,
         });
+
+        addReplayDiagnostics(diagnostics, pair, tf, replay);
 
         const lastBefore = await store.getKv(`last_scan:${pair}:${tf}`);
         const isFirstScan = lastRawIsEmpty(lastBefore);
@@ -169,6 +174,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           const inserted = await store.insertEvent(ev);
           if (!inserted) continue; // already-known transition (dedupe)
           eventCount++;
+          countTransition(diagnostics.recorded, ev.state);
           // 👀 watch heads-up: setup forming on TOUCH/SWEEP/SHIFT — gated by
           // WATCH_NOTIFY and the same boot gate as entry alerts
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
@@ -182,6 +188,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
+          diagnostics.recorded.confirmedAlerts++;
           // Historical replay can discover a confirmation long after its
           // candle closed. Record it for audit, but never deliver a stale
           // entry or immediately resolve its old price path.
@@ -228,9 +235,13 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     errors: errors.join(" | "),
     durationMs: Date.now() - startedAt,
     note: errors.length ? "partial" : "ok",
+    diagnostics,
   });
 
+  console.info(JSON.stringify({ level: "info", msg: "slk.scan.diagnostics", diagnostics }));
+
   return {
+    diagnostics,
     ok: errors.length === 0,
     timeframes: due.map((d) => d.tf),
     pairs: pairsScanned,

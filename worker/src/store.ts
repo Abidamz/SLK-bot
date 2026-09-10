@@ -4,6 +4,7 @@
  *  setup_id, slk_events a UNIQUE (setup_id, state, candle_time) — so Worker
  *  retries and rescans can never double-deliver. */
 import type { Alert, EngineEvent, Outcome } from "./types";
+import type { ScanDiagnostics } from "./diagnostics";
 
 // A subset of the D1Database API — the real env.DB satisfies this.
 export interface D1Like {
@@ -76,6 +77,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 };
 
 export interface ScanLogRow {
+  diagnostics?: ScanDiagnostics; // absent on legacy callers/rows, not a zero scan
   ts: string;
   timeframes: string;
   pairs: string;
@@ -193,10 +195,10 @@ export class D1Store implements Store {
   async insertScanLog(r: ScanLogRow): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note)
-         VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note, diagnostics_json)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
       )
-      .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note)
+      .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note, r.diagnostics ? JSON.stringify(r.diagnostics) : null)
       .run();
   }
 
