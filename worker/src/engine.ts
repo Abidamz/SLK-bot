@@ -10,6 +10,7 @@ import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
 import { PARAM_VERSION } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
+import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
   Alert, Candle, Direction, EngineEvent, Setup, Storyline,
 } from "./types";
@@ -24,6 +25,9 @@ export interface ScanEntryArgs {
   cfg: StrategyConfig;
   mode: "paper" | "live";
   provider: string;
+  d1Candles?: Candle[];
+  h1Candles?: Candle[];
+  h4Candles?: Candle[];
 }
 
 function setupId(provider: string, pair: string, entryTf: string, d: Direction, level: { kind: string; originPrice: number; originTime: number }): string {
@@ -42,12 +46,18 @@ function bisectRight(keys: number[], x: number): number {
   return lo;
 }
 
-export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: EngineEvent[]; diagnostics: ReplayDiagnostics } {
-  const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider } = args;
+export function scanEntry(args: ScanEntryArgs): {
+  alerts: Alert[];
+  events: EngineEvent[];
+  diagnostics: ReplayDiagnostics;
+  shadowDiagnostics: DirectionalBiasDiagnostics[];
+} {
+  const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
   const diagnostics = emptyReplayDiagnostics();
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics };
+  const shadowDiagnostics: DirectionalBiasDiagnostics[] = [];
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -234,10 +244,12 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
             const alert = buildAlert({
               pair, entryTf, closeTime, c, s: cur, isShort,
               atrE, cfg, mode, standing, provider, diagnostics,
+              candles, candleIndex: i, d1Candles, h1Candles, h4Candles,
             });
             if (alert) {
               emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
               alerts.push(alert);
+              if (alert.directionalBias) shadowDiagnostics.push(alert.directionalBias);
               diagnostics.confirmedAlerts++;
             }
             active[d] = null;
@@ -252,7 +264,7 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
     }
   }
 
-  return { alerts, events, diagnostics };
+  return { alerts, events, diagnostics, shadowDiagnostics };
 }
 
 interface BuildAlertArgs {
@@ -260,6 +272,11 @@ interface BuildAlertArgs {
   isShort: boolean; atrE: number; cfg: StrategyConfig;
   diagnostics: ReplayDiagnostics;
   mode: "paper" | "live"; standing: boolean; provider: string;
+  candles: Candle[];
+  candleIndex: number;
+  d1Candles?: Candle[];
+  h1Candles?: Candle[];
+  h4Candles?: Candle[];
 }
 
 /** Pick the internal-liquidity target (tp1) and external drawback (tp2) for
@@ -353,6 +370,28 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     .filter((imb) => !(imb.hi < lo || imb.lo > hi))
     .map((imb) => ({ lo: imb.lo, hi: imb.hi, direction: imb.direction }));
 
+  const shadowDiagnostics = evaluateDirectionalBias({
+    pair, entryTf, direction: s.direction,
+    entryCandles: a.candles,
+    d1Candles: a.d1Candles,
+    h4Candles: a.h4Candles,
+    h1Candles: a.h1Candles,
+    cfg,
+    setup: {
+      sweptPoolPrice: s.sweptPoolPrice,
+      sweepTime: s.sweepTime,
+      sweepIndex: s.sweepIndex,
+      bosTime: s.bosTime,
+      bosIndex: s.bosIndex,
+      retestTime: c.t,
+      retestIndex: a.candleIndex,
+      origin: s.level,
+    },
+    sweepOccurred: true,
+    bosOccurred: true,
+    retestOccurred: true,
+  });
+
   return {
     setupId: s.setupId, pair, entryTf, mapTf: cfg.mapTfLabel,
     direction: s.direction, entry, stopLoss: sl,
@@ -374,5 +413,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     alertStatus: status, suppressReason, session: sess,
     atrEntry: atrE, rrInternal: Math.round((Math.abs(tp1 - entry) / risk) * 100) / 100,
     cycleStage: "entry_alert", entryMode: "confirmation",
+    shadowClassification: shadowDiagnostics.classification,
+    directionalBias: shadowDiagnostics,
   };
 }

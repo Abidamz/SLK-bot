@@ -1,0 +1,9 @@
+{
+  "name": "slk-bot",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "npm --prefix worker test --",
+    "typecheck": "npm --prefix worker run typecheck"
+  }
+}

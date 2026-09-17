@@ -1,5 +1,7 @@
 /** Typed records for the SLK worker engine — port of slk_bot/slk/types.py. */
 
+import type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow";
+
 export type Direction = "LONG" | "SHORT";
 export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
 
@@ -132,6 +134,8 @@ export interface Alert {
   rrInternal: number | null;
   cycleStage: string;
   entryMode: string;
+  shadowClassification?: ShadowClassification;
+  directionalBias?: DirectionalBiasDiagnostics;
 }
 
 export interface EngineEvent {
@@ -149,3 +153,5 @@ export interface Outcome {
   exitTime: number;
   rMultiple: number;
 }
+
+export type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow";

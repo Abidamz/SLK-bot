@@ -163,6 +163,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         const { alerts, events, diagnostics: replay } = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
           cfg: cfg.strategy, mode: cfg.mode, provider: providerName,
+          d1Candles: d1 ?? undefined,
+          h1Candles: feeds["1h"],
+          h4Candles: h4,
         });
 
         addReplayDiagnostics(diagnostics, pair, tf, replay);
@@ -185,6 +188,21 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
 
         for (const alert of alerts) {
+          if (alert.directionalBias) {
+            console.info(JSON.stringify({
+              level: "info",
+              msg: "slk.shadow.classification",
+              pair: alert.pair,
+              tf: alert.entryTf,
+              setupId: alert.setupId,
+              classification: alert.shadowClassification,
+              weekly: alert.directionalBias.weekly,
+              daily: alert.directionalBias.daily,
+              h4: alert.directionalBias.h4,
+              h1: alert.directionalBias.h1,
+              entryQuality: alert.directionalBias.entryQuality,
+            }));
+          }
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
