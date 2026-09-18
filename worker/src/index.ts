@@ -463,6 +463,10 @@ export default {
       return json({
         ok: true, service: "slk-alert-worker", mode: cfg.mode,
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
+        watchNotify: cfg.watchNotify,
+        paperNotify: cfg.paperNotify,
+        telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
+        adminKeyConfigured: Boolean(env.ADMIN_KEY),
         time: new Date().toISOString(),
       });
     }
