@@ -8,7 +8,7 @@
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
-import { PARAM_VERSION } from "./config";
+import { PARAM_VERSION, pipSize } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
@@ -329,12 +329,21 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
   const entry = c.c;
   const buf = cfg.slBufferAtr * atrE;
-  const sl = isShort ? s.invLevel + buf : s.invLevel - buf;
-  const risk = isShort ? sl - entry : entry - sl;
+  let sl = isShort ? s.invLevel + buf : s.invLevel - buf;
+  let risk = isShort ? sl - entry : entry - sl;
   if (risk <= 0 || risk < cfg.minRiskAtr * atrE) {
     a.diagnostics.riskRejects++;
     a.diagnostics.riskRejectReasons[risk <= 0 ? "nonPositiveRisk" : "belowMinRiskAtr"]++;
     return null;
+  }
+  // Enforce Option A: Minimum Stop Floor in Pips (e.g. 10 pips for forex pairs)
+  // so broker spread never prematurely tags out valid setups.
+  if (cfg.minStopPips && cfg.minStopPips > 0) {
+    const minPipDistance = cfg.minStopPips * pipSize(pair);
+    if (risk < minPipDistance) {
+      sl = isShort ? entry + minPipDistance : entry - minPipDistance;
+      risk = minPipDistance;
+    }
   }
   // stop-width ceiling: beyond 2× ATR the entry is structurally too far from
   // its invalidation — re-enter later rather than alert with a fat stop

@@ -38,6 +38,7 @@ export interface StrategyConfig {
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
+  minStopPips?: number;
   /** cap synthetic execution targets when a promoted external draw is very far */
   maxPromotedTpR: number;
   /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
@@ -94,6 +95,7 @@ export function defaultStrategy(): StrategyConfig {
     setupWindow: 240,
     slBufferAtr: 0.1,
     minRiskAtr: 0.8,  // quarantine structurally tiny stops
+    minStopPips: 10,  // minimum 10-pip stop loss floor for forex pairs
     maxPromotedTpR: 3.0, // far external liquidity remains context, not TP1
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
     minTpR: 3.0,     // 1:3 minimum reward:risk
@@ -110,6 +112,7 @@ interface EnvVars {
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
   MIN_RISK_ATR?: string;
+  MIN_STOP_PIPS?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
 }
@@ -164,8 +167,10 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const baseCandlesLimit = Math.min(5000, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50);
 
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
+  const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
   const strategy = defaultStrategy();
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
+  if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
 
   return {
     pairs,

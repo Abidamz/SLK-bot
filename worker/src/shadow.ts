@@ -481,7 +481,7 @@ export function evaluateDirectionalBias(
       atrPeriod: 14, avLen: 2, levelToleranceAtr: 0.1, flipMarginAtr: 0.2,
       decisionAtrMult: 1.5, levelLookback: 120, zoneMaxDistanceAtr: 3.5,
       touchWindow: 20, sweepWindow: 12, bosWindow: 12, retestWindow: 16,
-      retestToleranceAtr: 0.1, slBufferAtr: 0.1, minRiskAtr: 0.8,
+      retestToleranceAtr: 0.1, slBufferAtr: 0.1, minRiskAtr: 0.8, minStopPips: 10,
       maxStopAtr: 3.5, minTpR: 3.0, maxPromotedTpR: 3.0, cooldownMinutes: 30,
       sessionsAllowlist: [], mapTfLabel: "4h", setupWindow: 90, fvgLookback: 40,
     },

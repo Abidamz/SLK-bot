@@ -208,6 +208,16 @@ describe("behavior-neutral replay diagnostics", () => {
     expect(result.events.map(e => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
   });
 
+  it("enforces minimum stop floor in pips (Option A)", () => {
+    // In SHORT_ROWS, pair is EURUSD (pipSize = 0.0001).
+    // If minStopPips is set to 3000 pips (distance 0.30), which is wider than natural risk (0.20):
+    const res = runShort(SHORT_ROWS, { minStopPips: 3000, maxStopAtr: 100 });
+    expect(res.alerts).toHaveLength(1);
+    const alert = res.alerts[0];
+    // Entry was 104.90, so SL floored at 104.90 + 0.30 = 105.20
+    expect(alert.stopLoss).toBeCloseTo(105.20, 4);
+  });
+
   it("counts invalidation and expiration separately, not as risk rejects", () => {
     const invalid = runShort([...SHORT_ROWS.slice(0, 12), [103.9, 105.6, 103.85, 105.3]]);
     const expired = runShort([
