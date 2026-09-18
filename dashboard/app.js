@@ -279,25 +279,40 @@ function renderAlerts() {
     return;
   }
   listEl.innerHTML = rows.map(a => {
-    const dirClass = a.direction === 'LONG' ? 'profit-text' : 'loss-text';
-    const statusClass = a.status === 'TP_HIT' ? 'profit-text' : (a.status === 'SL_HIT' ? 'loss-text' : 'state');
+    const isLong = a.direction === 'LONG';
+    const dirClass = isLong ? 'profit-text' : 'loss-text';
+    let statusLabel = a.status;
+    let statusClass = 'state';
+    if (a.status === 'TP_HIT') {
+      statusLabel = 'TP HIT ✅ (+3R)';
+      statusClass = 'profit-text';
+    } else if (a.status === 'SL_HIT') {
+      statusLabel = 'STOP LOSS 🛑 (-1R)';
+      statusClass = 'loss-text';
+    } else if (a.status === 'OPEN') {
+      statusLabel = a.alertStatus === 'SUPPRESSED' ? 'OPEN · AUDIT' : 'ACTIVE IN MARKET';
+      statusClass = 'state';
+    } else if (a.status === 'EXPIRED') {
+      statusLabel = 'EXPIRED ⌛';
+      statusClass = 'state';
+    }
     return `
       <button class="alert-row" data-setup="${esc(a.setupId)}" data-tf="${esc(a.tf)}">
         <div>
-          <strong>${esc(a.pair)} · ${esc(a.tf)} · <span class="${dirClass}">${esc(a.direction)}</span></strong>
-          <small>${esc(a.keyLevel || 'Key Level')} · ${fmtDate(a.candleCloseTime)}</small>
+          <strong class="alert-pair">${esc(a.pair)} · ${esc(a.tf)} · <span class="${dirClass}">${esc(a.direction)}</span></strong>
+          <small class="alert-meta">${esc(a.keyLevel || 'Key Level')} · ${fmtDate(a.candleCloseTime)}</small>
         </div>
         <div>
           <span>Entry Price</span>
-          <strong>${num(a.entry)}</strong>
+          <strong class="alert-val">${num(a.entry)}</strong>
         </div>
         <div>
           <span>SL / TP1</span>
-          <strong>${num(a.stopLoss)} / ${num(a.tp1)}</strong>
+          <strong class="alert-val">${num(a.stopLoss)} / ${num(a.tp1)}</strong>
         </div>
         <div>
           <span>Lifecycle Status</span>
-          <strong class="${statusClass}">${esc(a.status)} · ${esc(a.alertStatus || 'CONFIRMED')}</strong>
+          <strong class="${statusClass}">${statusLabel}</strong>
         </div>
       </button>
     `;
