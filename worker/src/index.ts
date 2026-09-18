@@ -409,7 +409,10 @@ export function isIndexCfdIdleWindow(pair: string, now: number): boolean {
 
 function authed(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return false;
-  return request.headers.get("authorization") === `Bearer ${env.ADMIN_KEY}`;
+  const auth = request.headers.get("authorization");
+  if (!auth) return false;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return Boolean(match && match[1].trim() === env.ADMIN_KEY.trim());
 }
 
 function readAuthed(_request: Request, _env: Env): boolean {
