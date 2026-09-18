@@ -471,6 +471,16 @@ export default {
       });
     }
 
+    if ((url.pathname === "/" || url.pathname === "/journal" || url.pathname === "/dashboard") && request.method === "GET") {
+      const { DASHBOARD_HTML } = await import("./dashboard_html");
+      return new Response(DASHBOARD_HTML, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=60",
+        },
+      });
+    }
+
     if (url.pathname === "/terms" && request.method === "GET") {
       const { TERMS_HTML } = await import("./terms_html");
       return new Response(TERMS_HTML, {
