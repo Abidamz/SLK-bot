@@ -1,0 +1,243 @@
+export const TERMS_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLK Radar · Subscriber Terms & Conditions & Risk Disclaimer</title>
+  <style>
+    :root {
+      --bg: #090c12;
+      --panel: #111722;
+      --line: #273245;
+      --text: #eef3fb;
+      --muted: #8793a7;
+      --accent: #8cf0c6;
+      --amber: #f6c66d;
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 85% -10%, #1c2b3f 0, transparent 35%), var(--bg);
+      color: var(--text);
+      font: 14px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    .topbar {
+      height: 72px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 5vw;
+      background: #0b1018cc;
+      backdrop-filter: blur(14px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-size: 20px;
+      letter-spacing: -0.03em;
+    }
+    .brand small {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid #4c806e;
+      border-radius: 12px;
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 12px;
+    }
+    .vip-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #f59e0b, #eab308);
+      color: #120c02;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 8px 15px;
+      border-radius: 10px;
+    }
+    .legal-shell {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+    .legal-card {
+      background: linear-gradient(145deg, #131b27e6, #0f151fe6);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 36px 40px;
+      margin-bottom: 24px;
+      box-shadow: 0 18px 55px #00000022;
+    }
+    .legal-card h1 {
+      font-size: clamp(28px, 4vw, 36px);
+      letter-spacing: -0.04em;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+    .legal-card h2 {
+      font-size: 17px;
+      color: #ffe0a0;
+      margin: 28px 0 10px;
+      letter-spacing: -0.02em;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+    }
+    .legal-card p, .legal-card li {
+      color: #c5d1e0;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .legal-card ul {
+      padding-left: 20px;
+      margin: 10px 0;
+    }
+    .legal-card li {
+      margin-bottom: 8px;
+    }
+    .highlight-box {
+      border: 1px solid #8b713b;
+      background: #211c12;
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+    .highlight-box strong {
+      color: #ffe0a0;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .highlight-box p {
+      color: #d8c29d;
+      font-size: 13px;
+      margin: 0;
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin: 0 0 8px;
+    }
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 24px 5vw;
+      background: #0b1018;
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">SLK</span>
+      <div>
+        <strong>SLK Radar</strong>
+        <small>Quantitative Research</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        <span>VIP Access</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="legal-shell">
+    <article class="legal-card">
+      <p class="eyebrow">LEGAL AGREEMENT & RISK WARNING</p>
+      <h1>Subscriber Terms & Conditions</h1>
+      <p style="color: var(--muted); font-size: 13px;">Last Updated: September 18, 2026 · Effective for all SLK Radar and Whop VIP Subscribers</p>
+
+      <div class="highlight-box">
+        <strong>HIGH-RISK INVESTMENT WARNING & DISCLAIMER</strong>
+        <p>Trading foreign exchange (Forex), commodities, precious metals, and indices on margin carries a high level of risk and may not be suitable for all investors. The high degree of leverage can work against you as well as for you. Before deciding to trade, you should carefully consider your investment objectives, level of experience, and risk appetite. You could sustain a loss of some or all of your invested funds. Never trade with money you cannot afford to lose.</p>
+      </div>
+
+      <h2>1. Nature of the Service & No Financial Advice</h2>
+      <p>SLK Radar is an automated algorithmic research system that monitors institutional market structure, liquidity sweeps, order blocks, and key-level retests across select currency pairs, metals, and indices.</p>
+      <ul>
+        <li><strong>Informational & Educational Use Only:</strong> All alerts, directional bias cards, watch notifications, technical levels, and journal entries are provided strictly for educational and informational purposes.</li>
+        <li><strong>Not an Investment Advisor:</strong> SLK Radar, its authors, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.</li>
+        <li><strong>No Personal Recommendations:</strong> Content does not constitute financial, investment, legal, or tax advice. No communication from SLK Radar shall be construed as a solicitation, endorsement, or recommendation to buy or sell any financial instrument.</li>
+      </ul>
+
+      <h2>2. Subscriber Responsibility & Execution Discretion</h2>
+      <p>All trading decisions are executed entirely at your own independent discretion and risk.</p>
+      <ul>
+        <li><strong>Self-Directed Trading:</strong> SLK Radar does not execute orders on your behalf, does not hold custody of client funds, and does not have access to your personal brokerage account.</li>
+        <li><strong>Execution Variables:</strong> Live market execution differs from paper research. Broker spreads, slippage, commission fees, financing charges, swap rates, and latency vary between brokers and may significantly impact trading outcomes.</li>
+        <li><strong>Risk Management:</strong> You are solely responsible for setting your own lot size, stop loss, and capital allocation. Never risk more than a conservative percentage of your total trading equity on any individual setup.</li>
+      </ul>
+
+      <h2>3. Hypothetical & Historical Performance Disclaimer</h2>
+      <p>In accordance with regulatory disclosure standards:</p>
+      <ul>
+        <li><strong>Past Performance Is Not Indicative of Future Results:</strong> Historical win rates, R-multiples, and paper trading journal entries reflect backtested or algorithmic cloud simulation rules. No representation is being made that any account will or is likely to achieve profits or losses similar to those shown.</li>
+        <li><strong>Inherent Limitations:</strong> Simulated or paper trading results do not involve financial risk and cannot completely account for the impact of financial risk in actual live trading (such as liquidity deficits, market gaps, or broker execution rejections).</li>
+      </ul>
+
+      <h2>4. Subscriptions, Billing, and Renewals</h2>
+      <ul>
+        <li><strong>Billing Cycle:</strong> VIP Subscriptions are billed on a recurring monthly or specified periodic basis through the Whop payment platform.</li>
+        <li><strong>Auto-Renewal:</strong> Your subscription renews automatically unless canceled prior to the end of the current billing cycle.</li>
+        <li><strong>Self-Service Cancellation:</strong> You may cancel your subscription at any time directly through your Whop Customer Portal. Upon cancellation, you will retain VIP channel access until the end of your prepaid billing period, after which access will terminate automatically.</li>
+      </ul>
+
+      <h2>5. Strict No-Refund Policy</h2>
+      <p>Due to the immediate access granted to proprietary algorithmic setups, technical levels, live alerts, and digital intellectual property upon subscription:</p>
+      <ul>
+        <li>All payments and renewal fees are <strong>strictly non-refundable</strong> once processed.</li>
+        <li>No partial refunds or credits will be issued for unused portions of a billing cycle.</li>
+        <li>Please evaluate the public performance journal, entry rules, and system documentation before subscribing.</li>
+      </ul>
+
+      <h2>6. Intellectual Property & Anti-Piracy Policy</h2>
+      <p>All materials, algorithms, technical specifications, bias grades, trade formats, and branding are the exclusive intellectual property of SLK Radar.</p>
+      <ul>
+        <li><strong>Strict Anti-Forwarding:</strong> VIP subscribers are granted a single-user, non-transferable, revocable license for personal use.</li>
+        <li><strong>Prohibited Actions:</strong> You may not copy, forward, rebroadcast, screenshot, resell, distribute, or share alerts, signals, or educational materials to any third party, group, chat, or public platform.</li>
+        <li><strong>Enforcement & Termination:</strong> Any subscriber caught redistributing signals or intellectual property will face immediate, permanent termination of access without refund, alongside potential legal action for intellectual property infringement.</li>
+      </ul>
+
+      <h2>7. Platform Availability & Third-Party Dependencies</h2>
+      <p>Alert delivery relies on third-party cloud infrastructure (Cloudflare, Telegram Bot API, Discord webhooks, and institutional data feeds). While we maintain a 24/7 high-availability architecture, SLK Radar does not warrant that notifications will be uninterrupted, error-free, or instantaneous during periods of feed maintenance, market holidays, or global telecommunication outages.</p>
+
+      <h2>8. Limitation of Liability</h2>
+      <p>To the fullest extent permitted by applicable law, in no event shall SLK Radar, its creators, operators, or affiliates be liable for any direct, indirect, incidental, punitive, or consequential damages, including but not limited to loss of capital, trading losses, or loss of profits arising out of or in connection with the use of this service.</p>
+
+      <h2>9. Agreement & Modifications</h2>
+      <p>By subscribing to SLK Radar VIP or accessing our channels, you confirm that you have read, understood, and agreed to be bound by these Terms and Conditions. We reserve the right to amend these terms at any time by updating this document.</p>
+
+      <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+        <span style="color: var(--muted); font-size: 12px;">Questions or inquiries? Contact support via Whop.</span>
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+          <span>Manage VIP Subscription on Whop</span>
+        </a>
+      </div>
+    </article>
+  </main>
+
+  <footer>
+    <span>SLK Radar · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
+  </footer>
+</body>
+</html>
+`;

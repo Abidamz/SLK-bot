@@ -471,6 +471,16 @@ export default {
       });
     }
 
+    if (url.pathname === "/terms" && request.method === "GET") {
+      const { TERMS_HTML } = await import("./terms_html");
+      return new Response(TERMS_HTML, {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=3600",
+        },
+      });
+    }
+
     if (url.pathname === "/scan-log" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
