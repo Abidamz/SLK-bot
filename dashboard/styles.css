@@ -9,6 +9,9 @@
 .tg-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#2481cc,#2aabee);color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:8px 14px;border-radius:10px;box-shadow:0 4px 14px rgba(42,171,238,.28);transition:transform .15s ease,box-shadow .15s ease}
 .tg-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(42,171,238,.42);filter:brightness(1.05)}
 .tg-btn svg{width:16px;height:16px}
+.vip-btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#f59e0b,#eab308);color:#120c02;text-decoration:none;font-weight:800;font-size:12px;padding:8px 15px;border-radius:10px;box-shadow:0 4px 16px rgba(245,158,11,.35);transition:transform .15s ease,box-shadow .15s ease}
+.vip-btn:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,158,11,.55);filter:brightness(1.06)}
+.vip-btn svg{width:15px;height:15px}
 .admin-toggle-btn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:6px 10px;font-size:14px;border-radius:10px;cursor:pointer}
 .admin-toggle-btn:hover{color:var(--text);border-color:#54719c}
 .accent-text{color:var(--accent)!important}
