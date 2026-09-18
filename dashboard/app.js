@@ -1,6 +1,7 @@
+const DEFAULT_URL = 'https://slk-alert-worker.abidogundamilola.workers.dev';
+
 const state = {
-  url: sessionStorage.getItem('slkUrl') || 'https://slk-alert-worker.abidogundamilola.workers.dev',
-  key: sessionStorage.getItem('slkReadKey') || sessionStorage.getItem('slkAdminKey') || '',
+  url: sessionStorage.getItem('slkUrl') || DEFAULT_URL,
   adminKey: sessionStorage.getItem('slkAdminKey') || '',
   alerts: [],
   alertPage: 1,
@@ -11,7 +12,6 @@ const state = {
 const $ = id => document.getElementById(id);
 
 if ($('apiUrl')) $('apiUrl').value = state.url;
-if ($('readKey')) $('readKey').value = state.key;
 if ($('adminKey')) $('adminKey').value = state.adminKey;
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -29,27 +29,29 @@ if ($('toggleAdminBtn')) {
   });
 }
 
-$('connectBtn').addEventListener('click', connect);
-$('refreshBtn').addEventListener('click', loadAll);
+if ($('connectBtn')) $('connectBtn').addEventListener('click', connect);
+if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
 ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
 });
 
-$('alertSearch').addEventListener('input', debounce(() => {
-  state.alertPage = 1;
-  loadAlerts();
-}, 350));
+if ($('alertSearch')) {
+  $('alertSearch').addEventListener('input', debounce(() => {
+    state.alertPage = 1;
+    loadAlerts();
+  }, 350));
+}
 
-$('clearAlertFilters').addEventListener('click', clearAlertFilters);
-$('prevAlerts').addEventListener('click', () => {
+if ($('clearAlertFilters')) $('clearAlertFilters').addEventListener('click', clearAlertFilters);
+if ($('prevAlerts')) $('prevAlerts').addEventListener('click', () => {
   if (state.alertPage > 1) {
     state.alertPage--;
     loadAlerts();
   }
 });
-$('nextAlerts').addEventListener('click', () => {
+if ($('nextAlerts')) $('nextAlerts').addEventListener('click', () => {
   if (state.alertPage * state.alertPageSize < state.alertTotal) {
     state.alertPage++;
     loadAlerts();
@@ -61,9 +63,10 @@ if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNot
 if ($('testDiscord')) $('testDiscord').addEventListener('click', () => testNotification('discord'));
 
 async function api(path, options = {}) {
-  const token = options.admin ? state.adminKey : state.key;
+  // Public requests never send Authorization header, avoiding any stale token rejection.
+  // Only administrative actions (test-notify, patch preferences) include the admin key.
   const headers = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.admin && state.adminKey ? { Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
   const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
@@ -72,33 +75,33 @@ async function api(path, options = {}) {
 }
 
 async function connect() {
-  state.url = $('apiUrl').value.trim();
-  state.key = $('readKey').value.trim() || $('adminKey').value.trim();
-  state.adminKey = $('adminKey').value.trim();
+  state.url = $('apiUrl') ? $('apiUrl').value.trim() : DEFAULT_URL;
+  state.adminKey = $('adminKey') ? $('adminKey').value.trim() : '';
   sessionStorage.setItem('slkUrl', state.url);
-  sessionStorage.setItem('slkReadKey', state.key);
   if (state.adminKey) sessionStorage.setItem('slkAdminKey', state.adminKey);
   await loadAll();
 }
 
 async function loadAll() {
   setStatus('Live feed updating…', 'muted');
-  $('error').hidden = true;
+  if ($('error')) $('error').hidden = true;
   try {
     const [health, stats, prefs] = await Promise.all([
-      api('/health'),
-      api('/stats'),
+      api('/health').catch(() => null),
+      api('/stats').catch(() => null),
       api('/dashboard/preferences/notifications').catch(() => null)
     ]);
-    renderHealth(health);
-    renderStats(stats);
+    if (health) renderHealth(health);
+    if (stats) renderStats(stats);
     if (prefs) renderPreferences(prefs);
     await loadAlerts();
     setStatus('Live Connected', 'ok');
   } catch (e) {
     setStatus('Connection failed', 'bad');
-    $('error').textContent = e.message;
-    $('error').hidden = false;
+    if ($('error')) {
+      $('error').textContent = e.message;
+      $('error').hidden = false;
+    }
   }
 }
 
