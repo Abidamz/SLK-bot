@@ -18,7 +18,7 @@ import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
-import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } from "./provider";
+import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
@@ -73,6 +73,7 @@ export interface ScanSummary {
 // -------------------------------------------------------------- scan cycle
 
 export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSummary> {
+  resetProviderCircuitBreakers();
   const startedAt = Date.now();
   const now = opts.now ?? startedAt;
   const fetchFn = opts.fetchFn ?? fetch;
@@ -141,9 +142,24 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       );
       const feeds: Record<string, Candle[]> = { [cfg.baseTimeframe]: base };
       feeds["1h"] = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], now);
-      const h4 = dropIncomplete(
+      let h4 = dropIncomplete(
         resampleCandles(base, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now,
       );
+      if (h4.length < 30) {
+        // If 4H resampled from base has fewer than 30 bars (e.g. Dukascopy minute feed budget),
+        // fetch the 1h feed directly (which uses 1 monthly file in Dukascopy) and resample H4 from it.
+        try {
+          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const h1Candles = validateAndClose(h1Res.candles, TF_SECONDS["1h"], now, 30);
+          feeds["1h"] = h1Candles;
+          const directH4 = dropIncomplete(resampleCandles(h1Candles, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now);
+          if (directH4.length >= 30) {
+            h4 = directH4;
+          }
+        } catch {
+          // keep original h4 if direct 1h fetch fails
+        }
+      }
       feeds[cfg.mapTimeframe] = h4;
       if (h4.length < 30) throw new DataQualityError(`insufficient H4 data (${h4.length})`);
 

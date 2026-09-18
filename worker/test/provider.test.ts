@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
+import { beforeEach, describe, expect, it } from "vitest";
+import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, resetProviderCircuitBreakers, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
 import { dukaJson, yahooFlatFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
 describe("provider routing", () => {
+  beforeEach(() => {
+    resetProviderCircuitBreakers();
+  });
+
   it("routes forex/metals to Twelve Data and index CFDs to the Dukascopy public feed", () => {
     expect(providerForPair("EURUSD")).toBe("twelvedata");
     expect(providerForPair("XAUUSD")).toBe("twelvedata");
@@ -320,6 +324,10 @@ describe("yahooSymbolFor", () => {
 });
 
 describe("fetchMarketData rate-limit fallback", () => {
+  beforeEach(() => {
+    resetProviderCircuitBreakers();
+  });
+
   it("automatically falls back from Twelve Data to Yahoo when daily credits are exhausted", async () => {
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;

@@ -211,9 +211,18 @@ export function decodeJetta(d: JettaCandleResponse): Candle[] {
 
 type KvLike = { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> } | undefined;
 
+let tdCreditsExhausted = false;
+let yahooUnavailable = false;
+
+export function resetProviderCircuitBreakers(): void {
+  tdCreditsExhausted = false;
+  yahooUnavailable = false;
+}
+
 export async function fetchDukascopy(
   pair: string, tf: string, limit: number,
   symbolMap: Record<string, string> = {}, fetchFn: FetchLike = fetch, kv: KvLike = undefined,
+  budget = 8,
 ): Promise<Candle[]> {
   const code = dukaCode(pair, symbolMap);
   const tfSec = TF_SECONDS[tf] ?? 1800;
@@ -264,12 +273,11 @@ export async function fetchDukascopy(
   }
 
   const all: Candle[] = [];
-  // Free-plan Workers cap = 50 subrequests per invocation; a cold start of
-  // 3 index pairs × ~50 day-files would blow through it (real prod error).
+  // Free-plan Workers cap = 50 subrequests per invocation.
   // Fetch NEWEST buckets first with a hard budget: every tick goes deeper as
   // immutable history lands in the kv cache; partial history always ends at
   // the freshest bar so quality gates (freshness, minimum candles) pass early.
-  let fetchBudget = 8;
+  let fetchBudget = budget;
   for (const b of [...buckets].reverse()) {
     let j: JettaCandleResponse | null = null;
     if (!b.mutable && kv) {
@@ -406,42 +414,62 @@ export interface MarketDataRequest {
   fetchFn?: FetchLike;
   /** cache for immutable historical buckets (Dukascopy); tests inject MemStore */
   kv?: { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> };
+  budget?: number;
 }
 
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
+  const dukaBudget = req.budget ?? (req.tf === "30m" ? 2 : 4);
   if (provider === "twelvedata") {
-    try {
-      const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-      return { provider, candles };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const isRateOrCredit = msg.includes("run out of API credits")
-        || msg.includes("API credits were used")
-        || msg.includes("429");
-      if (isRateOrCredit) {
+    if (!tdCreditsExhausted) {
+      try {
+        const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+        return { provider, candles };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isRateOrCredit = msg.includes("run out of API credits")
+          || msg.includes("API credits were used")
+          || msg.includes("429");
+        if (isRateOrCredit) {
+          tdCreditsExhausted = true;
+          console.warn(JSON.stringify({
+            level: "warn",
+            msg: "slk.provider.fallback",
+            pair: req.pair,
+            tf: req.tf,
+            from: "twelvedata",
+            to: yahooUnavailable ? "dukascopy" : "yahoo",
+            reason: msg,
+          }));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    if (!yahooUnavailable) {
+      try {
+        const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+        return { provider: "yahoo", candles };
+      } catch (yahooErr) {
+        yahooUnavailable = true;
         console.warn(JSON.stringify({
           level: "warn",
           msg: "slk.provider.fallback",
           pair: req.pair,
           tf: req.tf,
-          from: "twelvedata",
-          to: "yahoo",
-          reason: msg,
+          from: "yahoo",
+          to: "dukascopy",
+          reason: yahooErr instanceof Error ? yahooErr.message : String(yahooErr),
         }));
-        try {
-          const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-          return { provider: "yahoo", candles };
-        } catch (yahooErr) {
-          try {
-            const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
-            return { provider: "dukascopy", candles };
-          } catch {
-            throw err;
-          }
-        }
       }
-      throw err;
+    }
+
+    try {
+      const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+      return { provider: "dukascopy", candles };
+    } catch (dukaErr) {
+      throw dukaErr;
     }
   }
 
@@ -450,18 +478,21 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
     : provider === "dukascopy"
       ? await (async () => {
           try {
-            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
+            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
           } catch (dukaErr) {
-            console.warn(JSON.stringify({
-              level: "warn",
-              msg: "slk.provider.fallback",
-              pair: req.pair,
-              tf: req.tf,
-              from: "dukascopy",
-              to: "yahoo",
-              reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
-            }));
-            return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+            if (!yahooUnavailable) {
+              console.warn(JSON.stringify({
+                level: "warn",
+                msg: "slk.provider.fallback",
+                pair: req.pair,
+                tf: req.tf,
+                from: "dukascopy",
+                to: "yahoo",
+                reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+              }));
+              return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+            }
+            throw dukaErr;
           }
         })()
       : await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
