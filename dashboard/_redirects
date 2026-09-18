@@ -1,0 +1,9 @@
+/health https://slk-alert-worker.abidogundamilola.workers.dev/health 200
+/stats https://slk-alert-worker.abidogundamilola.workers.dev/stats 200
+/alerts https://slk-alert-worker.abidogundamilola.workers.dev/alerts 200
+/alerts/* https://slk-alert-worker.abidogundamilola.workers.dev/alerts/:splat 200
+/scan-log https://slk-alert-worker.abidogundamilola.workers.dev/scan-log 200
+/recent-events https://slk-alert-worker.abidogundamilola.workers.dev/recent-events 200
+/dashboard/preferences/* https://slk-alert-worker.abidogundamilola.workers.dev/dashboard/preferences/:splat 200
+/test-notify https://slk-alert-worker.abidogundamilola.workers.dev/test-notify 200
+/scan-now https://slk-alert-worker.abidogundamilola.workers.dev/scan-now 200

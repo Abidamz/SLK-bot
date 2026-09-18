@@ -329,7 +329,9 @@ export const DASHBOARD_HTML = `<!doctype html>
     </div>
   </footer>
   <script>
-const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'https://slk-alert-worker.abidogundamilola.workers.dev';
+const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
+  ? window.location.origin
+  : 'https://slk-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
   url: DEFAULT_URL,
