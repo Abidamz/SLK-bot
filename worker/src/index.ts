@@ -372,9 +372,11 @@ function authed(request: Request, env: Env): boolean {
   return request.headers.get("authorization") === `Bearer ${env.ADMIN_KEY}`;
 }
 
-function readAuthed(request: Request, env: Env): boolean {
-  const auth = request.headers.get("authorization");
-  return authed(request, env) || Boolean(env.DASHBOARD_READ_KEY && auth === `Bearer ${env.DASHBOARD_READ_KEY}`);
+function readAuthed(_request: Request, _env: Env): boolean {
+  // Public portfolio mode: live stats, alert history, and chart evidence can be freely
+  // viewed by the public. Administrative actions (scan-now, test-notify, preference updates)
+  // still strictly require ADMIN_KEY via authed().
+  return true;
 }
 
 function json(body: unknown, status = 200): Response {

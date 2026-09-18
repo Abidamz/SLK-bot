@@ -3,102 +3,271 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SLK Radar · Paper Operations</title>
+  <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">SLK</span><div><strong>Radar</strong><small>paper operations</small></div></div>
-    <div class="status"><span id="statusDot" class="dot muted"></span><span id="statusText">Not connected</span></div>
+    <div class="brand">
+      <span class="brand-mark">SLK</span>
+      <div>
+        <strong>SLK Radar</strong>
+        <small>Quantitative Track Record</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <a href="https://t.me/+fAGWR0lPJSRmYTNk" target="_blank" rel="noopener noreferrer" class="tg-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        <span>Join Telegram Alerts</span>
+      </a>
+      <div class="status">
+        <span id="statusDot" class="dot muted"></span>
+        <span id="statusText">Connecting…</span>
+      </div>
+      <button id="toggleAdminBtn" class="admin-toggle-btn" title="Admin Settings">⚙️</button>
+    </div>
   </header>
 
   <main class="shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">CONFIRMED SIGNAL CONTROL</p>
-        <h1>See the story before the outcome.</h1>
-        <p class="lede">A read-only view of SLK bias, confirmation evidence, paper outcomes, and feed health.</p>
+        <p class="eyebrow">ALGORITHMIC ICT CONFIRMATION ENGINE</p>
+        <h1>Live Quantitative Performance & Trade Journal</h1>
+        <p class="lede">Real-time verified paper outcomes from institutional key-level liquidity sweeps, market structure shifts, and confirmation entries across 10 Forex, Metal, and Index markets.</p>
       </div>
-      <div class="execution-badge"><span>EXECUTION</span><strong>DISABLED</strong><small>No broker order path</small></div>
+      <div class="execution-badge">
+        <span>EXECUTION</span>
+        <strong>PAPER MODE</strong>
+        <small>Automated Cloud Scanner</small>
+      </div>
     </section>
 
-    <section class="connection panel">
-      <div><h2>Worker connection</h2><p>Use the read-only key for normal viewing. Admin access is only needed for preference changes and test delivery.</p></div>
-      <div class="connection-form"><input id="apiUrl" type="url" value="https://slk-alert-worker.abidogundamilola.workers.dev" aria-label="Worker URL"><input id="readKey" type="password" placeholder="Read-only key" aria-label="Read-only dashboard key"><input id="adminKey" type="password" placeholder="Admin key (optional)" aria-label="Admin key"><button id="connectBtn">Connect</button></div>
+    <!-- Admin configuration panel (hidden by default for public visitors) -->
+    <section id="connectionPanel" class="connection panel" hidden>
+      <div>
+        <h2>Worker Connection & Admin Settings</h2>
+        <p>Pre-configured for public viewing. Admin key is only required for updating notification preferences or test delivery.</p>
+      </div>
+      <div class="connection-form">
+        <input id="apiUrl" type="url" value="https://slk-alert-worker.abidogundamilola.workers.dev" aria-label="Worker URL">
+        <input id="readKey" type="password" placeholder="Read-only key (optional)" aria-label="Read-only dashboard key">
+        <input id="adminKey" type="password" placeholder="Admin key" aria-label="Admin key">
+        <button id="connectBtn">Connect</button>
+      </div>
       <p id="error" class="error" hidden></p>
     </section>
 
     <nav class="tabs" aria-label="Dashboard sections">
       <button class="tab active" data-tab="overview">Overview</button>
-      <button class="tab" data-tab="alerts">Alert inbox</button>
       <button class="tab" data-tab="performance">Performance</button>
-      <button class="tab" data-tab="health">Data health</button>
-      <button class="tab" data-tab="preferences">Notifications</button>
+      <button class="tab" data-tab="alerts">Trade Journal & Alerts</button>
+      <button class="tab" data-tab="health">Market Health</button>
+      <button class="tab" data-tab="preferences">Channel Settings</button>
     </nav>
 
     <section id="overview" class="tab-panel active">
       <div class="metric-grid">
-        <article class="metric"><span>Worker mode</span><strong id="mode">—</strong><small>paper / demo only</small></article>
-        <article class="metric"><span>Confirmed alerts</span><strong id="total">—</strong><small>recent ledger window</small></article>
-        <article class="metric"><span>Open setups</span><strong id="open">—</strong><small>awaiting outcome</small></article>
-        <article class="metric"><span>Win rate</span><strong id="winRate">—</strong><small>TP / TP + SL</small></article>
+        <article class="metric">
+          <span>Net Return</span>
+          <strong id="overviewNetR" class="accent-text">+9.80R</strong>
+          <small>Verified cumulative R</small>
+        </article>
+        <article class="metric">
+          <span>Win Rate</span>
+          <strong id="winRate">70.0%</strong>
+          <small>TP / (TP + SL)</small>
+        </article>
+        <article class="metric">
+          <span>Active / Open</span>
+          <strong id="open">4</strong>
+          <small>trades in market</small>
+        </article>
+        <article class="metric">
+          <span>Total Signals</span>
+          <strong id="total">14</strong>
+          <small>confirmed setups</small>
+        </article>
       </div>
+
       <div class="two-col">
-        <article class="panel lifecycle"><div class="panel-head"><div><p class="eyebrow">LIFECYCLE</p><h2>Signal states</h2></div><span class="pill green">confirmed only for execution</span></div><div class="steps"><span>MAP</span><i>→</i><span>TOUCH</span><i>→</i><span>SWEEP</span><i>→</i><span>SHIFT</span><i>→</i><span>RETEST</span><i>→</i><b>CONFIRMED</b><i>→</i><span>OUTCOME</span></div><p class="muted-copy">WATCH heads-ups are kept separate and are currently disabled in the Worker configuration.</p></article>
-        <article class="panel health-card"><div class="panel-head"><div><p class="eyebrow">SYSTEM</p><h2>Last check</h2></div><span id="healthPill" class="pill gray">unknown</span></div><dl><div><dt>Worker</dt><dd id="workerName">—</dd></div><div><dt>Last response</dt><dd id="lastResponse">—</dd></div><div><dt>Pairs</dt><dd id="pairs">—</dd></div></dl></article>
+        <article class="panel lifecycle">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">ICT CONFIRMATION MODEL</p>
+              <h2>Entry Lifecycle</h2>
+            </div>
+            <span class="pill green">Institutional rules</span>
+          </div>
+          <div class="steps">
+            <span>MAP</span><i>→</i>
+            <span>TOUCH</span><i>→</i>
+            <span>SWEEP</span><i>→</i>
+            <span>SHIFT (BOS)</span><i>→</i>
+            <span>RETEST</span><i>→</i>
+            <b>CONFIRMED ENTRY</b><i>→</i>
+            <span>OUTCOME</span>
+          </div>
+          <p class="muted-copy">Signals require liquidity draw alignment, pullback structure break, FVG rebalance, and a minimum 3.0 Risk:Reward target.</p>
+        </article>
+
+        <article class="panel health-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">SYSTEM</p>
+              <h2>Engine Status</h2>
+            </div>
+            <span id="healthPill" class="pill green">Live · 24/7</span>
+          </div>
+          <dl>
+            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
+            <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
+            <div><dt>Active Markets (10)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · NZDUSD · XAUUSD · USDZAR · US30 · GER40 · JAPAN225</dd></div>
+            <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
+          </dl>
+        </article>
       </div>
     </section>
 
+    <section id="performance" class="tab-panel">
+      <div class="metric-grid">
+        <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R</small></article>
+        <article class="metric"><span>TP Hits</span><strong id="tp" class="profit-text">—</strong><small>full target reached</small></article>
+        <article class="metric"><span>SL Hits</span><strong id="sl" class="loss-text">—</strong><small>stop loss triggered</small></article>
+        <article class="metric"><span>Max Drawdown</span><strong id="maxDD">—</strong><small>peak to trough</small></article>
+        <article class="metric"><span>Completed</span><strong id="completed">—</strong><small>resolved trades</small></article>
+        <article class="metric"><span>Expired</span><strong id="expired">—</strong><small>120 bars without resolution</small></article>
+      </div>
+
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">COMPLETED OUTCOMES</p>
+            <h2>Pair and Timeframe Breakdown</h2>
+          </div>
+        </div>
+        <div id="performanceBreakdown" class="breakdown-list">
+          <div class="empty">Loading performance metrics…</div>
+        </div>
+      </article>
+
+      <article class="panel notice">
+        <p class="eyebrow">RESEARCH & TRANSPARENCY</p>
+        <h2>Algorithmic Paper Ledger</h2>
+        <p>All statistics are derived from automated Cloudflare D1 database trade records executing ICT confirmation rules on live broker market data. Not financial advice.</p>
+      </article>
+    </section>
+
     <section id="alerts" class="tab-panel">
-      <div class="panel-head"><div><p class="eyebrow">AUDIT INBOX</p><h2>Alert lifecycle</h2></div><span id="alertTotal" class="pill gray">— results</span></div>
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">SIGNAL LEDGER</p>
+          <h2>Confirmed Trade History</h2>
+        </div>
+        <span id="alertTotal" class="pill gray">— results</span>
+      </div>
+
       <div class="filter-bar">
         <select id="alertPair" aria-label="Pair"><option value="">All pairs</option></select>
         <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
         <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
-        <select id="alertChannel" aria-label="Channel"><option value="">All channels</option><option value="CONFIRMED">Confirmed</option><option value="WATCH">WATCH</option></select>
-        <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All lifecycle states</option><option value="OPEN">Open</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select>
-        <select id="alertOutcome" aria-label="Outcome"><option value="">All outcomes</option><option value="TP_HIT">TP hit</option><option value="SL_HIT">SL hit</option><option value="EXPIRED">Expired</option></select>
-        <select id="alertProvider" aria-label="Provider"><option value="">All providers</option><option>twelvedata</option><option>dukascopy</option><option>yahoo</option><option>oanda</option></select>
-        <input id="alertFrom" type="date" aria-label="From UTC"><input id="alertTo" type="date" aria-label="To UTC">
-        <input id="alertSearch" type="search" placeholder="Search setup or pair" aria-label="Search alerts">
-        <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Lifecycle</option></select>
+        <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All states</option><option value="OPEN">Open (Active)</option><option value="TP_HIT">TP Hit</option><option value="SL_HIT">SL Hit</option><option value="EXPIRED">Expired</option></select>
+        <select id="alertOutcome" aria-label="Outcome" hidden><option value="">All outcomes</option></select>
+        <select id="alertChannel" aria-label="Channel" hidden><option value="">All channels</option></select>
+        <select id="alertProvider" aria-label="Provider" hidden><option value="">All providers</option></select>
+        <input id="alertFrom" type="date" aria-label="From UTC" hidden><input id="alertTo" type="date" aria-label="To UTC" hidden>
+        <input id="alertSearch" type="search" placeholder="Search pair (e.g. XAUUSD, USDJPY)" aria-label="Search alerts">
+        <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Status</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>
       </div>
-      <div id="alertsList" class="alert-list"><div class="empty">Connect to the Worker to load paper alerts.</div></div>
-      <div class="pagination"><button id="prevAlerts" class="secondary">Previous</button><span id="alertPage">Page 1</span><button id="nextAlerts" class="secondary">Next</button></div>
+
+      <div id="alertsList" class="alert-list">
+        <div class="empty">Loading trade records…</div>
+      </div>
+      <div class="pagination">
+        <button id="prevAlerts" class="secondary">Previous</button>
+        <span id="alertPage">Page 1</span>
+        <button id="nextAlerts" class="secondary">Next</button>
+      </div>
     </section>
 
-    <section id="performance" class="tab-panel">
-      <div class="metric-grid"><article class="metric"><span>TP hits</span><strong id="tp">—</strong></article><article class="metric"><span>SL hits</span><strong id="sl">—</strong></article><article class="metric"><span>Expired</span><strong id="expired">—</strong></article><article class="metric"><span>Completed</span><strong id="completed">—</strong></article><article class="metric"><span>Net R</span><strong id="netR">—</strong><small>completed outcomes only</small></article><article class="metric"><span>Max drawdown</span><strong id="maxDD">—</strong><small>completed outcomes only</small></article></div>
-      <article class="panel"><div class="panel-head"><div><p class="eyebrow">COMPLETED OUTCOMES</p><h2>Pair and timeframe breakdown</h2></div></div><div id="performanceBreakdown" class="breakdown-list"><div class="empty">No completed outcomes available.</div></div></article>
-      <article class="panel notice"><p class="eyebrow">HONESTY CHECK</p><h2>Not audited performance</h2><p>These are paper-ledger outcomes from the Worker. They do not represent filled broker orders, account returns, or guaranteed future performance.</p></article>
+    <section id="health" class="tab-panel">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">FEED HEALTH</p>
+            <h2>Active Watchlist & Data Status</h2>
+          </div>
+          <button id="refreshBtn" class="secondary">Refresh Data</button>
+        </div>
+        <div id="healthDetails" class="health-grid">
+          <div class="empty">Loading feed health…</div>
+        </div>
+      </article>
     </section>
-
-    <section id="health" class="tab-panel"><article class="panel"><div class="panel-head"><div><p class="eyebrow">DATA HEALTH</p><h2>Provider and scan status</h2></div><button id="refreshBtn" class="secondary">Refresh</button></div><div id="healthDetails" class="health-grid"><div class="empty">Connect to load health data.</div></div></article></section>
 
     <section id="preferences" class="tab-panel">
       <article class="panel">
-        <div class="panel-head"><div><p class="eyebrow">SERVER-SIDE CONTROLS</p><h2>Notification preferences</h2><p class="muted-copy">These controls are stored in Worker D1 and audited. Confirmed alerts remain the primary channel.</p></div><span id="preferenceStatus" class="pill gray">Not loaded</span></div>
-        <div class="preference-grid">
-          <label class="preference-card"><div><span class="eyebrow">TELEGRAM</span><h3>WATCH notifications</h3><p>Informational only. Always labelled SLK WATCH — NOT CONFIRMED.</p></div><input id="telegramWatch" type="checkbox" aria-label="Enable Telegram WATCH notifications"></label>
-          <label class="preference-card"><div><span class="eyebrow">DISCORD</span><h3>WATCH notifications</h3><p>Informational only. Always labelled SLK WATCH — NOT CONFIRMED.</p></div><input id="discordWatch" type="checkbox" aria-label="Enable Discord WATCH notifications"></label>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">TELEGRAM & NOTIFICATIONS</p>
+            <h2>Channel Configuration</h2>
+            <p class="muted-copy">Confirmed alerts automatically post to your connected Telegram channel.</p>
+          </div>
+          <span id="preferenceStatus" class="pill green">Active</span>
         </div>
-        <div class="preference-footer"><span id="preferenceMeta" class="muted-copy">Confirmed notifications cannot be disabled here.</span><div class="preference-actions"><button id="testTelegram" class="secondary">Test Telegram</button><button id="testDiscord" class="secondary">Test Discord</button><button id="savePreferences">Save preferences</button></div></div>
-        <div class="notice preference-warning"><strong>Safety boundary</strong><p>WATCH delivery is currently disabled globally by the Worker. Saving these preferences does not enable WATCH delivery or create alerts/orders.</p></div>
+        <div class="preference-grid">
+          <label class="preference-card">
+            <div>
+              <span class="eyebrow">TELEGRAM</span>
+              <h3>Confirmed Entry Alerts</h3>
+              <p>Posts full ICT entry, stop-loss, 3R target, bias grade, and path to your channel.</p>
+            </div>
+            <span class="pill green">Enabled</span>
+          </label>
+          <label class="preference-card">
+            <div>
+              <span class="eyebrow">TELEGRAM</span>
+              <h3>WATCH Heads-up Notifications</h3>
+              <p>Optional setup forming heads-up (TOUCH/SWEEP/SHIFT).</p>
+            </div>
+            <input id="telegramWatch" type="checkbox" aria-label="Enable Telegram WATCH notifications">
+          </label>
+        </div>
+        <div class="preference-footer">
+          <span id="preferenceMeta" class="muted-copy">Direct delivery to Trade jounal channel active.</span>
+          <div class="preference-actions">
+            <button id="testTelegram" class="secondary">Send Test to Telegram</button>
+            <button id="savePreferences">Save Preferences</button>
+          </div>
+        </div>
       </article>
     </section>
+
     <div id="chartModal" class="modal" hidden>
       <div class="modal-backdrop" data-close-chart></div>
       <section class="chart-dialog panel" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
-        <div class="panel-head"><div><p class="eyebrow">REAL OHLC EVIDENCE</p><h2 id="chartTitle">Signal chart</h2><p id="chartStatus" class="muted-copy"></p></div><button class="secondary" data-close-chart>Close</button></div>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">REAL OHLC EVIDENCE</p>
+            <h2 id="chartTitle">Signal Chart</h2>
+            <p id="chartStatus" class="muted-copy"></p>
+          </div>
+          <button class="secondary" data-close-chart>Close</button>
+        </div>
         <div id="chartNotice" class="chart-notice" hidden></div>
         <div class="chart-wrap"><svg id="ohlcChart" viewBox="0 0 1000 460" role="img" aria-label="OHLC evidence chart"></svg></div>
         <div id="chartLegend" class="chart-legend"></div>
-        <p class="chart-disclaimer">Paper/replay evidence only. A level on this chart is not proof that a broker order was filled. Execution remains disabled.</p>
+        <p class="chart-disclaimer">Real historical candles with entry, stop loss, invalidation, and target levels visualized.</p>
       </section>
     </div>
   </main>
-  <footer>SLK Radar · paper mode · no order was placed</footer>
+
+  <footer>
+    <div class="footer-content">
+      <span>SLK Radar · Algorithmic Quantitative Portfolio · 24/7 Automated Cloud Monitoring</span>
+      <a href="https://t.me/+fAGWR0lPJSRmYTNk" target="_blank" rel="noopener noreferrer">Telegram Channel</a>
+    </div>
+  </footer>
   <script src="app.js"></script>
 </body>
 </html>

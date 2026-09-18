@@ -1,26 +1,409 @@
-const state={url:sessionStorage.getItem('slkUrl')||'https://slk-alert-worker.abidogundamilola.workers.dev',key:sessionStorage.getItem('slkReadKey')||sessionStorage.getItem('slkAdminKey')||'',adminKey:sessionStorage.getItem('slkAdminKey')||'',alerts:[],alertPage:1,alertTotal:0,alertPageSize:25};
-const $=id=>document.getElementById(id);
-$('apiUrl').value=state.url;$('readKey').value=state.key;$('adminKey').value=state.adminKey;
+const state = {
+  url: sessionStorage.getItem('slkUrl') || 'https://slk-alert-worker.abidogundamilola.workers.dev',
+  key: sessionStorage.getItem('slkReadKey') || sessionStorage.getItem('slkAdminKey') || '',
+  adminKey: sessionStorage.getItem('slkAdminKey') || '',
+  alerts: [],
+  alertPage: 1,
+  alertTotal: 0,
+  alertPageSize: 25
+};
 
-document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.tab,.tab-panel').forEach(x=>x.classList.remove('active'));btn.classList.add('active');$(btn.dataset.tab).classList.add('active')}));
-$('connectBtn').addEventListener('click',connect);$('refreshBtn').addEventListener('click',loadAll);['alertPair','alertTimeframe','alertDirection','alertChannel','alertLifecycle','alertOutcome','alertProvider','alertFrom','alertTo','alertSort'].forEach(id=>$(id).addEventListener('change',()=>{state.alertPage=1;loadAlerts()}));$('alertSearch').addEventListener('input',debounce(()=>{state.alertPage=1;loadAlerts()},350));$('clearAlertFilters').addEventListener('click',clearAlertFilters);$('prevAlerts').addEventListener('click',()=>{if(state.alertPage>1){state.alertPage--;loadAlerts()}});$('nextAlerts').addEventListener('click',()=>{if(state.alertPage*state.alertPageSize<state.alertTotal){state.alertPage++;loadAlerts()}});$('savePreferences').addEventListener('click',savePreferences);$('testTelegram').addEventListener('click',()=>testNotification('telegram'));$('testDiscord').addEventListener('click',()=>testNotification('discord'));
-async function api(path,options={}){const headers={Authorization:`Bearer ${options.admin?state.adminKey:state.key}`,...(options.body?{'Content-Type':'application/json'}:{})};const r=await fetch(state.url.replace(/\/$/,'')+path,{...options,headers});if(!r.ok)throw new Error(`${r.status} ${await r.text()}`);return r.json()}
-async function connect(){state.url=$('apiUrl').value.trim();state.key=$('readKey').value.trim()||$('adminKey').value.trim();state.adminKey=$('adminKey').value.trim();sessionStorage.setItem('slkUrl',state.url);sessionStorage.setItem('slkReadKey',state.key);if(state.adminKey)sessionStorage.setItem('slkAdminKey',state.adminKey);await loadAll()}
-async function loadAll(){setStatus('Loading…','muted');$('error').hidden=true;try{const [health,stats,prefs]=await Promise.all([api('/health'),api('/stats'),api('/dashboard/preferences/notifications')]);renderHealth(health);renderStats(stats);renderPreferences(prefs);await loadAlerts();setStatus('Connected','ok')}catch(e){setStatus('Connection failed','bad');$('error').textContent=e.message;$('error').hidden=false}}
-function setStatus(text,kind){$('statusText').textContent=text;$('statusDot').className=`dot ${kind}`}
-function renderHealth(h){$('mode').textContent=String(h.mode||'—').toUpperCase();$('workerName').textContent=h.service||'—';$('lastResponse').textContent=new Date().toLocaleTimeString();$('pairs').textContent=(h.pairs||[]).join(' · ')||'—';$('alertPair').innerHTML='<option value="">All pairs</option>'+(h.pairs||[]).map(pair=>`<option value="${esc(pair)}">${esc(pair)}</option>`).join('');$('healthPill').textContent=h.ok?'healthy':'degraded';$('healthPill').className=`pill ${h.ok?'green':'gray'}`;$('healthDetails').innerHTML=`<div class="health-item"><span>Service</span><strong>${esc(h.service||'—')}</strong></div><div class="health-item"><span>Entry timeframes</span><strong>${esc((h.entryTfs||[]).join(' · ')||'—')}</strong></div><div class="health-item"><span>Server time</span><strong>${esc(h.time||'—')}</strong></div>`}
-function renderStats(s){$('total').textContent=s.total??'—';$('open').textContent=s.open??'—';$('tp').textContent=s.tp??'—';$('sl').textContent=s.sl??'—';$('expired').textContent=s.expired??'—';$('completed').textContent=s.completed??'—';$('netR').textContent=s.netR==null?'—':`${Number(s.netR).toFixed(2)}R`;$('maxDD').textContent=s.maxDD==null?'—':`${Number(s.maxDD).toFixed(2)}R`;renderBreakdown(s.breakdown||[]);$('winRate').textContent=s.winRate==null?'—':`${(s.winRate*100).toFixed(1)}%`}
-function renderBreakdown(rows){const el=$('performanceBreakdown');if(!rows.length){el.innerHTML='<div class="empty">No completed outcomes available.</div>';return}el.innerHTML=rows.map(r=>`<div class="breakdown-row"><strong>${esc(r.group)}</strong><span>${r.completed} completed · ${r.tp} TP · ${r.sl} SL</span><b>${Number(r.netR).toFixed(2)}R · DD ${Number(r.maxDD).toFixed(2)}R</b></div>`).join('')}
-function renderPreferences(p){$('telegramWatch').checked=Boolean(p.telegram&&p.telegram.watchEnabled);$('discordWatch').checked=Boolean(p.discord&&p.discord.watchEnabled);$('preferenceStatus').textContent='Loaded';$('preferenceStatus').className='pill green';$('preferenceMeta').textContent=`Confirmed notifications remain enabled · Last updated ${fmtDate(p.updatedUtc)}`}
-async function testNotification(channel){const button=$(channel==='telegram'?'testTelegram':'testDiscord');button.disabled=true;button.textContent='Sending…';try{const result=await api('/test-notify',{admin:true,method:'POST',body:JSON.stringify({channel})});const status=result.results&&result.results[channel]||'unknown';$('preferenceStatus').textContent=`${channel} test: ${status}`;$('preferenceStatus').className=`pill ${status==='ok'?'green':'gray'}`;setStatus(status==='ok'?'Test delivered':'Test completed','ok')}catch(e){$('preferenceStatus').textContent='Test failed';$('preferenceStatus').className='pill gray';$('error').textContent=e.message;$('error').hidden=false}finally{button.disabled=false;button.textContent=channel==='telegram'?'Test Telegram':'Test Discord'}}
-async function savePreferences(){const button=$('savePreferences');button.disabled=true;button.textContent='Saving…';try{const p=await api('/dashboard/preferences/notifications',{admin:true,method:'PATCH',body:JSON.stringify({telegram:{watchEnabled:$('telegramWatch').checked},discord:{watchEnabled:$('discordWatch').checked}})});renderPreferences(p);$('preferenceStatus').textContent='Saved';setStatus('Preferences saved','ok')}catch(e){$('preferenceStatus').textContent='Save failed';$('preferenceStatus').className='pill gray';$('error').textContent=e.message;$('error').hidden=false}finally{button.disabled=false;button.textContent='Save preferences'}}
-function alertParams(){const p=new URLSearchParams({page:String(state.alertPage),pageSize:String(state.alertPageSize),sort:$('alertSort').value,order:'desc'});[['pair','alertPair'],['timeframe','alertTimeframe'],['direction','alertDirection'],['channel','alertChannel'],['lifecycle','alertLifecycle'],['outcome','alertOutcome'],['provider','alertProvider'],['from','alertFrom'],['to','alertTo'],['search','alertSearch']].forEach(([key,id])=>{if($(id).value){const value=(key==='from'?`${$(id).value}T00:00:00.000Z`:key==='to'?`${$(id).value}T23:59:59.999Z`:$(id).value);p.set(key,value)}});return p.toString()}
-async function loadAlerts(){try{const result=await api(`/alerts?${alertParams()}`);state.alerts=Array.isArray(result)?result:(result.items||[]);state.alertTotal=result.total??state.alerts.length;$('alertTotal').textContent=`${state.alertTotal} results`;$('alertPage').textContent=`Page ${state.alertPage}`;$('prevAlerts').disabled=state.alertPage<=1;$('nextAlerts').disabled=state.alertPage*state.alertPageSize>=state.alertTotal;renderAlerts()}catch(e){$('error').textContent=e.message;$('error').hidden=false}}
-function clearAlertFilters(){['alertPair','alertTimeframe','alertDirection','alertChannel','alertLifecycle','alertOutcome','alertProvider','alertFrom','alertTo','alertSearch'].forEach(id=>$(id).value='');state.alertPage=1;loadAlerts()}
-function debounce(fn,ms){let timer;return()=>{clearTimeout(timer);timer=setTimeout(fn,ms)}}
-function renderAlerts(){const rows=state.alerts;if(!rows.length){$('alertsList').innerHTML='<div class="empty">No alerts match this filter, or the Worker is not connected.</div>';return}$('alertsList').innerHTML=rows.map(a=>`<button class="alert-row" data-setup="${esc(a.setupId)}" data-tf="${esc(a.tf)}"><div><strong>${esc(a.pair)} · ${esc(a.tf)} · ${esc(a.direction)}</strong><small>${esc(a.keyLevel||'')} · ${fmtDate(a.candleCloseTime)}</small></div><div><span>Entry</span><strong>${num(a.entry)}</strong></div><div><span>SL / TP1</span><strong>${num(a.stopLoss)} / ${num(a.tp1)}</strong></div><div><span>Status</span><strong class="state ${a.status==='SL_HIT'?'loss':''}">${esc(a.status)} · ${esc(a.alertStatus)}</strong></div></button>`).join('');document.querySelectorAll('.alert-row').forEach(row=>row.addEventListener('click',()=>openChart(row.dataset.setup,row.dataset.tf)))}
-async function openChart(setupId,tf){$('chartModal').hidden=false;$('chartTitle').textContent=`${setupId} · real OHLC`;$('chartStatus').textContent='Loading finalized candles…';$('chartNotice').hidden=true;$('ohlcChart').innerHTML='';try{const data=await api(`/dashboard/signals/${encodeURIComponent(setupId)}/chart?timeframe=${encodeURIComponent(tf)}&before=200&after=20`);if(data.status&&data.status!=='OK'&&(!data.candles||!data.candles.length)){showChartNotice(`${data.status}: ${data.error||'No finalized history available.'}`);return}renderChart(data)}catch(e){showChartNotice(`Chart unavailable: ${e.message}`)}}
-function showChartNotice(text){$('chartNotice').textContent=text;$('chartNotice').hidden=false;$('chartStatus').textContent='No real candles rendered';$('ohlcChart').innerHTML=''}
-function renderChart(data){const candles=data.candles||[];if(!candles.length){showChartNotice('HISTORY_INSUFFICIENT: the Worker returned no real candles.');return}const svg=$('ohlcChart'),W=1000,H=460,pad={l:62,r:24,t:20,b:44};const values=candles.flatMap(c=>[c.high,c.low]);const levels=data.levels||{};Object.values(levels).forEach(v=>{if(v!=null&&Number.isFinite(Number(v)))values.push(Number(v))});let lo=Math.min(...values),hi=Math.max(...values),margin=(hi-lo)*.08||1;lo-=margin;hi+=margin;const x=i=>pad.l+i*(W-pad.l-pad.r)/Math.max(1,candles.length-1);const y=v=>pad.t+(hi-v)*(H-pad.t-pad.b)/(hi-lo);let out=`<rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="#0b111a"/>`;for(let i=0;i<5;i++){const v=hi-(hi-lo)*i/4;out+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#253044"/><text x="8" y="${y(v)+4}" fill="#8793a7" font-size="11">${num(v)}</text>`}const cw=Math.max(2,Math.min(14,(W-pad.l-pad.r)/candles.length*.65));candles.forEach((c,i)=>{const xx=x(i),up=c.close>=c.open,color=up?'#8cf0c6':'#ff8f9b',bodyY=Math.min(y(c.open),y(c.close)),bodyH=Math.max(1,Math.abs(y(c.open)-y(c.close)));out+=`<g><title>${fmtDate(c.time)} · O ${num(c.open)} H ${num(c.high)} L ${num(c.low)} C ${num(c.close)} · finalized ${c.isFinal?'yes':'no'}</title><line x1="${xx}" x2="${xx}" y1="${y(c.high)}" y2="${y(c.low)}" stroke="${color}"/><rect x="${xx-cw/2}" y="${bodyY}" width="${cw}" height="${bodyH}" fill="${color}" opacity=".9"/></g>`});const lineDefs=[['entry','Entry','#80a9ff'],['stop','Stop','#ff8f9b'],['invalidation','Invalidation','#f6c66d'],['target1','Target 1','#8cf0c6'],['target2','Target 2','#65d6bd'],['keyLevelLow','Key low','#b093ff'],['keyLevelHigh','Key high','#b093ff']];lineDefs.forEach(([key,label,color])=>{if(levels[key]==null)return;const v=Number(levels[key]);if(!Number.isFinite(v))return;out+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="${color}" stroke-dasharray="6 5"/><text x="${W-pad.r-5}" y="${y(v)-5}" text-anchor="end" fill="${color}" font-size="11">${label} ${num(v)}</text>`});(data.evidenceMarkers||[]).forEach(m=>{const t=new Date(m.time).getTime(),idx=candles.findIndex(c=>new Date(c.time).getTime()>=t);if(idx<0)return;const xx=x(idx);out+=`<circle cx="${xx}" cy="${pad.t+10}" r="5" fill="#f6c66d"><title>${esc(m.type)} · ${esc(m.label)}</title></circle>`});out+=`<text x="${pad.l}" y="${H-12}" fill="#8793a7" font-size="11">${fmtDate(candles[0].time)}</text><text x="${W-pad.r}" y="${H-12}" text-anchor="end" fill="#8793a7" font-size="11">${fmtDate(candles[candles.length-1].time)}</text>`;svg.innerHTML=out;const requested=data.requestedBefore||candles.length;const incomplete=data.dataHealth&&!data.dataHealth.historyComplete; $('chartStatus').textContent=`LIVE DATA · ${candles.length} finalized candles · requested ${requested} · ${data.provider||'provider unknown'}${incomplete?' · HISTORY_INSUFFICIENT':''}`;$('chartLegend').innerHTML='<span class="legend-live">● LIVE OHLC</span> '+lineDefs.map(x=>`<span style="color:${x[2]}">━ ${x[1]}</span>`).join(' ')}
-function num(x){return x==null?'—':Number(x).toPrecision(7)}function fmtDate(x){if(!x)return'—';const d=new Date(x);return Number.isNaN(d.getTime())?'—':d.toISOString().slice(0,16).replace('T',' ')+' UTC'}function esc(x){return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-document.querySelectorAll('[data-close-chart]').forEach(x=>x.addEventListener('click',()=>{$('chartModal').hidden=true}));
+const $ = id => document.getElementById(id);
+
+if ($('apiUrl')) $('apiUrl').value = state.url;
+if ($('readKey')) $('readKey').value = state.key;
+if ($('adminKey')) $('adminKey').value = state.adminKey;
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .tab-panel').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    $(btn.dataset.tab).classList.add('active');
+  });
+});
+
+if ($('toggleAdminBtn')) {
+  $('toggleAdminBtn').addEventListener('click', () => {
+    const p = $('connectionPanel');
+    if (p) p.hidden = !p.hidden;
+  });
+}
+
+$('connectBtn').addEventListener('click', connect);
+$('refreshBtn').addEventListener('click', loadAll);
+
+['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort'].forEach(id => {
+  const el = $(id);
+  if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
+});
+
+$('alertSearch').addEventListener('input', debounce(() => {
+  state.alertPage = 1;
+  loadAlerts();
+}, 350));
+
+$('clearAlertFilters').addEventListener('click', clearAlertFilters);
+$('prevAlerts').addEventListener('click', () => {
+  if (state.alertPage > 1) {
+    state.alertPage--;
+    loadAlerts();
+  }
+});
+$('nextAlerts').addEventListener('click', () => {
+  if (state.alertPage * state.alertPageSize < state.alertTotal) {
+    state.alertPage++;
+    loadAlerts();
+  }
+});
+
+if ($('savePreferences')) $('savePreferences').addEventListener('click', savePreferences);
+if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNotification('telegram'));
+if ($('testDiscord')) $('testDiscord').addEventListener('click', () => testNotification('discord'));
+
+async function api(path, options = {}) {
+  const token = options.admin ? state.adminKey : state.key;
+  const headers = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(options.body ? { 'Content-Type': 'application/json' } : {})
+  };
+  const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+async function connect() {
+  state.url = $('apiUrl').value.trim();
+  state.key = $('readKey').value.trim() || $('adminKey').value.trim();
+  state.adminKey = $('adminKey').value.trim();
+  sessionStorage.setItem('slkUrl', state.url);
+  sessionStorage.setItem('slkReadKey', state.key);
+  if (state.adminKey) sessionStorage.setItem('slkAdminKey', state.adminKey);
+  await loadAll();
+}
+
+async function loadAll() {
+  setStatus('Live feed updating…', 'muted');
+  $('error').hidden = true;
+  try {
+    const [health, stats, prefs] = await Promise.all([
+      api('/health'),
+      api('/stats'),
+      api('/dashboard/preferences/notifications').catch(() => null)
+    ]);
+    renderHealth(health);
+    renderStats(stats);
+    if (prefs) renderPreferences(prefs);
+    await loadAlerts();
+    setStatus('Live Connected', 'ok');
+  } catch (e) {
+    setStatus('Connection failed', 'bad');
+    $('error').textContent = e.message;
+    $('error').hidden = false;
+  }
+}
+
+function setStatus(text, kind) {
+  $('statusText').textContent = text;
+  $('statusDot').className = `dot ${kind}`;
+}
+
+function renderHealth(h) {
+  if (!h) return;
+  $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
+  $('workerName').textContent = h.service || 'slk-alert-worker';
+  $('lastResponse').textContent = new Date().toLocaleTimeString();
+  if (h.pairs && h.pairs.length) {
+    $('pairs').textContent = h.pairs.join(' · ');
+    const pairSelect = $('alertPair');
+    const curVal = pairSelect.value;
+    pairSelect.innerHTML = '<option value="">All pairs</option>' + h.pairs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    pairSelect.value = curVal;
+  }
+  $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'degraded';
+  $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
+  $('healthDetails').innerHTML = `
+    <div class="health-item"><span>Cloud Service</span><strong>${esc(h.service || '—')}</strong></div>
+    <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '—')}</strong></div>
+    <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
+    <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
+    <div class="health-item"><span>Execution Mode</span><strong>Paper / Research Verified</strong></div>
+    <div class="health-item"><span>Signals Delivered</span><strong>Trade jounal Channel</strong></div>
+  `;
+}
+
+function renderStats(s) {
+  if (!s) return;
+  const netRText = s.netR == null ? '—' : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
+  $('total').textContent = s.total ?? '—';
+  $('open').textContent = s.open ?? '—';
+  $('tp').textContent = s.tp ?? '—';
+  $('sl').textContent = s.sl ?? '—';
+  $('expired').textContent = s.expired ?? '—';
+  $('completed').textContent = s.completed ?? '—';
+  if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
+  $('netR').textContent = netRText;
+  $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
+  $('winRate').textContent = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  renderBreakdown(s.breakdown || []);
+}
+
+function renderBreakdown(rows) {
+  const el = $('performanceBreakdown');
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty">No completed outcomes recorded yet.</div>';
+    return;
+  }
+  el.innerHTML = rows.map(r => `
+    <div class="breakdown-row">
+      <strong>${esc(r.group)}</strong>
+      <span>${r.completed} completed · <span class="profit-text">${r.tp} TP</span> · <span class="loss-text">${r.sl} SL</span></span>
+      <b>${Number(r.netR) > 0 ? '+' : ''}${Number(r.netR).toFixed(2)}R · Max DD ${Number(r.maxDD).toFixed(2)}R</b>
+    </div>
+  `).join('');
+}
+
+function renderPreferences(p) {
+  if (!p) return;
+  if ($('telegramWatch')) $('telegramWatch').checked = Boolean(p.telegram && p.telegram.watchEnabled);
+  if ($('discordWatch')) $('discordWatch').checked = Boolean(p.discord && p.discord.watchEnabled);
+  $('preferenceStatus').textContent = 'Connected';
+  $('preferenceStatus').className = 'pill green';
+  $('preferenceMeta').textContent = `Direct Telegram delivery active · Trade jounal channel`;
+}
+
+async function testNotification(channel) {
+  const button = $(channel === 'telegram' ? 'testTelegram' : 'testDiscord');
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  try {
+    const result = await api('/test-notify', { admin: true, method: 'POST', body: JSON.stringify({ channel }) });
+    const status = (result.results && result.results[channel]) || 'unknown';
+    $('preferenceStatus').textContent = `${channel} test: ${status}`;
+    $('preferenceStatus').className = `pill ${status === 'ok' ? 'green' : 'gray'}`;
+    setStatus(status === 'ok' ? 'Test delivered' : 'Test completed', 'ok');
+  } catch (e) {
+    $('preferenceStatus').textContent = 'Admin key needed';
+    $('preferenceStatus').className = 'pill gray';
+    $('error').textContent = 'Admin key required to test notifications: ' + e.message;
+    $('error').hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = channel === 'telegram' ? 'Send Test to Telegram' : 'Test Discord';
+  }
+}
+
+async function savePreferences() {
+  const button = $('savePreferences');
+  button.disabled = true;
+  button.textContent = 'Saving…';
+  try {
+    const p = await api('/dashboard/preferences/notifications', {
+      admin: true,
+      method: 'PATCH',
+      body: JSON.stringify({
+        telegram: { watchEnabled: $('telegramWatch').checked },
+        discord: { watchEnabled: $('discordWatch') ? $('discordWatch').checked : false }
+      })
+    });
+    renderPreferences(p);
+    $('preferenceStatus').textContent = 'Saved';
+    setStatus('Preferences saved', 'ok');
+  } catch (e) {
+    $('preferenceStatus').textContent = 'Admin key needed';
+    $('preferenceStatus').className = 'pill gray';
+    $('error').textContent = 'Admin key required to update preferences: ' + e.message;
+    $('error').hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save Preferences';
+  }
+}
+
+function alertParams() {
+  const p = new URLSearchParams({
+    page: String(state.alertPage),
+    pageSize: String(state.alertPageSize),
+    sort: $('alertSort').value || 'candleCloseTime',
+    order: 'desc'
+  });
+  [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch']].forEach(([key, id]) => {
+    const el = $(id);
+    if (el && el.value) {
+      p.set(key, el.value);
+    }
+  });
+  return p.toString();
+}
+
+async function loadAlerts() {
+  try {
+    const result = await api(`/alerts?${alertParams()}`);
+    state.alerts = Array.isArray(result) ? result : (result.items || []);
+    state.alertTotal = result.total ?? state.alerts.length;
+    $('alertTotal').textContent = `${state.alertTotal} setups recorded`;
+    $('alertPage').textContent = `Page ${state.alertPage}`;
+    $('prevAlerts').disabled = state.alertPage <= 1;
+    $('nextAlerts').disabled = state.alertPage * state.alertPageSize >= state.alertTotal;
+    renderAlerts();
+  } catch (e) {
+    $('error').textContent = e.message;
+    $('error').hidden = false;
+  }
+}
+
+function clearAlertFilters() {
+  ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSearch'].forEach(id => {
+    const el = $(id);
+    if (el) el.value = '';
+  });
+  state.alertPage = 1;
+  loadAlerts();
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+}
+
+function renderAlerts() {
+  const rows = state.alerts;
+  if (!rows.length) {
+    $('alertsList').innerHTML = '<div class="empty">No alerts match this filter.</div>';
+    return;
+  }
+  $('alertsList').innerHTML = rows.map(a => {
+    const dirClass = a.direction === 'LONG' ? 'profit-text' : 'loss-text';
+    const statusClass = a.status === 'TP_HIT' ? 'profit-text' : (a.status === 'SL_HIT' ? 'loss-text' : 'state');
+    return `
+      <button class="alert-row" data-setup="${esc(a.setupId)}" data-tf="${esc(a.tf)}">
+        <div>
+          <strong>${esc(a.pair)} · ${esc(a.tf)} · <span class="${dirClass}">${esc(a.direction)}</span></strong>
+          <small>${esc(a.keyLevel || 'Key Level')} · ${fmtDate(a.candleCloseTime)}</small>
+        </div>
+        <div>
+          <span>Entry Price</span>
+          <strong>${num(a.entry)}</strong>
+        </div>
+        <div>
+          <span>SL / TP1</span>
+          <strong>${num(a.stopLoss)} / ${num(a.tp1)}</strong>
+        </div>
+        <div>
+          <span>Lifecycle Status</span>
+          <strong class="${statusClass}">${esc(a.status)} · ${esc(a.alertStatus || 'CONFIRMED')}</strong>
+        </div>
+      </button>
+    `;
+  }).join('');
+  document.querySelectorAll('.alert-row').forEach(row => {
+    row.addEventListener('click', () => openChart(row.dataset.setup, row.dataset.tf));
+  });
+}
+
+async function openChart(setupId, tf) {
+  $('chartModal').hidden = false;
+  $('chartTitle').textContent = `${setupId} · OHLC Evidence`;
+  $('chartStatus').textContent = 'Loading market candles…';
+  $('chartNotice').hidden = true;
+  $('ohlcChart').innerHTML = '';
+  try {
+    const data = await api(`/dashboard/signals/${encodeURIComponent(setupId)}/chart?timeframe=${encodeURIComponent(tf)}&before=200&after=20`);
+    if (data.status && data.status !== 'OK' && (!data.candles || !data.candles.length)) {
+      showChartNotice(`${data.status}: ${data.error || 'No finalized history available.'}`);
+      return;
+    }
+    renderChart(data);
+  } catch (e) {
+    showChartNotice(`Chart unavailable: ${e.message}`);
+  }
+}
+
+function showChartNotice(text) {
+  $('chartNotice').textContent = text;
+  $('chartNotice').hidden = false;
+  $('chartStatus').textContent = 'No real candles rendered';
+  $('ohlcChart').innerHTML = '';
+}
+
+function renderChart(data) {
+  const candles = data.candles || [];
+  if (!candles.length) {
+    showChartNotice('HISTORY_INSUFFICIENT: No historical candles available for this setup.');
+    return;
+  }
+  const svg = $('ohlcChart'), W = 1000, H = 460, pad = { l: 62, r: 24, t: 20, b: 44 };
+  const values = candles.flatMap(c => [c.high, c.low]);
+  const levels = data.levels || {};
+  Object.values(levels).forEach(v => {
+    if (v != null && Number.isFinite(Number(v))) values.push(Number(v));
+  });
+  let lo = Math.min(...values), hi = Math.max(...values), margin = (hi - lo) * 0.08 || 1;
+  lo -= margin;
+  hi += margin;
+  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, candles.length - 1);
+  const y = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
+  let out = `<rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="#0b111a"/>`;
+  for (let i = 0; i < 5; i++) {
+    const v = hi - (hi - lo) * i / 4;
+    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#253044"/><text x="8" y="${y(v) + 4}" fill="#8793a7" font-size="11">${num(v)}</text>`;
+  }
+  const cw = Math.max(2, Math.min(14, (W - pad.l - pad.r) / candles.length * 0.65));
+  candles.forEach((c, i) => {
+    const xx = x(i), up = c.close >= c.open, color = up ? '#8cf0c6' : '#ff8f9b', bodyY = Math.min(y(c.open), y(c.close)), bodyH = Math.max(1, Math.abs(y(c.open) - y(c.close)));
+    out += `<g><title>${fmtDate(c.time)} · O ${num(c.open)} H ${num(c.high)} L ${num(c.low)} C ${num(c.close)}</title><line x1="${xx}" x2="${xx}" y1="${y(c.high)}" y2="${y(c.low)}" stroke="${color}"/><rect x="${xx - cw / 2}" y="${bodyY}" width="${cw}" height="${bodyH}" fill="${color}" opacity=".9"/></g>`;
+  });
+  const lineDefs = [
+    ['entry', 'Entry', '#80a9ff'],
+    ['stop', 'Stop', '#ff8f9b'],
+    ['invalidation', 'Invalidation', '#f6c66d'],
+    ['target1', 'TP1 (3R)', '#8cf0c6'],
+    ['target2', 'TP2', '#65d6bd'],
+    ['keyLevelLow', 'Key Low', '#b093ff'],
+    ['keyLevelHigh', 'Key High', '#b093ff']
+  ];
+  lineDefs.forEach(([key, label, color]) => {
+    if (levels[key] == null) return;
+    const v = Number(levels[key]);
+    if (!Number.isFinite(v)) return;
+    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="${color}" stroke-dasharray="6 5"/><text x="${W - pad.r - 5}" y="${y(v) - 5}" text-anchor="end" fill="${color}" font-size="11">${label} ${num(v)}</text>`;
+  });
+  (data.evidenceMarkers || []).forEach(m => {
+    const t = new Date(m.time).getTime(), idx = candles.findIndex(c => new Date(c.time).getTime() >= t);
+    if (idx < 0) return;
+    const xx = x(idx);
+    out += `<circle cx="${xx}" cy="${pad.t + 10}" r="5" fill="#f6c66d"><title>${esc(m.type)} · ${esc(m.label)}</title></circle>`;
+  });
+  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">${fmtDate(candles[0].time)}</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">${fmtDate(candles[candles.length - 1].time)}</text>`;
+  svg.innerHTML = out;
+  const requested = data.requestedBefore || candles.length;
+  const incomplete = data.dataHealth && !data.dataHealth.historyComplete;
+  $('chartStatus').textContent = `LIVE OHLC · ${candles.length} candles · ${data.provider || 'twelvedata'}${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}`;
+  $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(x => `<span style="color:${x[2]}">━ ${x[1]}</span>`).join(' ');
+}
+
+function num(x) {
+  return x == null ? '—' : Number(x).toPrecision(7);
+}
+
+function fmtDate(x) {
+  if (!x) return '—';
+  const d = new Date(x);
+  return Number.isNaN(d.getTime()) ? '—' : d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+}
+
+function esc(x) {
+  return String(x ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+document.querySelectorAll('[data-close-chart]').forEach(x => x.addEventListener('click', () => { $('chartModal').hidden = true; }));
+
+// Auto-load on open for seamless public portfolio viewing
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', loadAll);
+} else {
+  loadAll();
+}
