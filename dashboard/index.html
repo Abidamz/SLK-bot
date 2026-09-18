@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -24,7 +24,6 @@
         <span id="statusDot" class="dot muted"></span>
         <span id="statusText">Connecting…</span>
       </div>
-      <button id="toggleAdminBtn" class="admin-toggle-btn" title="Admin Settings">⚙️</button>
     </div>
   </header>
 
@@ -40,21 +39,6 @@
         <strong>PAPER MODE</strong>
         <small>Automated Cloud Scanner</small>
       </div>
-    </section>
-
-    <!-- Admin configuration panel (hidden by default for public visitors) -->
-    <section id="connectionPanel" class="connection panel" hidden>
-      <div>
-        <h2>Worker Connection & Admin Settings</h2>
-        <p>Pre-configured for public viewing. Admin key is only required for updating notification preferences or test delivery.</p>
-      </div>
-      <div class="connection-form">
-        <input id="apiUrl" type="url" value="https://slk-alert-worker.abidogundamilola.workers.dev" aria-label="Worker URL">
-        <input id="readKey" type="password" placeholder="Read-only key (optional)" aria-label="Read-only dashboard key">
-        <input id="adminKey" type="password" placeholder="Admin key" aria-label="Admin key">
-        <button id="connectBtn">Connect</button>
-      </div>
-      <p id="error" class="error" hidden></p>
     </section>
 
     <nav class="tabs" aria-label="Dashboard sections">
@@ -268,6 +252,6 @@
       <a href="https://t.me/+fAGWR0lPJSRmYTNk" target="_blank" rel="noopener noreferrer">Telegram Channel</a>
     </div>
   </footer>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

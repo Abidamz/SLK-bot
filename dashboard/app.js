@@ -1,7 +1,7 @@
 const DEFAULT_URL = 'https://slk-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
-  url: sessionStorage.getItem('slkUrl') || DEFAULT_URL,
+  url: DEFAULT_URL,
   adminKey: sessionStorage.getItem('slkAdminKey') || '',
   alerts: [],
   alertPage: 1,
@@ -11,25 +11,15 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
-if ($('apiUrl')) $('apiUrl').value = state.url;
-if ($('adminKey')) $('adminKey').value = state.adminKey;
-
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab, .tab-panel').forEach(x => x.classList.remove('active'));
     btn.classList.add('active');
-    $(btn.dataset.tab).classList.add('active');
+    const panel = $(btn.dataset.tab);
+    if (panel) panel.classList.add('active');
   });
 });
 
-if ($('toggleAdminBtn')) {
-  $('toggleAdminBtn').addEventListener('click', () => {
-    const p = $('connectionPanel');
-    if (p) p.hidden = !p.hidden;
-  });
-}
-
-if ($('connectBtn')) $('connectBtn').addEventListener('click', connect);
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
 ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort'].forEach(id => {
@@ -60,11 +50,8 @@ if ($('nextAlerts')) $('nextAlerts').addEventListener('click', () => {
 
 if ($('savePreferences')) $('savePreferences').addEventListener('click', savePreferences);
 if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNotification('telegram'));
-if ($('testDiscord')) $('testDiscord').addEventListener('click', () => testNotification('discord'));
 
 async function api(path, options = {}) {
-  // Public requests never send Authorization header, avoiding any stale token rejection.
-  // Only administrative actions (test-notify, patch preferences) include the admin key.
   const headers = {
     ...(options.admin && state.adminKey ? { Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
@@ -74,17 +61,18 @@ async function api(path, options = {}) {
   return r.json();
 }
 
-async function connect() {
-  state.url = $('apiUrl') ? $('apiUrl').value.trim() : DEFAULT_URL;
-  state.adminKey = $('adminKey') ? $('adminKey').value.trim() : '';
-  sessionStorage.setItem('slkUrl', state.url);
-  if (state.adminKey) sessionStorage.setItem('slkAdminKey', state.adminKey);
-  await loadAll();
+async function getAdminKey() {
+  if (state.adminKey) return state.adminKey;
+  const key = window.prompt("Enter Admin Key:");
+  if (key) {
+    state.adminKey = key.trim();
+    sessionStorage.setItem('slkAdminKey', state.adminKey);
+  }
+  return state.adminKey;
 }
 
 async function loadAll() {
-  setStatus('Live feed updating…', 'muted');
-  if ($('error')) $('error').hidden = true;
+  setStatus('Syncing live ledger…', 'muted');
   try {
     const [health, stats, prefs] = await Promise.all([
       api('/health').catch(() => null),
@@ -97,61 +85,64 @@ async function loadAll() {
     await loadAlerts();
     setStatus('Live Connected', 'ok');
   } catch (e) {
-    setStatus('Connection failed', 'bad');
-    if ($('error')) {
-      $('error').textContent = e.message;
-      $('error').hidden = false;
-    }
+    setStatus('Feed offline', 'bad');
   }
 }
 
 function setStatus(text, kind) {
-  $('statusText').textContent = text;
-  $('statusDot').className = `dot ${kind}`;
+  if ($('statusText')) $('statusText').textContent = text;
+  if ($('statusDot')) $('statusDot').className = `dot ${kind}`;
 }
 
 function renderHealth(h) {
   if (!h) return;
-  $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
-  $('workerName').textContent = h.service || 'slk-alert-worker';
-  $('lastResponse').textContent = new Date().toLocaleTimeString();
+  if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
+  if ($('workerName')) $('workerName').textContent = h.service || 'slk-alert-worker';
+  if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if (h.pairs && h.pairs.length) {
-    $('pairs').textContent = h.pairs.join(' · ');
+    if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
-    const curVal = pairSelect.value;
-    pairSelect.innerHTML = '<option value="">All pairs</option>' + h.pairs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-    pairSelect.value = curVal;
+    if (pairSelect) {
+      const curVal = pairSelect.value;
+      pairSelect.innerHTML = '<option value="">All pairs</option>' + h.pairs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+      pairSelect.value = curVal;
+    }
   }
-  $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'degraded';
-  $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
-  $('healthDetails').innerHTML = `
-    <div class="health-item"><span>Cloud Service</span><strong>${esc(h.service || '—')}</strong></div>
-    <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '—')}</strong></div>
-    <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
-    <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
-    <div class="health-item"><span>Execution Mode</span><strong>Paper / Research Verified</strong></div>
-    <div class="health-item"><span>Signals Delivered</span><strong>Trade jounal Channel</strong></div>
-  `;
+  if ($('healthPill')) {
+    $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'degraded';
+    $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
+  }
+  if ($('healthDetails')) {
+    $('healthDetails').innerHTML = `
+      <div class="health-item"><span>Cloud Service</span><strong>${esc(h.service || '—')}</strong></div>
+      <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '—')}</strong></div>
+      <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
+      <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
+      <div class="health-item"><span>Execution Mode</span><strong>Paper / Verified Quantitative</strong></div>
+      <div class="health-item"><span>Signals Destination</span><strong>Trade jounal Channel</strong></div>
+    `;
+  }
 }
 
 function renderStats(s) {
   if (!s) return;
   const netRText = s.netR == null ? '—' : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
-  $('total').textContent = s.total ?? '—';
-  $('open').textContent = s.open ?? '—';
-  $('tp').textContent = s.tp ?? '—';
-  $('sl').textContent = s.sl ?? '—';
-  $('expired').textContent = s.expired ?? '—';
-  $('completed').textContent = s.completed ?? '—';
+  if ($('total')) $('total').textContent = s.total ?? '—';
+  if ($('open')) $('open').textContent = s.open ?? '—';
+  if ($('tp')) $('tp').textContent = s.tp ?? '—';
+  if ($('sl')) $('sl').textContent = s.sl ?? '—';
+  if ($('expired')) $('expired').textContent = s.expired ?? '—';
+  if ($('completed')) $('completed').textContent = s.completed ?? '—';
   if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
-  $('netR').textContent = netRText;
-  $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
-  $('winRate').textContent = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  if ($('netR')) $('netR').textContent = netRText;
+  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
+  if ($('winRate')) $('winRate').textContent = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
   renderBreakdown(s.breakdown || []);
 }
 
 function renderBreakdown(rows) {
   const el = $('performanceBreakdown');
+  if (!el) return;
   if (!rows || !rows.length) {
     el.innerHTML = '<div class="empty">No completed outcomes recorded yet.</div>';
     return;
@@ -168,36 +159,49 @@ function renderBreakdown(rows) {
 function renderPreferences(p) {
   if (!p) return;
   if ($('telegramWatch')) $('telegramWatch').checked = Boolean(p.telegram && p.telegram.watchEnabled);
-  if ($('discordWatch')) $('discordWatch').checked = Boolean(p.discord && p.discord.watchEnabled);
-  $('preferenceStatus').textContent = 'Connected';
-  $('preferenceStatus').className = 'pill green';
-  $('preferenceMeta').textContent = `Direct Telegram delivery active · Trade jounal channel`;
+  if ($('preferenceStatus')) {
+    $('preferenceStatus').textContent = 'Connected';
+    $('preferenceStatus').className = 'pill green';
+  }
+  if ($('preferenceMeta')) {
+    $('preferenceMeta').textContent = `Direct Telegram delivery active · Trade jounal channel`;
+  }
 }
 
 async function testNotification(channel) {
-  const button = $(channel === 'telegram' ? 'testTelegram' : 'testDiscord');
+  const button = $('testTelegram');
   if (!button) return;
+  const adminKey = await getAdminKey();
+  if (!adminKey) {
+    alert("Admin key required to send test alerts.");
+    return;
+  }
   button.disabled = true;
   button.textContent = 'Sending…';
   try {
     const result = await api('/test-notify', { admin: true, method: 'POST', body: JSON.stringify({ channel }) });
     const status = (result.results && result.results[channel]) || 'unknown';
-    $('preferenceStatus').textContent = `${channel} test: ${status}`;
-    $('preferenceStatus').className = `pill ${status === 'ok' ? 'green' : 'gray'}`;
+    if ($('preferenceStatus')) {
+      $('preferenceStatus').textContent = `${channel} test: ${status}`;
+      $('preferenceStatus').className = `pill ${status === 'ok' ? 'green' : 'gray'}`;
+    }
     setStatus(status === 'ok' ? 'Test delivered' : 'Test completed', 'ok');
   } catch (e) {
-    $('preferenceStatus').textContent = 'Admin key needed';
-    $('preferenceStatus').className = 'pill gray';
-    $('error').textContent = 'Admin key required to test notifications: ' + e.message;
-    $('error').hidden = false;
+    alert('Test delivery failed: ' + e.message);
   } finally {
     button.disabled = false;
-    button.textContent = channel === 'telegram' ? 'Send Test to Telegram' : 'Test Discord';
+    button.textContent = 'Send Test to Telegram';
   }
 }
 
 async function savePreferences() {
   const button = $('savePreferences');
+  if (!button) return;
+  const adminKey = await getAdminKey();
+  if (!adminKey) {
+    alert("Admin key required to update channel preferences.");
+    return;
+  }
   button.disabled = true;
   button.textContent = 'Saving…';
   try {
@@ -205,18 +209,13 @@ async function savePreferences() {
       admin: true,
       method: 'PATCH',
       body: JSON.stringify({
-        telegram: { watchEnabled: $('telegramWatch').checked },
-        discord: { watchEnabled: $('discordWatch') ? $('discordWatch').checked : false }
+        telegram: { watchEnabled: $('telegramWatch') ? $('telegramWatch').checked : false }
       })
     });
     renderPreferences(p);
-    $('preferenceStatus').textContent = 'Saved';
     setStatus('Preferences saved', 'ok');
   } catch (e) {
-    $('preferenceStatus').textContent = 'Admin key needed';
-    $('preferenceStatus').className = 'pill gray';
-    $('error').textContent = 'Admin key required to update preferences: ' + e.message;
-    $('error').hidden = false;
+    alert('Failed to save preferences: ' + e.message);
   } finally {
     button.disabled = false;
     button.textContent = 'Save Preferences';
@@ -227,7 +226,7 @@ function alertParams() {
   const p = new URLSearchParams({
     page: String(state.alertPage),
     pageSize: String(state.alertPageSize),
-    sort: $('alertSort').value || 'candleCloseTime',
+    sort: ($('alertSort') && $('alertSort').value) || 'candleCloseTime',
     order: 'desc'
   });
   [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch']].forEach(([key, id]) => {
@@ -244,14 +243,13 @@ async function loadAlerts() {
     const result = await api(`/alerts?${alertParams()}`);
     state.alerts = Array.isArray(result) ? result : (result.items || []);
     state.alertTotal = result.total ?? state.alerts.length;
-    $('alertTotal').textContent = `${state.alertTotal} setups recorded`;
-    $('alertPage').textContent = `Page ${state.alertPage}`;
-    $('prevAlerts').disabled = state.alertPage <= 1;
-    $('nextAlerts').disabled = state.alertPage * state.alertPageSize >= state.alertTotal;
+    if ($('alertTotal')) $('alertTotal').textContent = `${state.alertTotal} setups recorded`;
+    if ($('alertPage')) $('alertPage').textContent = `Page ${state.alertPage}`;
+    if ($('prevAlerts')) $('prevAlerts').disabled = state.alertPage <= 1;
+    if ($('nextAlerts')) $('nextAlerts').disabled = state.alertPage * state.alertPageSize >= state.alertTotal;
     renderAlerts();
   } catch (e) {
-    $('error').textContent = e.message;
-    $('error').hidden = false;
+    console.error('Failed to load alerts:', e);
   }
 }
 
@@ -274,11 +272,13 @@ function debounce(fn, ms) {
 
 function renderAlerts() {
   const rows = state.alerts;
+  const listEl = $('alertsList');
+  if (!listEl) return;
   if (!rows.length) {
-    $('alertsList').innerHTML = '<div class="empty">No alerts match this filter.</div>';
+    listEl.innerHTML = '<div class="empty">No alerts match this filter.</div>';
     return;
   }
-  $('alertsList').innerHTML = rows.map(a => {
+  listEl.innerHTML = rows.map(a => {
     const dirClass = a.direction === 'LONG' ? 'profit-text' : 'loss-text';
     const statusClass = a.status === 'TP_HIT' ? 'profit-text' : (a.status === 'SL_HIT' ? 'loss-text' : 'state');
     return `
@@ -308,6 +308,7 @@ function renderAlerts() {
 }
 
 async function openChart(setupId, tf) {
+  if (!$('chartModal')) return;
   $('chartModal').hidden = false;
   $('chartTitle').textContent = `${setupId} · OHLC Evidence`;
   $('chartStatus').textContent = 'Loading market candles…';
@@ -326,10 +327,12 @@ async function openChart(setupId, tf) {
 }
 
 function showChartNotice(text) {
-  $('chartNotice').textContent = text;
-  $('chartNotice').hidden = false;
-  $('chartStatus').textContent = 'No real candles rendered';
-  $('ohlcChart').innerHTML = '';
+  if ($('chartNotice')) {
+    $('chartNotice').textContent = text;
+    $('chartNotice').hidden = false;
+  }
+  if ($('chartStatus')) $('chartStatus').textContent = 'No real candles rendered';
+  if ($('ohlcChart')) $('ohlcChart').innerHTML = '';
 }
 
 function renderChart(data) {
@@ -384,8 +387,8 @@ function renderChart(data) {
   svg.innerHTML = out;
   const requested = data.requestedBefore || candles.length;
   const incomplete = data.dataHealth && !data.dataHealth.historyComplete;
-  $('chartStatus').textContent = `LIVE OHLC · ${candles.length} candles · ${data.provider || 'twelvedata'}${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}`;
-  $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(x => `<span style="color:${x[2]}">━ ${x[1]}</span>`).join(' ');
+  if ($('chartStatus')) $('chartStatus').textContent = `LIVE OHLC · ${candles.length} candles · ${data.provider || 'twelvedata'}${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}`;
+  if ($('chartLegend')) $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(x => `<span style="color:${x[2]}">━ ${x[1]}</span>`).join(' ');
 }
 
 function num(x) {
@@ -402,9 +405,11 @@ function esc(x) {
   return String(x ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-document.querySelectorAll('[data-close-chart]').forEach(x => x.addEventListener('click', () => { $('chartModal').hidden = true; }));
+document.querySelectorAll('[data-close-chart]').forEach(x => x.addEventListener('click', () => {
+  if ($('chartModal')) $('chartModal').hidden = true;
+}));
 
-// Auto-load on open for seamless public portfolio viewing
+// Automatically load live data on open
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', loadAll);
 } else {
