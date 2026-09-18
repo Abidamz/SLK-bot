@@ -383,13 +383,46 @@ export interface MarketDataRequest {
 
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
+  if (provider === "twelvedata") {
+    try {
+      const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+      return { provider, candles };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isRateOrCredit = msg.includes("run out of API credits")
+        || msg.includes("API credits were used")
+        || msg.includes("429");
+      if (isRateOrCredit) {
+        console.warn(JSON.stringify({
+          level: "warn",
+          msg: "slk.provider.fallback",
+          pair: req.pair,
+          tf: req.tf,
+          from: "twelvedata",
+          to: "dukascopy",
+          reason: msg,
+        }));
+        try {
+          const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
+          return { provider: "dukascopy", candles };
+        } catch (dukaErr) {
+          try {
+            const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+            return { provider: "yahoo", candles };
+          } catch {
+            throw err;
+          }
+        }
+      }
+      throw err;
+    }
+  }
+
   const candles = provider === "oanda"
     ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
     : provider === "dukascopy"
       ? await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv)
-      : provider === "yahoo"
-        ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
-        : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+      : await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
 

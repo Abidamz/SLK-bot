@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeJetta, fetchDukascopy, fetchOanda, fetchYahoo, providerForPair, symbolFor, DataQualityError } from "../src/provider";
+import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, symbolFor, DataQualityError } from "../src/provider";
 import { dukaJson, yahooFlatFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
@@ -294,5 +294,35 @@ describe("SYMBOL_MAP precedence", () => {
     };
     await fetchOanda("TOK", "US30", "30m", 10, { US30: "^DJI" }, fetchFn);
     expect(urls[0]).toContain("US30_USD");
+  });
+});
+
+describe("fetchMarketData rate-limit fallback", () => {
+  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted", async () => {
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({
+          code: 429,
+          message: "You have run out of API credits for the day. 815 API credits were used, with the current limit being 800.",
+          status: "error",
+        }), { status: 200 });
+      }
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "EURUSD",
+      tf: "30m",
+      limit: 10,
+      tdKey: "test_td_key",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("dukascopy");
+    expect(res.candles.length).toBeGreaterThan(0);
   });
 });
