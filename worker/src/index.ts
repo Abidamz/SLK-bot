@@ -467,6 +467,26 @@ export default {
       });
     }
 
+    if (url.pathname === "/scan-log" && request.method === "GET") {
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
+      try {
+        const rows = await env.DB.prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY id DESC LIMIT 10").all();
+        return json({ logs: rows.results ?? [] });
+      } catch (err) {
+        return json({ error: String(err) }, 500);
+      }
+    }
+
+    if (url.pathname === "/recent-events" && request.method === "GET") {
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
+      try {
+        const rows = await env.DB.prepare("SELECT id, setup_id, pair, state, candle_time, reason, price, created_utc FROM slk_events ORDER BY id DESC LIMIT 20").all();
+        return json({ events: rows.results ?? [] });
+      } catch (err) {
+        return json({ error: String(err) }, 500);
+      }
+    }
+
     if (url.pathname === "/signals/confirmed" && request.method === "GET") {
       if (!env.SIGNAL_API_KEY || request.headers.get("authorization") !== `Bearer ${env.SIGNAL_API_KEY}`)
         return json({ error: "unauthorized" }, 401);
