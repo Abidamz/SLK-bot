@@ -49,6 +49,7 @@ export interface Store {
   recentAlerts(limit: number): Promise<AlertRow[]>;
   queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
+  recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
@@ -270,6 +271,14 @@ export class D1Store implements Store {
       .all();
     return res.results;
   }
+
+  async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY id DESC LIMIT ?")
+      .bind(limit)
+      .all();
+    return res.results;
+  }
 }
 
 // ---------------------------------------------------------- in-memory impl
@@ -375,6 +384,10 @@ export class MemStore implements Store {
 
   async recentEvents(limit: number): Promise<Record<string, unknown>[]> {
     return this.events.slice(-limit).reverse();
+  }
+
+  async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
+    return this.scanLog.slice(-limit).reverse() as unknown as Record<string, unknown>[];
   }
 }
 

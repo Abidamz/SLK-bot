@@ -22,7 +22,7 @@ import { fetchMarketData, providerForPair, validateAndClose, DataQualityError } 
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
-import type { Alert, Candle } from "./types";
+import type { Alert, Candle, Direction } from "./types";
 
 export interface Env {
   DB?: D1Like;
@@ -469,9 +469,10 @@ export default {
 
     if (url.pathname === "/scan-log" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
+      const store = makeStore(env.DB);
       try {
-        const rows = await env.DB.prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY id DESC LIMIT 10").all();
-        return json({ logs: rows.results ?? [] });
+        const rows = await store.recentScanLogs(10);
+        return json({ logs: rows });
       } catch (err) {
         return json({ error: String(err) }, 500);
       }
@@ -479,9 +480,10 @@ export default {
 
     if (url.pathname === "/recent-events" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
+      const store = makeStore(env.DB);
       try {
-        const rows = await env.DB.prepare("SELECT id, setup_id, pair, state, candle_time, reason, price, created_utc FROM slk_events ORDER BY id DESC LIMIT 20").all();
-        return json({ events: rows.results ?? [] });
+        const rows = await store.recentEvents(20);
+        return json({ events: rows });
       } catch (err) {
         return json({ error: String(err) }, 500);
       }
