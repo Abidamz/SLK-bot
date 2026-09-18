@@ -34,7 +34,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 .preference-actions{display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:800px){.preference-actions{width:100%;flex-direction:column}.preference-actions button{width:100%}}
 .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.filter-bar input,.filter-bar select{min-width:130px}.filter-bar input{flex:1}.pagination{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:18px;color:var(--muted);font-size:12px}.pagination button:disabled{opacity:.45;cursor:not-allowed}
-.breakdown-list{display:grid;gap:8px}.breakdown-row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:12px;background:#0e151f}.breakdown-row span{color:var(--muted);font-size:12px}.breakdown-row b{color:var(--accent);text-align:right;font-size:12px}@media(max-width:800px){.breakdown-row{grid-template-columns:1fr}.breakdown-row b{text-align:left}}
+.period-btn{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600;transition:all .15s ease}.period-btn:hover{color:var(--text);border-color:#54719c}.period-btn.active{background:var(--panel2);border-color:var(--accent);color:var(--accent)}.breakdown-list{display:grid;gap:8px}.breakdown-row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:12px;background:#0e151f}.breakdown-row span{color:var(--muted);font-size:12px}.breakdown-row b{color:var(--accent);text-align:right;font-size:12px}@media(max-width:800px){.breakdown-row{grid-template-columns:1fr}.breakdown-row b{text-align:left}}
 
 </style>
 </head>
@@ -151,8 +151,38 @@ export const DASHBOARD_HTML = `<!doctype html>
     </section>
 
     <section id="performance" class="tab-panel">
+      <div class="panel-head" style="align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+        <div>
+          <p class="eyebrow">PORTFOLIO TRACK RECORD</p>
+          <h2 style="margin:0;">Verified Strategy Performance</h2>
+        </div>
+        <div class="period-filter-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="color: var(--muted); font-size: 12px; font-weight: 600;">Period:</span>
+          <div class="period-pills" id="perfPeriodButtons" style="display: flex; gap: 6px;">
+            <button type="button" class="period-btn active" data-period="all">All Time</button>
+            <button type="button" class="period-btn" data-period="90d">90D</button>
+            <button type="button" class="period-btn" data-period="30d">30D</button>
+            <button type="button" class="period-btn" data-period="7d">7D</button>
+            <button type="button" class="period-btn" data-period="today">Today</button>
+          </div>
+          <span id="perfPeriodBadge" class="pill green">All Time</span>
+        </div>
+      </div>
+
+      <div class="period-date-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px 18px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; font-size: 12px;">
+        <span style="color: var(--muted);">📅 Date Range: <strong id="perfDateSpan" style="color: var(--text);">All Recorded Outcomes</strong></span>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Custom Range:</span>
+          <input id="perfFromDate" type="date" style="padding: 5px 10px; font-size: 12px; background: #0c121b; border: 1px solid var(--line); color: var(--text); border-radius: 7px;" aria-label="From Date">
+          <span style="color: var(--muted);">to</span>
+          <input id="perfToDate" type="date" style="padding: 5px 10px; font-size: 12px; background: #0c121b; border: 1px solid var(--line); color: var(--text); border-radius: 7px;" aria-label="To Date">
+          <button id="applyPerfDates" class="secondary" style="padding: 5px 12px; font-size: 12px; border-radius: 7px;">Filter</button>
+          <button id="resetPerfDates" class="secondary" style="padding: 5px 12px; font-size: 12px; border-radius: 7px;">Reset</button>
+        </div>
+      </div>
+
       <div class="metric-grid">
-        <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R</small></article>
+        <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R (<span id="perfPeriodLabel">All Time</span>)</small></article>
         <article class="metric"><span>TP Hits</span><strong id="tp" class="profit-text">—</strong><small>full target reached</small></article>
         <article class="metric"><span>SL Hits</span><strong id="sl" class="loss-text">—</strong><small>stop loss triggered</small></article>
         <article class="metric"><span>Max Drawdown</span><strong id="maxDD">—</strong><small>peak to trough</small></article>
@@ -193,10 +223,15 @@ export const DASHBOARD_HTML = `<!doctype html>
         <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
         <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
         <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All states</option><option value="OPEN">Open (Active)</option><option value="TP_HIT">TP Hit</option><option value="SL_HIT">SL Hit</option><option value="EXPIRED">Expired</option></select>
+        <div class="date-filter-group" style="display: flex; align-items: center; gap: 6px;">
+          <span style="color: var(--muted); font-size: 11px;">From:</span>
+          <input id="alertFrom" type="date" aria-label="From UTC" style="padding: 7px 9px;">
+          <span style="color: var(--muted); font-size: 11px;">To:</span>
+          <input id="alertTo" type="date" aria-label="To UTC" style="padding: 7px 9px;">
+        </div>
         <select id="alertOutcome" aria-label="Outcome" hidden><option value="">All outcomes</option></select>
         <select id="alertChannel" aria-label="Channel" hidden><option value="">All channels</option></select>
         <select id="alertProvider" aria-label="Provider" hidden><option value="">All providers</option></select>
-        <input id="alertFrom" type="date" aria-label="From UTC" hidden><input id="alertTo" type="date" aria-label="To UTC" hidden>
         <input id="alertSearch" type="search" placeholder="Search pair (e.g. XAUUSD, USDJPY)" aria-label="Search alerts">
         <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Status</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>
@@ -302,7 +337,10 @@ const state = {
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
-  alertPageSize: 25
+  alertPageSize: 25,
+  perfPeriod: 'all',
+  perfFrom: '',
+  perfTo: ''
 };
 
 const $ = id => document.getElementById(id);
@@ -316,9 +354,50 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.perfPeriod = btn.dataset.period || 'all';
+    state.perfFrom = '';
+    state.perfTo = '';
+    if ($('perfFromDate')) $('perfFromDate').value = '';
+    if ($('perfToDate')) $('perfToDate').value = '';
+    loadStats();
+  });
+});
+
+if ($('applyPerfDates')) {
+  $('applyPerfDates').addEventListener('click', () => {
+    const from = $('perfFromDate') ? $('perfFromDate').value : '';
+    const to = $('perfToDate') ? $('perfToDate').value : '';
+    if (!from && !to) return;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    state.perfPeriod = 'custom';
+    state.perfFrom = from || '';
+    state.perfTo = to || '';
+    loadStats();
+  });
+}
+
+if ($('resetPerfDates')) {
+  $('resetPerfDates').addEventListener('click', () => {
+    state.perfPeriod = 'all';
+    state.perfFrom = '';
+    state.perfTo = '';
+    if ($('perfFromDate')) $('perfFromDate').value = '';
+    if ($('perfToDate')) $('perfToDate').value = '';
+    document.querySelectorAll('.period-btn').forEach(b => {
+      if (b.dataset.period === 'all') b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    loadStats();
+  });
+}
+
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
-['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort'].forEach(id => {
+['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort', 'alertFrom', 'alertTo'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
 });
@@ -370,18 +449,37 @@ async function getAdminKey() {
 async function loadAll() {
   setStatus('Syncing live ledger…', 'muted');
   try {
-    const [health, stats, prefs] = await Promise.all([
+    const [health, _stats, prefs] = await Promise.all([
       api('/health').catch(() => null),
-      api('/stats').catch(() => null),
+      loadStats(),
       api('/dashboard/preferences/notifications').catch(() => null)
     ]);
     if (health) renderHealth(health);
-    if (stats) renderStats(stats);
     if (prefs) renderPreferences(prefs);
     await loadAlerts();
     setStatus('Live Connected', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
+  }
+}
+
+async function loadStats() {
+  try {
+    let q = '';
+    if (state.perfPeriod && state.perfPeriod !== 'all' && state.perfPeriod !== 'custom') {
+      q = \`?period=\${encodeURIComponent(state.perfPeriod)}\`;
+    } else if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
+      const p = new URLSearchParams();
+      if (state.perfFrom) p.set('from', state.perfFrom);
+      if (state.perfTo) p.set('to', state.perfTo);
+      q = \`?\${p.toString()}\`;
+    }
+    const s = await api(\`/stats\${q}\`);
+    renderStats(s);
+    return s;
+  } catch (e) {
+    console.error('Failed to load stats:', e);
+    return null;
   }
 }
 
@@ -420,6 +518,12 @@ function renderHealth(h) {
   }
 }
 
+function fmtDateOnly(x) {
+  if (!x) return '';
+  const d = new Date(x);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+}
+
 function renderStats(s) {
   if (!s) return;
   const netRText = s.netR == null ? '—' : \`\${Number(s.netR) > 0 ? '+' : ''}\${Number(s.netR).toFixed(2)}R\`;
@@ -433,6 +537,24 @@ function renderStats(s) {
   if ($('netR')) $('netR').textContent = netRText;
   if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : \`\${Number(s.maxDD).toFixed(2)}R\`;
   if ($('winRate')) $('winRate').textContent = s.winRate == null ? '—' : \`\${(s.winRate * 100).toFixed(1)}%\`;
+  
+  if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
+  if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';
+  if ($('perfDateSpan')) {
+    if (s.firstDate && s.lastDate) {
+      const startStr = fmtDateOnly(s.firstDate);
+      const endStr = fmtDateOnly(s.lastDate);
+      $('perfDateSpan').textContent = startStr === endStr ? startStr : \`\${startStr} to \${endStr}\`;
+    } else if (s.from || s.to) {
+      $('perfDateSpan').textContent = \`\${fmtDateOnly(s.from) || 'Start'} to \${fmtDateOnly(s.to) || 'Present'}\`;
+    } else {
+      $('perfDateSpan').textContent = 'All Recorded Outcomes';
+    }
+  }
+  if ($('overviewPeriodBadge')) {
+    $('overviewPeriodBadge').textContent = s.periodLabel ? \`Period: \${s.periodLabel}\` : 'All-Time Record';
+  }
+
   renderBreakdown(s.breakdown || []);
 }
 
@@ -440,16 +562,27 @@ function renderBreakdown(rows) {
   const el = $('performanceBreakdown');
   if (!el) return;
   if (!rows || !rows.length) {
-    el.innerHTML = '<div class="empty">No completed outcomes recorded yet.</div>';
+    el.innerHTML = '<div class="empty">No completed outcomes recorded for this period.</div>';
     return;
   }
-  el.innerHTML = rows.map(r => \`
-    <div class="breakdown-row">
-      <strong>\${esc(r.group)}</strong>
-      <span>\${r.completed} completed · <span class="profit-text">\${r.tp} TP</span> · <span class="loss-text">\${r.sl} SL</span></span>
-      <b>\${Number(r.netR) > 0 ? '+' : ''}\${Number(r.netR).toFixed(2)}R · Max DD \${Number(r.maxDD).toFixed(2)}R</b>
-    </div>
-  \`).join('');
+  el.innerHTML = rows.map(r => {
+    let dateContext = 'Active Track Record';
+    if (r.firstDate && r.lastDate) {
+      const f = fmtDateOnly(r.firstDate);
+      const l = fmtDateOnly(r.lastDate);
+      dateContext = f === l ? \`Date: \${l}\` : \`\${f} → \${l}\`;
+    }
+    return \`
+      <div class="breakdown-row">
+        <div>
+          <strong style="color:#f1f5f9;">\${esc(r.group)}</strong>
+          <small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">📅 \${dateContext}</small>
+        </div>
+        <span>\${r.completed} completed · <span class="profit-text">\${r.tp} TP</span> · <span class="loss-text">\${r.sl} SL</span></span>
+        <b>\${Number(r.netR) > 0 ? '+' : ''}\${Number(r.netR).toFixed(2)}R · Max DD \${Number(r.maxDD).toFixed(2)}R</b>
+      </div>
+    \`;
+  }).join('');
 }
 
 function renderPreferences(p) {
@@ -525,7 +658,7 @@ function alertParams() {
     sort: ($('alertSort') && $('alertSort').value) || 'candleCloseTime',
     order: 'desc'
   });
-  [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch']].forEach(([key, id]) => {
+  [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch'], ['from', 'alertFrom'], ['to', 'alertTo']].forEach(([key, id]) => {
     const el = $(id);
     if (el && el.value) {
       p.set(key, el.value);
@@ -550,7 +683,7 @@ async function loadAlerts() {
 }
 
 function clearAlertFilters() {
-  ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSearch'].forEach(id => {
+  ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSearch', 'alertFrom', 'alertTo'].forEach(id => {
     const el = $(id);
     if (el) el.value = '';
   });

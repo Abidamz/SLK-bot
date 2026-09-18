@@ -119,8 +119,38 @@
     </section>
 
     <section id="performance" class="tab-panel">
+      <div class="panel-head" style="align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+        <div>
+          <p class="eyebrow">PORTFOLIO TRACK RECORD</p>
+          <h2 style="margin:0;">Verified Strategy Performance</h2>
+        </div>
+        <div class="period-filter-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="color: var(--muted); font-size: 12px; font-weight: 600;">Period:</span>
+          <div class="period-pills" id="perfPeriodButtons" style="display: flex; gap: 6px;">
+            <button type="button" class="period-btn active" data-period="all">All Time</button>
+            <button type="button" class="period-btn" data-period="90d">90D</button>
+            <button type="button" class="period-btn" data-period="30d">30D</button>
+            <button type="button" class="period-btn" data-period="7d">7D</button>
+            <button type="button" class="period-btn" data-period="today">Today</button>
+          </div>
+          <span id="perfPeriodBadge" class="pill green">All Time</span>
+        </div>
+      </div>
+
+      <div class="period-date-bar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px 18px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; font-size: 12px;">
+        <span style="color: var(--muted);">📅 Date Range: <strong id="perfDateSpan" style="color: var(--text);">All Recorded Outcomes</strong></span>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">Custom Range:</span>
+          <input id="perfFromDate" type="date" style="padding: 5px 10px; font-size: 12px; background: #0c121b; border: 1px solid var(--line); color: var(--text); border-radius: 7px;" aria-label="From Date">
+          <span style="color: var(--muted);">to</span>
+          <input id="perfToDate" type="date" style="padding: 5px 10px; font-size: 12px; background: #0c121b; border: 1px solid var(--line); color: var(--text); border-radius: 7px;" aria-label="To Date">
+          <button id="applyPerfDates" class="secondary" style="padding: 5px 12px; font-size: 12px; border-radius: 7px;">Filter</button>
+          <button id="resetPerfDates" class="secondary" style="padding: 5px 12px; font-size: 12px; border-radius: 7px;">Reset</button>
+        </div>
+      </div>
+
       <div class="metric-grid">
-        <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R</small></article>
+        <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R (<span id="perfPeriodLabel">All Time</span>)</small></article>
         <article class="metric"><span>TP Hits</span><strong id="tp" class="profit-text">—</strong><small>full target reached</small></article>
         <article class="metric"><span>SL Hits</span><strong id="sl" class="loss-text">—</strong><small>stop loss triggered</small></article>
         <article class="metric"><span>Max Drawdown</span><strong id="maxDD">—</strong><small>peak to trough</small></article>
@@ -161,10 +191,15 @@
         <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
         <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
         <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All states</option><option value="OPEN">Open (Active)</option><option value="TP_HIT">TP Hit</option><option value="SL_HIT">SL Hit</option><option value="EXPIRED">Expired</option></select>
+        <div class="date-filter-group" style="display: flex; align-items: center; gap: 6px;">
+          <span style="color: var(--muted); font-size: 11px;">From:</span>
+          <input id="alertFrom" type="date" aria-label="From UTC" style="padding: 7px 9px;">
+          <span style="color: var(--muted); font-size: 11px;">To:</span>
+          <input id="alertTo" type="date" aria-label="To UTC" style="padding: 7px 9px;">
+        </div>
         <select id="alertOutcome" aria-label="Outcome" hidden><option value="">All outcomes</option></select>
         <select id="alertChannel" aria-label="Channel" hidden><option value="">All channels</option></select>
         <select id="alertProvider" aria-label="Provider" hidden><option value="">All providers</option></select>
-        <input id="alertFrom" type="date" aria-label="From UTC" hidden><input id="alertTo" type="date" aria-label="To UTC" hidden>
         <input id="alertSearch" type="search" placeholder="Search pair (e.g. XAUUSD, USDJPY)" aria-label="Search alerts">
         <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Status</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>

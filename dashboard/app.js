@@ -6,7 +6,10 @@ const state = {
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
-  alertPageSize: 25
+  alertPageSize: 25,
+  perfPeriod: 'all',
+  perfFrom: '',
+  perfTo: ''
 };
 
 const $ = id => document.getElementById(id);
@@ -20,9 +23,50 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+document.querySelectorAll('.period-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.perfPeriod = btn.dataset.period || 'all';
+    state.perfFrom = '';
+    state.perfTo = '';
+    if ($('perfFromDate')) $('perfFromDate').value = '';
+    if ($('perfToDate')) $('perfToDate').value = '';
+    loadStats();
+  });
+});
+
+if ($('applyPerfDates')) {
+  $('applyPerfDates').addEventListener('click', () => {
+    const from = $('perfFromDate') ? $('perfFromDate').value : '';
+    const to = $('perfToDate') ? $('perfToDate').value : '';
+    if (!from && !to) return;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    state.perfPeriod = 'custom';
+    state.perfFrom = from || '';
+    state.perfTo = to || '';
+    loadStats();
+  });
+}
+
+if ($('resetPerfDates')) {
+  $('resetPerfDates').addEventListener('click', () => {
+    state.perfPeriod = 'all';
+    state.perfFrom = '';
+    state.perfTo = '';
+    if ($('perfFromDate')) $('perfFromDate').value = '';
+    if ($('perfToDate')) $('perfToDate').value = '';
+    document.querySelectorAll('.period-btn').forEach(b => {
+      if (b.dataset.period === 'all') b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    loadStats();
+  });
+}
+
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
-['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort'].forEach(id => {
+['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort', 'alertFrom', 'alertTo'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
 });
@@ -74,18 +118,37 @@ async function getAdminKey() {
 async function loadAll() {
   setStatus('Syncing live ledger…', 'muted');
   try {
-    const [health, stats, prefs] = await Promise.all([
+    const [health, _stats, prefs] = await Promise.all([
       api('/health').catch(() => null),
-      api('/stats').catch(() => null),
+      loadStats(),
       api('/dashboard/preferences/notifications').catch(() => null)
     ]);
     if (health) renderHealth(health);
-    if (stats) renderStats(stats);
     if (prefs) renderPreferences(prefs);
     await loadAlerts();
     setStatus('Live Connected', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
+  }
+}
+
+async function loadStats() {
+  try {
+    let q = '';
+    if (state.perfPeriod && state.perfPeriod !== 'all' && state.perfPeriod !== 'custom') {
+      q = `?period=${encodeURIComponent(state.perfPeriod)}`;
+    } else if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
+      const p = new URLSearchParams();
+      if (state.perfFrom) p.set('from', state.perfFrom);
+      if (state.perfTo) p.set('to', state.perfTo);
+      q = `?${p.toString()}`;
+    }
+    const s = await api(`/stats${q}`);
+    renderStats(s);
+    return s;
+  } catch (e) {
+    console.error('Failed to load stats:', e);
+    return null;
   }
 }
 
@@ -124,6 +187,12 @@ function renderHealth(h) {
   }
 }
 
+function fmtDateOnly(x) {
+  if (!x) return '';
+  const d = new Date(x);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+}
+
 function renderStats(s) {
   if (!s) return;
   const netRText = s.netR == null ? '—' : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
@@ -137,6 +206,24 @@ function renderStats(s) {
   if ($('netR')) $('netR').textContent = netRText;
   if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
   if ($('winRate')) $('winRate').textContent = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  
+  if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
+  if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';
+  if ($('perfDateSpan')) {
+    if (s.firstDate && s.lastDate) {
+      const startStr = fmtDateOnly(s.firstDate);
+      const endStr = fmtDateOnly(s.lastDate);
+      $('perfDateSpan').textContent = startStr === endStr ? startStr : `${startStr} to ${endStr}`;
+    } else if (s.from || s.to) {
+      $('perfDateSpan').textContent = `${fmtDateOnly(s.from) || 'Start'} to ${fmtDateOnly(s.to) || 'Present'}`;
+    } else {
+      $('perfDateSpan').textContent = 'All Recorded Outcomes';
+    }
+  }
+  if ($('overviewPeriodBadge')) {
+    $('overviewPeriodBadge').textContent = s.periodLabel ? `Period: ${s.periodLabel}` : 'All-Time Record';
+  }
+
   renderBreakdown(s.breakdown || []);
 }
 
@@ -144,16 +231,27 @@ function renderBreakdown(rows) {
   const el = $('performanceBreakdown');
   if (!el) return;
   if (!rows || !rows.length) {
-    el.innerHTML = '<div class="empty">No completed outcomes recorded yet.</div>';
+    el.innerHTML = '<div class="empty">No completed outcomes recorded for this period.</div>';
     return;
   }
-  el.innerHTML = rows.map(r => `
-    <div class="breakdown-row">
-      <strong>${esc(r.group)}</strong>
-      <span>${r.completed} completed · <span class="profit-text">${r.tp} TP</span> · <span class="loss-text">${r.sl} SL</span></span>
-      <b>${Number(r.netR) > 0 ? '+' : ''}${Number(r.netR).toFixed(2)}R · Max DD ${Number(r.maxDD).toFixed(2)}R</b>
-    </div>
-  `).join('');
+  el.innerHTML = rows.map(r => {
+    let dateContext = 'Active Track Record';
+    if (r.firstDate && r.lastDate) {
+      const f = fmtDateOnly(r.firstDate);
+      const l = fmtDateOnly(r.lastDate);
+      dateContext = f === l ? `Date: ${l}` : `${f} → ${l}`;
+    }
+    return `
+      <div class="breakdown-row">
+        <div>
+          <strong style="color:#f1f5f9;">${esc(r.group)}</strong>
+          <small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">📅 ${dateContext}</small>
+        </div>
+        <span>${r.completed} completed · <span class="profit-text">${r.tp} TP</span> · <span class="loss-text">${r.sl} SL</span></span>
+        <b>${Number(r.netR) > 0 ? '+' : ''}${Number(r.netR).toFixed(2)}R · Max DD ${Number(r.maxDD).toFixed(2)}R</b>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderPreferences(p) {
@@ -229,7 +327,7 @@ function alertParams() {
     sort: ($('alertSort') && $('alertSort').value) || 'candleCloseTime',
     order: 'desc'
   });
-  [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch']].forEach(([key, id]) => {
+  [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch'], ['from', 'alertFrom'], ['to', 'alertTo']].forEach(([key, id]) => {
     const el = $(id);
     if (el && el.value) {
       p.set(key, el.value);
@@ -254,7 +352,7 @@ async function loadAlerts() {
 }
 
 function clearAlertFilters() {
-  ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSearch'].forEach(id => {
+  ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSearch', 'alertFrom', 'alertTo'].forEach(id => {
     const el = $(id);
     if (el) el.value = '';
   });

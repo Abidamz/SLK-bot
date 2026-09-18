@@ -674,7 +674,60 @@ export default {
     if (url.pathname === "/stats" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
-      const rows = await store.recentAlerts(500);
+      let rows = await store.recentAlerts(1000);
+
+      const period = url.searchParams.get("period");
+      const fromParam = url.searchParams.get("from");
+      const toParam = url.searchParams.get("to");
+
+      const now = Date.now();
+      let fromMs: number | null = fromParam ? Date.parse(fromParam) : null;
+      let toMs: number | null = toParam ? Date.parse(toParam) + 86400000 : null; // inclusive of whole 'to' day
+      let periodLabel = "All Time";
+
+      if (period === "today") {
+        const d = new Date(now);
+        d.setUTCHours(0, 0, 0, 0);
+        fromMs = d.getTime();
+        toMs = null;
+        periodLabel = "Today";
+      } else if (period === "7d") {
+        fromMs = now - 7 * 86400000;
+        toMs = null;
+        periodLabel = "Last 7 Days";
+      } else if (period === "30d") {
+        fromMs = now - 30 * 86400000;
+        toMs = null;
+        periodLabel = "Last 30 Days";
+      } else if (period === "90d") {
+        fromMs = now - 90 * 86400000;
+        toMs = null;
+        periodLabel = "Last 90 Days";
+      } else if (fromParam || toParam) {
+        periodLabel = `${fromParam ?? "Start"} to ${toParam ?? "Present"}`;
+      }
+
+      if (fromMs != null && Number.isFinite(fromMs)) {
+        rows = rows.filter((r) => {
+          const t = Date.parse(String(r.candle_close_time));
+          return Number.isFinite(t) && t >= fromMs!;
+        });
+      }
+      if (toMs != null && Number.isFinite(toMs)) {
+        rows = rows.filter((r) => {
+          const t = Date.parse(String(r.candle_close_time));
+          return Number.isFinite(t) && t <= toMs!;
+        });
+      }
+
+      let firstDate: string | null = null;
+      let lastDate: string | null = null;
+      for (const r of rows) {
+        const d = String(r.candle_close_time);
+        if (!firstDate || d < firstDate) firstDate = d;
+        if (!lastDate || d > lastDate) lastDate = d;
+      }
+
       const tp = rows.filter((r) => r.status === "TP_HIT").length;
       const sl = rows.filter((r) => r.status === "SL_HIT").length;
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
@@ -683,10 +736,37 @@ export default {
       const calcCurve = (items: typeof completed) => { let equity = 0; let peak = 0; let drawdown = 0; for (const row of items) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); drawdown = Math.min(drawdown, equity - peak); } return { netR: items.length ? equity : null, maxDD: items.length ? drawdown : null }; };
       const groups = new Map<string, typeof completed>();
       for (const row of completed) { const key = `${row.canonical_symbol} · ${row.entry_timeframe}`; const list = groups.get(key) ?? []; list.push(row); groups.set(key, list); }
-      const breakdown = [...groups.entries()].map(([group, items]) => { const curve = calcCurve(items); return { group, pair: items[0].canonical_symbol, timeframe: items[0].entry_timeframe, completed: items.length, tp: items.filter(r => r.status === "TP_HIT").length, sl: items.filter(r => r.status === "SL_HIT").length, winRate: items.filter(r => r.status === "TP_HIT").length / items.length, ...curve }; });
+      const breakdown = [...groups.entries()].map(([group, items]) => {
+        const curve = calcCurve(items);
+        let bFirstDate: string | null = null;
+        let bLastDate: string | null = null;
+        for (const item of items) {
+          const d = String(item.exit_time ?? item.candle_close_time);
+          if (!bFirstDate || d < bFirstDate) bFirstDate = d;
+          if (!bLastDate || d > bLastDate) bLastDate = d;
+        }
+        return {
+          group,
+          pair: items[0].canonical_symbol,
+          timeframe: items[0].entry_timeframe,
+          firstDate: bFirstDate,
+          lastDate: bLastDate,
+          completed: items.length,
+          tp: items.filter(r => r.status === "TP_HIT").length,
+          sl: items.filter(r => r.status === "SL_HIT").length,
+          winRate: items.filter(r => r.status === "TP_HIT").length / items.length,
+          ...curve,
+        };
+      });
       let equity = 0; let peak = 0; let maxDD = 0;
       for (const row of completed) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); maxDD = Math.min(maxDD, equity - peak); }
       return json({
+        period: period ?? (fromParam || toParam ? "custom" : "all"),
+        periodLabel,
+        from: fromMs ? new Date(fromMs).toISOString() : firstDate,
+        to: toMs ? new Date(toMs).toISOString() : lastDate,
+        firstDate,
+        lastDate,
         total: rows.length, open: openn, tp, sl, expired, completed: completed.length,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
         netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null, breakdown,
