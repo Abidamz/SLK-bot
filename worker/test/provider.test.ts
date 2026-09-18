@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, symbolFor, DataQualityError } from "../src/provider";
+import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
 import { dukaJson, yahooFlatFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
@@ -297,8 +297,72 @@ describe("SYMBOL_MAP precedence", () => {
   });
 });
 
+describe("yahooSymbolFor", () => {
+  it("formats forex pairs with =X suffix", () => {
+    expect(yahooSymbolFor("EURUSD")).toBe("EURUSD=X");
+    expect(yahooSymbolFor("GBPUSD")).toBe("GBPUSD=X");
+    expect(yahooSymbolFor("USDJPY")).toBe("USDJPY=X");
+    expect(yahooSymbolFor("USDZAR")).toBe("USDZAR=X");
+  });
+
+  it("formats metals and indices", () => {
+    expect(yahooSymbolFor("XAUUSD")).toBe("GC=F");
+    expect(yahooSymbolFor("XAGUSD")).toBe("SI=F");
+    expect(yahooSymbolFor("US30")).toBe("^DJI");
+    expect(yahooSymbolFor("GER40")).toBe("^GDAXI");
+    expect(yahooSymbolFor("JAPAN225")).toBe("^N225");
+  });
+
+  it("respects explicit symbol overrides", () => {
+    expect(yahooSymbolFor("XAUUSD", { XAUUSD: "XAUUSD=X" })).toBe("XAUUSD=X");
+    expect(yahooSymbolFor("EURUSD", { EURUSD: "EUR=X" })).toBe("EUR=X");
+  });
+});
+
 describe("fetchMarketData rate-limit fallback", () => {
-  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted", async () => {
+  it("automatically falls back from Twelve Data to Yahoo when daily credits are exhausted", async () => {
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({
+          code: 429,
+          message: "You have run out of API credits for the day. 815 API credits were used, with the current limit being 800.",
+          status: "error",
+        }), { status: 200 });
+      }
+      if (url.includes("query1.finance.yahoo.com")) {
+        return new Response(JSON.stringify({
+          chart: {
+            result: [{
+              timestamp: [1709510400, 1709512200],
+              indicators: {
+                quote: [{
+                  open: [1.08, 1.082],
+                  high: [1.085, 1.086],
+                  low: [1.079, 1.081],
+                  close: [1.082, 1.084],
+                }],
+              },
+            }],
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "EURUSD",
+      tf: "30m",
+      limit: 10,
+      tdKey: "test_td_key",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("yahoo");
+    expect(res.candles.length).toBe(2);
+  });
+
+  it("automatically falls back from Twelve Data to Dukascopy when Yahoo fails", async () => {
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
       if (url.includes("api.twelvedata.com")) {
@@ -324,5 +388,42 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("dukascopy");
     expect(res.candles.length).toBeGreaterThan(0);
+  });
+
+  it("automatically falls back from Dukascopy to Yahoo for indices on error", async () => {
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      if (url.includes("query1.finance.yahoo.com")) {
+        return new Response(JSON.stringify({
+          chart: {
+            result: [{
+              timestamp: [1709510400, 1709512200],
+              indicators: {
+                quote: [{
+                  open: [38000, 38100],
+                  high: [38150, 38200],
+                  low: [37950, 38050],
+                  close: [38100, 38180],
+                }],
+              },
+            }],
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "US30",
+      tf: "30m",
+      limit: 10,
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("dukascopy");
+    expect(res.candles.length).toBe(2);
   });
 });

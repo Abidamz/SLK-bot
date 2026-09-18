@@ -72,6 +72,16 @@ const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
   NAS100: "^NDX", US100: "^NDX", SPX500: "^GSPC", US500: "^GSPC", UK100: "^FTSE",
 };
 
+export function yahooSymbolFor(pair: string, symbolMap: Record<string, string> = {}): string {
+  if (symbolMap[pair]) return symbolMap[pair];
+  const p = pair.toUpperCase();
+  if (YAHOO_INDEX_SYMBOLS[p]) return YAHOO_INDEX_SYMBOLS[p];
+  if (p === "XAUUSD") return "GC=F";
+  if (p === "XAGUSD") return "SI=F";
+  if (p.length === 6) return `${p}=X`;
+  return p;
+}
+
 // --------------------------------------------------------------------- OANDA
 // Practice-account v3 REST — free signup, official API, broker-grade live
 // quotes, no per-credit counting. Primary source for index CFDs
@@ -337,34 +347,51 @@ export async function fetchYahoo(
   symbolMap: Record<string, string> = {},
   fetchFn: FetchLike = fetch,
 ): Promise<Candle[]> {
-  const symbol = symbolMap[pair] ?? YAHOO_INDEX_SYMBOLS[pair.toUpperCase()] ?? symbolFor(pair, symbolMap);
-  const range = YAHOO_RANGES[tf] ?? "3mo";
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
-    + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
-  const resp = await fetchFn(url, {
-    headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const data = (await resp.json()) as {
-    chart?: {
-      error?: { description?: string } | null;
-      result?: {
-        timestamp?: number[];
-        indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
-      }[] | null;
-    };
-  };
-  if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
-  const r = data.chart?.result?.[0];
-  const q = r?.indicators?.quote?.[0];
-  if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
-  const out: Candle[] = [];
-  for (let i = 0; i < r.timestamp.length; i++) {
-    const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
-    if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
-    out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
+  const primarySymbol = yahooSymbolFor(pair, symbolMap);
+  const candidates = [primarySymbol];
+  const p = pair.toUpperCase();
+  if (p === "XAUUSD" && !symbolMap[pair]) {
+    candidates.push("XAUUSD=X");
+  } else if (p === "XAGUSD" && !symbolMap[pair]) {
+    candidates.push("XAGUSD=X");
   }
-  return out.length > limit ? out.slice(-limit) : out;
+
+  let lastErr: Error | null = null;
+  for (const symbol of candidates) {
+    try {
+      const range = YAHOO_RANGES[tf] ?? "3mo";
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
+        + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
+      const resp = await fetchFn(url, {
+        headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await resp.json()) as {
+        chart?: {
+          error?: { description?: string } | null;
+          result?: {
+            timestamp?: number[];
+            indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
+          }[] | null;
+        };
+      };
+      if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
+      const r = data.chart?.result?.[0];
+      const q = r?.indicators?.quote?.[0];
+      if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
+      const out: Candle[] = [];
+      for (let i = 0; i < r.timestamp.length; i++) {
+        const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
+        if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
+        out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
+      }
+      if (out.length === 0) throw new Error(`Yahoo returned empty candles for ${symbol} ${tf}`);
+      return out.length > limit ? out.slice(-limit) : out;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  throw lastErr ?? new Error(`Yahoo failed for ${pair}`);
 }
 
 /** Unified entry point: route by provider, one argument shape for all. */
@@ -399,16 +426,16 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
           pair: req.pair,
           tf: req.tf,
           from: "twelvedata",
-          to: "dukascopy",
+          to: "yahoo",
           reason: msg,
         }));
         try {
-          const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
-          return { provider: "dukascopy", candles };
-        } catch (dukaErr) {
+          const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+          return { provider: "yahoo", candles };
+        } catch (yahooErr) {
           try {
-            const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-            return { provider: "yahoo", candles };
+            const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
+            return { provider: "dukascopy", candles };
           } catch {
             throw err;
           }
@@ -421,7 +448,22 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
   const candles = provider === "oanda"
     ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
     : provider === "dukascopy"
-      ? await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv)
+      ? await (async () => {
+          try {
+            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv);
+          } catch (dukaErr) {
+            console.warn(JSON.stringify({
+              level: "warn",
+              msg: "slk.provider.fallback",
+              pair: req.pair,
+              tf: req.tf,
+              from: "dukascopy",
+              to: "yahoo",
+              reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+            }));
+            return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+          }
+        })()
       : await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
