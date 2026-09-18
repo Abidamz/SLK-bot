@@ -6,7 +6,8 @@
  *  contains characters like ">" that would need escaping under HTML/Markdown
  *  parse modes. */
 import { fmtPips, fmtPrice } from "./config";
-import type { Alert, EngineEvent } from "./types";
+import type { Alert, Direction, EngineEvent } from "./types";
+import type { DirectionalBiasDiagnostics } from "./shadow";
 import type { AlertRowish, NotifyEnv, OutcomeLike } from "./notify_types";
 
 const GREEN = 0x2ecc71;
@@ -208,6 +209,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string): string {
     `State     : ${stateEmoji} ${ev.state}`,
     `Detail    : ${ev.reason}`,
   ];
+  if (ev.biasGrade) lines.push(`Bias Grade: ${ev.biasGrade}`);
   if (ev.price != null) lines.push(`Price     : ~${fmtPrice(ev.pair, ev.price)}`);
   lines.push(
     `Candle    : ${new Date(ev.candleTime).toISOString().slice(0, 16).replace("T", " ")} UTC`,
@@ -217,6 +219,43 @@ export function formatWatch(ev: EngineEvent, entryTf: string): string {
     `Research signal only. No order was placed.`,
   );
   return lines.join("\n");
+}
+
+export function formatBiasCard(
+  pair: string,
+  direction: Direction,
+  diag: DirectionalBiasDiagnostics,
+): string {
+  const emoji = direction === "LONG" ? "🟢" : "🔴";
+  const gradeLabel = diag.classification === "A_GRADE"
+    ? "⭐ A_GRADE (HTF Aligned)"
+    : "✨ B_GRADE (Strong Bias)";
+  const weeklyTarget = diag.weekly.primaryOpposingTarget !== null
+    ? `${fmtPrice(pair, diag.weekly.primaryOpposingTarget)} (${diag.weekly.opposingLiquidityStanding ? "standing ✅" : "taken"})`
+    : "open";
+
+  const lines = [
+    `🧭 SLK BIAS CONFIRMATION — ${pair}`,
+    `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
+    `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${diag.h4.breakoutStatus.replace(/_/g, " ")})`,
+    `1H Alignment : ${diag.h1.direction.toUpperCase()} (${diag.h1.agreesWith4H ? "agrees with 4H ✅" : "neutral"})`,
+    `Daily Context: ${diag.daily.bias.toUpperCase()} (${diag.daily.bodyToBodyBreakout} breakout)`,
+    `Weekly Target: ${weeklyTarget}`,
+    ``,
+    `Higher timeframe structure is confirmed. Monitoring 30m / 1h for entry retest.`,
+    `Research analysis only. No order was placed.`,
+  ];
+  return lines.join("\n");
+}
+
+export async function notifyBias(
+  env: NotifyEnv,
+  pair: string,
+  direction: Direction,
+  diag: DirectionalBiasDiagnostics,
+): Promise<Record<string, string>> {
+  const color = direction === "LONG" ? GREEN : RED;
+  return broadcast(env, formatBiasCard(pair, direction, diag), color);
 }
 
 export async function notifyWatch(

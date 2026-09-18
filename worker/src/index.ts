@@ -150,6 +150,45 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const snaps = storylineSeries(d1, h4, cfg.strategy);
       pairsScanned.push(pair);
 
+      // 🧭 HTF directional bias confirmation: notifies when 4H and 1H structure align
+      if (cfg.watchNotify && d1 && d1.length >= 10 && h4.length >= 10 && feeds["1h"] && feeds["1h"].length >= 10) {
+        const { evaluateH4VantageContext, evaluateDirectionalBias } = await import("./shadow");
+        const h4Vantage = evaluateH4VantageContext(h4, cfg.strategy);
+        if (h4Vantage.direction !== "neutral") {
+          const dir: Direction = h4Vantage.direction === "bullish" ? "LONG" : "SHORT";
+          const diag = evaluateDirectionalBias({
+            pair,
+            entryTf: "1h",
+            direction: dir,
+            entryCandles: feeds["1h"],
+            d1Candles: d1,
+            h4Candles: h4,
+            h1Candles: feeds["1h"],
+            cfg: cfg.strategy,
+          });
+
+          if (diag.classification === "A_GRADE" || diag.classification === "B_GRADE") {
+            const lastCandle = h4[h4.length - 1];
+            const h4Close = lastCandle.t + TF_SECONDS[cfg.mapTimeframe] * 1000;
+            const h4Age = now - h4Close;
+            if (h4Age >= 0 && h4Age <= 2 * TF_SECONDS[cfg.mapTimeframe] * 1000) {
+              const biasKey = `last_bias:${pair}:${dir}`;
+              const lastBiasTime = await store.getKv(biasKey);
+              if (lastBiasTime !== String(lastCandle.t)) {
+                const lastBefore = await store.getKv(`last_scan:${pair}:30m`);
+                const isFirstScan = lastRawIsEmpty(lastBefore);
+                const tgAllowed = notificationPrefs.telegramWatch !== false;
+                if (tgAllowed && deliverAllowed(cfg, isFirstScan, opts)) {
+                  const { notifyBias } = await import("./notify");
+                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false" }, pair, dir, diag);
+                }
+                await store.setKv(biasKey, String(lastCandle.t));
+              }
+            }
+          }
+        }
+      }
+
       for (const { tf, secs, boundary } of due) {
         let candles: Candle[];
         const derivedFeed = feeds[tf];
@@ -183,7 +222,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
               && watchEventFresh(ev, tf, now)
               && deliverAllowed(cfg, isFirstScan, opts)) {
-            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: notificationPrefs.telegramWatch ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false" }, ev, tf);
+            const tgAllowed = notificationPrefs.telegramWatch !== false;
+            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false" }, ev, tf);
           }
         }
 

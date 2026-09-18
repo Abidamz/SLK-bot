@@ -145,6 +145,7 @@ export interface EngineEvent {
   candleTime: number;
   reason: string;
   price: number | null;
+  biasGrade?: string;
 }
 
 export interface Outcome {
