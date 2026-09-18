@@ -68,12 +68,55 @@ export function formatAlert(a: Alert): string {
     `Direction   : ${a.direction}`,
     `Timeframe   : ${a.entryTf} (map ${a.mapTf})`,
     `State       : RETEST → CONFIRMED`,
+  ];
+  if (a.shadowClassification) {
+    const gradeEmoji: Record<string, string> = {
+      A_GRADE: "🌟",
+      B_GRADE: "⭐",
+      HTF_CONFLICT: "⚠️",
+      OBSERVATION_ONLY: "👀",
+    };
+    const badge = `${gradeEmoji[a.shadowClassification] ?? "📊"} ${a.shadowClassification}`;
+    lines.push(`Bias Grade  : ${badge}`);
+  }
+  if (a.directionalBias) {
+    const db = a.directionalBias;
+    const sweepSide = db.weekly.weeklyHighSwept
+      ? "Prior High Swept"
+      : db.weekly.weeklyLowSwept
+      ? "Prior Low Swept"
+      : "No sweep";
+    const oppSide = a.direction === "LONG" ? "Opposing High" : "Opposing Low";
+    const standingStr = db.weekly.primaryOpposingTarget
+      ? `Standing (${fmtPrice(a.pair, db.weekly.primaryOpposingTarget)})`
+      : db.weekly.opposingLiquidityStanding
+      ? "Standing ✅"
+      : "Taken";
+    lines.push(`Weekly Cont.: ${sweepSide} · ${oppSide} ${standingStr}`);
+    const dBreakout = db.daily.bodyToBodyBreakout === "bullish"
+      ? "Bullish Breakout"
+      : db.daily.bodyToBodyBreakout === "bearish"
+      ? "Bearish Breakout"
+      : "Neutral";
+    lines.push(`Daily Cont. : ${dBreakout}`);
+    lines.push(`4H Vantage  : ${db.h4.direction} (${db.h4.breakoutStatus})`);
+    lines.push(`1H Alignment: ${db.h1.direction} (${db.h1.agreesWith4H ? "Agrees with 4H ✅" : "HTF Conflict ⚠️"})`);
+    const eq = db.entryQuality;
+    const eqParts: string[] = [
+      `Sweep ${eq.lowerTimeframeSweep ? "✅" : "❌"}`,
+      `BOS ${eq.bosStructureShift ? "✅" : "❌"}`,
+      `FVG Rebalance ${eq.fvgRebalanceDetected ? "✅" : eq.fvgDetected ? "⚠️" : "❌"}`,
+      `Retest ${eq.retestDetected ? "✅" : "❌"}`,
+    ];
+    lines.push(`Entry Qual. : ${eqParts.join(" · ")}`);
+  }
+  lines.push(
     `Story       : ${a.environment} · ${a.phase} · ${a.htfAlignment}`,
     `Key level   : ${kl}`,
     `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close)`,
     `Stop        : ${fmtPrice(a.pair, a.stopLoss)} (${fmtPips(a.pair, a.entry - a.stopLoss)} · beyond sweep extreme)`,
     `Target 1    : ${fmtPrice(a.pair, a.tpInternal)} internal liquidity (${fmtPips(a.pair, a.tpInternal - a.entry)}${a.rrInternal ? ` · ${a.rrInternal}R` : ""})`,
-  ];
+  );
   if (a.tpExternal !== null)
     lines.push(
       `Target 2    : ${fmtPrice(a.pair, a.tpExternal)} nearest external liquidity (targets beyond are anticipatory)`,
