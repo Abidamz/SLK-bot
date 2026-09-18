@@ -193,23 +193,42 @@ export class D1Store implements Store {
   }
 
   async insertScanLog(r: ScanLogRow): Promise<void> {
-    await this.db
-      .prepare(
-        `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note, diagnostics_json)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
-      )
-      .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note, r.diagnostics ? JSON.stringify(r.diagnostics) : null)
-      .run();
+    try {
+      await this.db
+        .prepare(
+          `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note, diagnostics_json)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note, r.diagnostics ? JSON.stringify(r.diagnostics) : null)
+        .run();
+    } catch (err) {
+      // Fallback if migration 0004 has not been applied to remote D1 yet
+      try {
+        await this.db
+          .prepare(
+            `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note)
+             VALUES (?,?,?,?,?,?,?,?)`,
+          )
+          .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note)
+          .run();
+      } catch (fallbackErr) {
+        console.warn(JSON.stringify({ level: "warn", msg: "insertScanLog failed", error: String(fallbackErr) }));
+      }
+    }
   }
 
   async getNotificationPreferences(): Promise<NotificationPreferences> {
-    const row = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
-    if (!row) {
-      const prefs = { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
-      await this.saveNotificationPreferences(prefs, "default");
-      return prefs;
+    try {
+      const row = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
+      if (!row) {
+        const prefs = { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
+        try { await this.saveNotificationPreferences(prefs, "default"); } catch {}
+        return prefs;
+      }
+      return { primaryConfirmed: true, telegramWatch: Boolean(row.telegram_watch), discordWatch: Boolean(row.discord_watch), operationalEnabled: Boolean(row.operational_enabled), cooldownMinutes: Number(row.cooldown_minutes), updatedUtc: String(row.updated_utc) };
+    } catch {
+      return { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
     }
-    return { primaryConfirmed: true, telegramWatch: Boolean(row.telegram_watch), discordWatch: Boolean(row.discord_watch), operationalEnabled: Boolean(row.operational_enabled), cooldownMinutes: Number(row.cooldown_minutes), updatedUtc: String(row.updated_utc) };
   }
 
   async saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void> {

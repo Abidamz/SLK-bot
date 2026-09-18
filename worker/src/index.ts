@@ -589,8 +589,14 @@ export default {
 
     if (url.pathname === "/scan-now" && request.method === "POST") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
-      const summary = await scanAll(env, { force: true });
-      return json(summary, summary.ok ? 200 : 207);
+      try {
+        const summary = await scanAll(env, { force: true });
+        return json(summary, summary.ok ? 200 : 207);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(JSON.stringify({ level: "error", msg: "scan-now failed", error: msg, stack: err instanceof Error ? err.stack : undefined }));
+        return json({ ok: false, error: msg }, 500);
+      }
     }
 
     if (url.pathname === "/test-notify" && request.method === "POST") {
