@@ -54,6 +54,7 @@ export interface StrategyConfig {
 export interface WorkerConfig {
   pairs: string[];
   entryTfs: Record<string, number>; // label -> seconds
+  pairBatchSize: number; // number of pairs to scan per cron tick (keeps CPU under 10ms)
   mapTimeframe: string; // "4h" (built from mapSource)
   mapSourceTimeframe: string; // "1h" — derived from base feed (see baseTimeframe)
   baseTimeframe: string; // smallest entry TF — the only intraday fetch per pair
@@ -113,6 +114,7 @@ interface EnvVars {
   WATCH_NOTIFY?: string;
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
+  PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
 }
@@ -168,6 +170,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
+  const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
   const strategy = defaultStrategy();
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
@@ -175,6 +178,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   return {
     pairs,
     entryTfs,
+    pairBatchSize,
     mapTimeframe: "4h",
     mapSourceTimeframe: "1h",
     baseTimeframe,

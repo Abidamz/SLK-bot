@@ -108,7 +108,54 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     return { diagnostics, ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
   }
 
-  for (const pair of cfg.pairs) {
+  // Stagger pair scanning across 1-minute cron ticks to stay comfortably below Cloudflare's 10ms CPU limit.
+  let pairsToScan = cfg.pairs;
+  if (!opts.force && cfg.pairs.length > cfg.pairBatchSize) {
+    const pending: string[] = [];
+    for (const pair of cfg.pairs) {
+      let isDue = false;
+      for (const { tf, boundary } of due) {
+        const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
+        const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
+        if (boundary > lastScan) {
+          isDue = true;
+          break;
+        }
+      }
+      if (isDue) pending.push(pair);
+    }
+
+    if (!pending.length) {
+      for (const { tf, boundary } of due) {
+        await store.setKv(`last_boundary:${tf}`, String(boundary));
+      }
+      await store.insertScanLog({
+        ts: new Date(now).toISOString(),
+        timeframes: due.map((d) => d.tf).join(","),
+        pairs: "",
+        alerts: 0,
+        events: 0,
+        errors: "",
+        durationMs: Date.now() - startedAt,
+        note: "idle (boundary complete)",
+        diagnostics,
+      });
+      return {
+        diagnostics,
+        ok: true,
+        timeframes: due.map((d) => d.tf),
+        pairs: [],
+        alerts: 0,
+        events: 0,
+        errors,
+        durationMs: Date.now() - startedAt,
+      };
+    }
+
+    pairsToScan = pending.slice(0, cfg.pairBatchSize);
+  }
+
+  for (const pair of pairsToScan) {
     try {
       // provider routing: forex/metals → Twelve Data, index CFDs → OANDA
       // (if its token exists) → Dukascopy public feed → Yahoo last resort
@@ -285,10 +332,17 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // pair; forex/metals staleness still reports loudly (real outage signal).
       if (msg.includes("stale feed") && isIndexCfdIdleWindow(pair, now)) {
         console.info(JSON.stringify({ level: "info", msg: "pair idle (market closed)", pair }));
+        for (const { tf, boundary } of due) {
+          await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+        }
         continue;
       }
       errors.push(`${pair}: ${msg}`);
       console.error(JSON.stringify({ level: "error", msg: "pair scan failed", pair, error: msg }));
+      // Advance last_scan on error for this boundary so one failing pair doesn't block the queue
+      for (const { tf, boundary } of due) {
+        await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+      }
     }
   }
 
@@ -296,7 +350,18 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   // partial failure: the next tick re-runs and dedupe keeps it idempotent)
   if (!opts.force) {
     for (const { tf, boundary } of due) {
-      await store.setKv(`last_boundary:${tf}`, String(boundary));
+      let allDone = true;
+      for (const pair of cfg.pairs) {
+        const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
+        const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
+        if (boundary > lastScan) {
+          allDone = false;
+          break;
+        }
+      }
+      if (allDone) {
+        await store.setKv(`last_boundary:${tf}`, String(boundary));
+      }
     }
   }
 

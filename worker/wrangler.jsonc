@@ -33,7 +33,8 @@
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
     "WATCH_NOTIFY": "true",
     "MIN_RISK_ATR": "0.8",
-    "MIN_STOP_PIPS": "10"
+    "MIN_STOP_PIPS": "10",
+    "PAIR_BATCH_SIZE": "2"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
