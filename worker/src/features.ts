@@ -309,9 +309,11 @@ export function markFvgOverlap(levels: KeyLevel[], imbalances: Imbalance[]): voi
 export function selectOrigin(
   levels: KeyLevel[], price: number, atrVal: number, direction: Direction, cfg: StrategyConfig,
 ): KeyLevel | null {
-  if (atrVal <= 0) return null;
+  if (atrVal <= 0 || levels.length === 0) return null;
   let best: KeyLevel | null = null;
   let bestScore = -Infinity;
+  const maxOriginIndex = Math.max(...levels.map((l) => l.originIndex), 1);
+
   for (const lv of levels) {
     let dist: number;
     if (direction === "SHORT") {
@@ -323,11 +325,14 @@ export function selectOrigin(
     }
     const distAtr = dist / atrVal;
     if (distAtr > cfg.zoneMaxDistanceAtr) continue;
-    const score =
-      (lv.fvgOverlap ? 2.0 : 0) +
-      0.5 * Math.min(lv.touches, 3) +
-      (lv.flipped ? 0.25 : 0) +
-      1 / (1 + distAtr);
+
+    const proximity = Math.max(0, 1 - distAtr / cfg.zoneMaxDistanceAtr) * 3.0;
+    const recency = (lv.originIndex / maxOriginIndex) * 2.0;
+    const fvgScore = lv.fvgOverlap ? 1.5 : 0;
+    const flipScore = lv.flipped ? 1.0 : 0;
+    const touchScore = 0.5 * Math.min(lv.touches, 2);
+
+    const score = proximity + recency + fvgScore + flipScore + touchScore;
     if (score > bestScore) {
       bestScore = score;
       best = lv;
