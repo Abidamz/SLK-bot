@@ -210,12 +210,15 @@ export const DASHBOARD_HTML = `<!doctype html>
     </section>
 
     <section id="alerts" class="tab-panel">
-      <div class="panel-head">
+      <div class="panel-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div>
           <p class="eyebrow">SIGNAL LEDGER</p>
           <h2>Confirmed Trade History</h2>
         </div>
-        <span id="alertTotal" class="pill gray">— results</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button id="expireOpenBtn" type="button" class="secondary" style="font-size: 11px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); color: var(--accent); cursor: pointer;" title="Close active open positions as Expired">⚡ Close Open Trades</button>
+          <span id="alertTotal" class="pill gray">— results</span>
+        </div>
       </div>
 
       <div class="filter-bar">
@@ -427,6 +430,26 @@ if ($('nextAlerts')) $('nextAlerts').addEventListener('click', () => {
 
 if ($('savePreferences')) $('savePreferences').addEventListener('click', savePreferences);
 if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNotification('telegram'));
+if ($('expireOpenBtn')) {
+  $('expireOpenBtn').addEventListener('click', async () => {
+    if (!confirm('Close all currently open trades as Expired?')) return;
+    const btn = $('expireOpenBtn');
+    const oldText = btn.textContent;
+    btn.textContent = 'Closing…';
+    btn.disabled = true;
+    try {
+      const res = await api('/admin/expire-open');
+      alert(res.message || 'Open trades marked as EXPIRED.');
+      await loadStats();
+      await loadAlerts();
+    } catch (err) {
+      alert('Failed to close open trades: ' + (err.message || String(err)));
+    } finally {
+      btn.textContent = oldText;
+      btn.disabled = false;
+    }
+  });
+}
 
 async function api(path, options = {}) {
   const headers = {

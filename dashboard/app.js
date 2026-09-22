@@ -96,6 +96,26 @@ if ($('nextAlerts')) $('nextAlerts').addEventListener('click', () => {
 
 if ($('savePreferences')) $('savePreferences').addEventListener('click', savePreferences);
 if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNotification('telegram'));
+if ($('expireOpenBtn')) {
+  $('expireOpenBtn').addEventListener('click', async () => {
+    if (!confirm('Close all currently open trades as Expired?')) return;
+    const btn = $('expireOpenBtn');
+    const oldText = btn.textContent;
+    btn.textContent = 'Closing…';
+    btn.disabled = true;
+    try {
+      const res = await api('/admin/expire-open');
+      alert(res.message || 'Open trades marked as EXPIRED.');
+      await loadStats();
+      await loadAlerts();
+    } catch (err) {
+      alert('Failed to close open trades: ' + (err.message || String(err)));
+    } finally {
+      btn.textContent = oldText;
+      btn.disabled = false;
+    }
+  });
+}
 
 async function api(path, options = {}) {
   const headers = {

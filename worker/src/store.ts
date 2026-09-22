@@ -14,6 +14,9 @@ export interface D1Like {
       first(): Promise<Record<string, unknown> | null>;
       all(): Promise<{ results: Record<string, unknown>[] }>;
     };
+    run?(): Promise<{ meta: { changes: number } }>;
+    first?(): Promise<Record<string, unknown> | null>;
+    all?(): Promise<{ results: Record<string, unknown>[] }>;
   };
 }
 
@@ -53,6 +56,8 @@ export interface Store {
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
+  expireOpenAlerts(): Promise<number>;
+  resetAllAlerts(): Promise<void>;
 }
 
 
@@ -279,6 +284,20 @@ export class D1Store implements Store {
       .all();
     return res.results;
   }
+
+  async expireOpenAlerts(): Promise<number> {
+    const res = await this.db
+      .prepare("UPDATE slk_alerts SET status='EXPIRED', r_multiple=0, exit_time=? WHERE status='OPEN'")
+      .bind(new Date().toISOString())
+      .run();
+    return Number(res.meta?.changes ?? 0);
+  }
+
+  async resetAllAlerts(): Promise<void> {
+    await this.db.prepare("DELETE FROM slk_alerts").bind().run();
+    await this.db.prepare("DELETE FROM slk_events").bind().run();
+    await this.db.prepare("DELETE FROM slk_scan_log").bind().run();
+  }
 }
 
 // ---------------------------------------------------------- in-memory impl
@@ -388,6 +407,27 @@ export class MemStore implements Store {
 
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
     return this.scanLog.slice(-limit).reverse() as unknown as Record<string, unknown>[];
+  }
+
+  async expireOpenAlerts(): Promise<number> {
+    let count = 0;
+    const nowIso = new Date().toISOString();
+    for (const row of this.alerts.values()) {
+      if (row.status === "OPEN") {
+        row.status = "EXPIRED";
+        row.r_multiple = 0;
+        row.exit_time = nowIso;
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async resetAllAlerts(): Promise<void> {
+    this.alerts.clear();
+    this.events = [];
+    this.eventKeys.clear();
+    this.scanLog = [];
   }
 }
 

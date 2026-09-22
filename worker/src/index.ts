@@ -875,6 +875,43 @@ export default {
       return json({ ok: Object.values(results).some(v => v === "ok"), isolated: true, results });
     }
 
+    if ((url.pathname === "/admin/expire-open" || url.pathname === "/api/expire-open") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const closed = await store.expireOpenAlerts();
+      return json({
+        ok: true,
+        action: "expire_open",
+        closed,
+        message: `Successfully closed ${closed} open trade(s) as EXPIRED. Active/Open count is now 0.`,
+      });
+    }
+
+    if ((url.pathname === "/admin/reset-journal" || url.pathname === "/api/reset-journal") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      await store.resetAllAlerts();
+      return json({
+        ok: true,
+        action: "reset_all",
+        message: "Successfully reset all signals, events, and logs to a clean slate.",
+      });
+    }
+
+    if (url.pathname === "/admin/trades" && request.method === "POST") {
+      let body: Record<string, unknown> = {};
+      try { body = await request.json() as Record<string, unknown>; } catch { /* allow empty */ }
+      const action = String(body.action || url.searchParams.get("action") || "expire_open");
+      const store = makeStore(env.DB);
+      if (action === "expire_open") {
+        const closed = await store.expireOpenAlerts();
+        return json({ ok: true, action: "expire_open", closed, message: `Closed ${closed} open trade(s) as EXPIRED.` });
+      }
+      if (action === "reset_all") {
+        await store.resetAllAlerts();
+        return json({ ok: true, action: "reset_all", message: "Successfully reset all signals, events, and logs." });
+      }
+      return json({ error: "invalid action, must be expire_open or reset_all" }, 400);
+    }
+
     if (url.pathname === "/provider-webhook") {
       // Scaffold for providers that support signed finalized-candle
       // callbacks. Signature verification is enforced when configured;
