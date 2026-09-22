@@ -447,10 +447,16 @@ async function deliver(
     return;
   }
   if (!allowed) {
+    alert.alertStatus = "SUPPRESSED";
+    alert.suppressReason = "first scan boot gate — record-only";
+    await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
     console.info(JSON.stringify({ level: "info", msg: "first scan — recorded without delivery", setupId: alert.setupId }));
     return;
   }
   if (cfg.mode === "paper" && !cfg.paperNotify) {
+    alert.alertStatus = "SUPPRESSED";
+    alert.suppressReason = "paper mode, notifications disabled";
+    await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
     console.info(JSON.stringify({ level: "info", msg: "paper mode, notifications off — logged only", setupId: alert.setupId }));
     return;
   }
