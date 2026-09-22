@@ -242,8 +242,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                 const isFirstScan = lastRawIsEmpty(lastBefore);
                 const tgAllowed = notificationPrefs.telegramWatch !== false;
                 if (tgAllowed && deliverAllowed(cfg, isFirstScan, opts)) {
+                  const latestStory = snaps.length ? snaps[snaps.length - 1][1] : null;
+                  const currentPrice = feeds["1h"] && feeds["1h"].length ? feeds["1h"][feeds["1h"].length - 1].c : lastCandle.c;
                   const { notifyBias } = await import("./notify");
-                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false" }, pair, dir, diag);
+                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false" }, pair, dir, diag, latestStory?.origin ?? null, currentPrice);
                 }
                 await store.setKv(biasKey, String(lastCandle.t));
               }

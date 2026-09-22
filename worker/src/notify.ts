@@ -6,7 +6,7 @@
  *  contains characters like ">" that would need escaping under HTML/Markdown
  *  parse modes. */
 import { fmtPips, fmtPrice } from "./config";
-import type { Alert, Direction, EngineEvent } from "./types";
+import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
 import type { DirectionalBiasDiagnostics } from "./shadow";
 import type { AlertRowish, NotifyEnv, OutcomeLike } from "./notify_types";
 
@@ -203,17 +203,22 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
 export function formatWatch(ev: EngineEvent, entryTf: string): string {
   const parts = ev.setupId.split(":");
   const direction = parts[3] ?? "";
+  const originKind = parts[4] ?? "";
+  const originPrice = parts[5] ? Number(parts[5]) : null;
   const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
   const lines = [
     `👀 WATCH — ${ev.pair} · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
-    `State     : ${stateEmoji} ${ev.state}`,
-    `Detail    : ${ev.reason}`,
+    `State      : ${stateEmoji} ${ev.state}`,
+    `Detail     : ${ev.reason}`,
   ];
-  if (ev.biasGrade) lines.push(`Bias Grade: ${ev.biasGrade}`);
-  if (ev.price != null) lines.push(`Price     : ~${fmtPrice(ev.pair, ev.price)}`);
+  if (originPrice != null && Number.isFinite(originPrice)) {
+    lines.push(`Origin Zone: ~${fmtPrice(ev.pair, originPrice)} (${originKind}-Level Zone)`);
+  }
+  if (ev.biasGrade) lines.push(`Bias Grade : ${ev.biasGrade}`);
+  if (ev.price != null) lines.push(`Price      : ~${fmtPrice(ev.pair, ev.price)}`);
   lines.push(
-    `Candle    : ${new Date(ev.candleTime).toISOString().slice(0, 16).replace("T", " ")} UTC`,
-    `Setup ID  : ${ev.setupId}`,
+    `Candle     : ${new Date(ev.candleTime).toISOString().slice(0, 16).replace("T", " ")} UTC`,
+    `Setup ID   : ${ev.setupId}`,
     ``,
     `Watch only — the entry alert fires on the confirmed retest candle close.`,
     `Research signal only. No order was placed.`,
@@ -225,6 +230,8 @@ export function formatBiasCard(
   pair: string,
   direction: Direction,
   diag: DirectionalBiasDiagnostics,
+  origin?: KeyLevel | null,
+  currentPrice?: number,
 ): string {
   const emoji = direction === "LONG" ? "🟢" : "🔴";
   const gradeLabel = diag.classification === "A_GRADE"
@@ -241,10 +248,33 @@ export function formatBiasCard(
     `1H Alignment : ${diag.h1.direction.toUpperCase()} (${diag.h1.agreesWith4H ? "agrees with 4H ✅" : "neutral"})`,
     `Daily Context: ${diag.daily.bias.toUpperCase()} (${diag.daily.bodyToBodyBreakout} breakout)`,
     `Weekly Target: ${weeklyTarget}`,
-    ``,
-    `Higher timeframe structure is confirmed. Monitoring 30m / 1h for entry retest.`,
-    `Research analysis only. No order was placed.`,
   ];
+
+  if (origin) {
+    const structType = origin.flipped
+      ? "Flipped Breaker (Disrespected Support/Resistance)"
+      : `${origin.kind}-Level Origin Zone`;
+    const fvgText = origin.fvgOverlap
+      ? "Overlaps 30m/1H FVG Imbalance ✅"
+      : "High-Volume Mitigation Zone";
+    lines.push(
+      ``,
+      `🎯 Armed Retracement Zone: ${fmtPrice(pair, origin.zoneLo)} – ${fmtPrice(pair, origin.zoneHi)}`,
+      `   • Structure : ${structType}`,
+      `   • Confluence: ${fvgText}`,
+      `   • History   : ${origin.touches} prior reaction test${origin.touches === 1 ? "" : "s"}`,
+    );
+    if (currentPrice != null && Number.isFinite(currentPrice)) {
+      const dist = Math.abs(currentPrice - origin.originPrice);
+      lines.push(`   • Distance  : ~${fmtPips(pair, dist)} from current price`);
+    }
+  }
+
+  lines.push(
+    ``,
+    `Higher timeframe structure is confirmed. Monitoring for pullback retest into zone.`,
+    `Research analysis only. No order was placed.`,
+  );
   return lines.join("\n");
 }
 
@@ -253,9 +283,11 @@ export async function notifyBias(
   pair: string,
   direction: Direction,
   diag: DirectionalBiasDiagnostics,
+  origin?: KeyLevel | null,
+  currentPrice?: number,
 ): Promise<Record<string, string>> {
   const color = direction === "LONG" ? GREEN : RED;
-  return broadcast(env, formatBiasCard(pair, direction, diag), color);
+  return broadcast(env, formatBiasCard(pair, direction, diag, origin, currentPrice), color);
 }
 
 export async function notifyWatch(
