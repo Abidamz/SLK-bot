@@ -13,4 +13,14 @@ describe("corrupt-target guard", () => {
     expect(oc?.status).toBe("TP_HIT");
     expect(oc?.rMultiple).toBeGreaterThan(0);
   });
+
+  it("touch-based SL triggers SL_HIT when wick pierces stop loss even if close recovers", () => {
+    // LONG entry at 100, stop at 95, TP at 115.
+    // Candle wicks down to 94 (triggering broker stop loss), but closes at 116.
+    // In real trading, the stop loss executed at 94.
+    const candle = { t: 1, o: 100, h: 116, l: 94, c: 116 };
+    const oc = evaluateSignal("LONG", 100, 95, 115, [candle], 120, false);
+    expect(oc?.status).toBe("SL_HIT");
+    expect(oc?.rMultiple).toBe(-1);
+  });
 });

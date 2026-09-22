@@ -11,7 +11,7 @@ export function evaluateSignal(
   tp: number,
   candlesAfter: Candle[],
   expireAfter = 120,
-  slOnClose = true,
+  slOnClose = false,
 ): Outcome | null {
   const risk = Math.abs(entry - stop);
   if (risk <= 0) return null;

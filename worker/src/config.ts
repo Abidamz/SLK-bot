@@ -191,7 +191,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     scanDelayMs: 10_000,
     minCandles: 40,
     expireCandles: 120,
-    slOnClose: true,
+    slOnClose: false,
     notifyOutcomes: true,
     symbolMap,
     providerMap,
