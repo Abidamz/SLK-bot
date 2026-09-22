@@ -464,7 +464,7 @@ async function resolveOutcomes(
 ): Promise<void> {
   const open = await store.openAlerts(pair, tf);
   for (const rec of open) {
-    if (rec.alert_status === "SUPPRESSED") continue;
+    const isSuppressed = rec.alert_status === "SUPPRESSED";
     const entryTime = Date.parse(rec.candle_close_time as string);
     const after = candles.filter((c) => c.t >= entryTime);
     if (!after.length) continue;
@@ -476,7 +476,7 @@ async function resolveOutcomes(
     if (!oc) continue;
     await store.recordOutcome(String(rec.setup_id), oc);
     console.info(JSON.stringify({ level: "info", msg: "outcome", setupId: rec.setup_id, status: oc.status, r: oc.rMultiple }));
-    if (cfg.notifyOutcomes) await notifyOutcome({ ...env, fetchFn }, rec, oc);
+    if (cfg.notifyOutcomes && !isSuppressed) await notifyOutcome({ ...env, fetchFn }, rec, oc);
   }
 }
 
@@ -800,7 +800,7 @@ export default {
       const tp = rows.filter((r) => r.status === "TP_HIT").length;
       const sl = rows.filter((r) => r.status === "SL_HIT").length;
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
-      const openn = rows.filter((r) => r.status === "OPEN").length;
+      const openn = rows.filter((r) => r.status === "OPEN" && r.alert_status !== "SUPPRESSED").length;
       const completed = rows.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple))).sort((a,b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
       const calcCurve = (items: typeof completed) => { let equity = 0; let peak = 0; let drawdown = 0; for (const row of items) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); drawdown = Math.min(drawdown, equity - peak); } return { netR: items.length ? equity : null, maxDD: items.length ? drawdown : null }; };
       const groups = new Map<string, typeof completed>();
