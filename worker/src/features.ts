@@ -336,6 +336,30 @@ export function selectOrigin(
   return best;
 }
 
+/** Find the highest-confluence armed retracement key level across 1H / 30m / 4H
+ *  that overlaps an open FVG imbalance, has historical reaction touches, or has
+ *  flipped polarity (disrespected support/resistance). */
+export function findRetracementOrigin(
+  feeds: Record<string, Candle[] | undefined>,
+  direction: Direction,
+  currentPrice: number,
+  cfg: StrategyConfig,
+): KeyLevel | null {
+  const timeframes = ["1h", "30m", "4h"];
+  for (const tf of timeframes) {
+    const candles = feeds[tf];
+    if (!candles || candles.length < 20) continue;
+    const atrVal = atr(candles, cfg.atrPeriod);
+    if (atrVal <= 0) continue;
+    const imbalances = fvgZones(candles, cfg.fvgLookback);
+    const levels = keyLevels(candles, cfg);
+    markFvgOverlap(levels, imbalances);
+    const origin = selectOrigin(levels, currentPrice, atrVal, direction, cfg);
+    if (origin) return origin;
+  }
+  return null;
+}
+
 /** Drop the trailing in-progress candle so the engine only sees closed bars. */
 export function dropIncomplete(candles: Candle[], tfSeconds: number, now?: number): Candle[] {
   const nowMs = now ?? Date.now();
