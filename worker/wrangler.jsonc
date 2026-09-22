@@ -31,7 +31,7 @@
     "MODE": "paper",
     "PAPER_NOTIFY": "true",
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
-    "WATCH_NOTIFY": "true",
+    "WATCH_NOTIFY": "false",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
     "PAIR_BATCH_SIZE": "2"

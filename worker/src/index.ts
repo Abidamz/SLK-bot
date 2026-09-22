@@ -892,6 +892,19 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/confirmed-only" || url.pathname === "/api/confirmed-only") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const current = await store.getNotificationPreferences();
+      const updated: NotificationPreferences = { ...current, telegramWatch: false, discordWatch: false, updatedUtc: new Date().toISOString() };
+      await store.saveNotificationPreferences(updated, "admin-confirmed-only");
+      return json({
+        ok: true,
+        action: "confirmed_only",
+        message: "Successfully muted WATCH alerts and BIAS cards. Telegram will now ONLY receive Confirmed Entry Alerts and Outcomes.",
+        preferences: updated,
+      });
+    }
+
     if ((url.pathname === "/admin/reset-journal" || url.pathname === "/api/reset-journal") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
       await store.resetAllAlerts();
