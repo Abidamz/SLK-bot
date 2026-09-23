@@ -833,11 +833,15 @@ function renderChart(data) {
     const xx = x(i), up = c.close >= c.open, color = up ? '#8cf0c6' : '#ff8f9b', bodyY = Math.min(y(c.open), y(c.close)), bodyH = Math.max(1, Math.abs(y(c.open) - y(c.close)));
     out += \`<g><title>\${fmtDate(c.time)} · O \${num(c.open)} H \${num(c.high)} L \${num(c.low)} C \${num(c.close)}</title><line x1="\${xx}" x2="\${xx}" y1="\${y(c.high)}" y2="\${y(c.low)}" stroke="\${color}"/><rect x="\${xx - cw / 2}" y="\${bodyY}" width="\${cw}" height="\${bodyH}" fill="\${color}" opacity=".9"/></g>\`;
   });
+  const rVal = (levels.entry != null && levels.stop != null && levels.target1 != null && Math.abs(levels.entry - levels.stop) > 0)
+    ? Math.abs(levels.target1 - levels.entry) / Math.abs(levels.entry - levels.stop)
+    : null;
+  const tp1Label = (rVal && Number.isFinite(rVal) && rVal > 0) ? \`TP1 (+\${rVal.toFixed(2)}R)\` : 'TP1';
   const lineDefs = [
     ['entry', 'Entry', '#80a9ff'],
     ['stop', 'Stop', '#ff8f9b'],
     ['invalidation', 'Invalidation', '#f6c66d'],
-    ['target1', 'TP1 (3R)', '#8cf0c6'],
+    ['target1', tp1Label, '#8cf0c6'],
     ['target2', 'TP2', '#65d6bd'],
     ['keyLevelLow', 'Key Low', '#b093ff'],
     ['keyLevelHigh', 'Key High', '#b093ff']
