@@ -933,24 +933,75 @@ export default {
       });
     }
 
-    if ((url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram") && (request.method === "GET" || request.method === "POST")) {
+    if ((url.pathname === "/admin/test-silent" || url.pathname === "/api/test-silent" || (url.pathname === "/admin/test-telegram" && url.searchParams.get("mode") === "silent")) && (request.method === "GET" || request.method === "POST")) {
       if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
       }
       const { sendTelegram } = await import("./notify");
-      const text = `🚨 [LIVE TEST] SLK RADAR NOTIFICATION TEST 🚨\n\nYour Telegram bot connection is 100% active, healthy, and communicating with Cloudflare.\n\nPriority Setting : LOUD with AUTO-PIN\nBot Status       : Verified ✅\nTimestamp        : ${new Date().toISOString()}`;
+      const text = [
+        "👀 WATCH (Silent Radar) — NAS100 · 15m · SHORT 🔽",
+        "State      : ⚡ SHIFT",
+        "Detail     : BOS through pullback structure 20,430.50",
+        "Origin Zone: ~20,480.00 (V-Level Zone)",
+        "Bias Grade : ⭐ A_GRADE (HTF Aligned)",
+        "Price      : ~20,425.00",
+        `Candle     : ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+        "Setup ID   : test:NAS100:15m:SHORT:V:20480.0",
+        "",
+        "Quiet radar heads-up — real entry signal fires on confirmed retest candle close.",
+        "Testing SILENT notification mode (Phone should NOT vibrate or ring).",
+      ].join("\n");
       try {
-        await sendTelegram(env, text, { silent: false, pin: true });
+        await sendTelegram(env, text, { silent: true, pin: false });
         return json({
           ok: true,
-          action: "test_telegram",
+          mode: "silent",
           status: "delivered",
-          message: "Test message was successfully sent to your Telegram channel and auto-pinned! Check your Telegram channel now.",
+          message: "SILENT Watch Heads-up test sent to Telegram! Check that your phone did NOT vibrate, ring, or wake screen.",
         });
       } catch (err) {
         return json({
           ok: false,
-          action: "test_telegram",
+          mode: "silent",
+          error: err instanceof Error ? err.message : String(err),
+        }, 500);
+      }
+    }
+
+    if ((url.pathname === "/admin/test-loud" || url.pathname === "/api/test-loud" || url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram") && (request.method === "GET" || request.method === "POST")) {
+      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+        return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
+      }
+      const { sendTelegram } = await import("./notify");
+      const text = [
+        "🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨",
+        "🔴 SLK 🧪 PAPER ALERT — NAS100",
+        "Direction   : SHORT 🔴",
+        "Timeframe   : 15m (map 4h)",
+        "State       : RETEST → CONFIRMED (EXECUTE NOW)",
+        "Bias Grade  : 🌟 A_GRADE",
+        "Story       : BEARISH · EXPANSION · ALIGNED",
+        "Entry       : 20,465.00 (retest close)",
+        "Stop        : 20,495.00 (+30.0 pts · beyond sweep extreme)",
+        "Target 1    : 20,390.00 internal liquidity (-75.0 pts · 2.50R)",
+        "Target 2    : 20,315.00 nearest external liquidity",
+        "Draw        : 20,150.00",
+        "Invalidation: CLOSE > 20,495.00",
+        "",
+        "Testing LOUD notification mode (Phone SHOULD ring/vibrate and auto-pin to top).",
+      ].join("\n");
+      try {
+        await sendTelegram(env, text, { silent: false, pin: true });
+        return json({
+          ok: true,
+          mode: "loud",
+          status: "delivered",
+          message: "LOUD Confirmed Entry test sent to Telegram! Your phone should have rung/vibrated and auto-pinned the message.",
+        });
+      } catch (err) {
+        return json({
+          ok: false,
+          mode: "loud",
           error: err instanceof Error ? err.message : String(err),
         }, 500);
       }
