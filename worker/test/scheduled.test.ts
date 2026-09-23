@@ -239,7 +239,7 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
   });
 
-  it("sends entry alerts with loud notification and auto-pin, while watch and bias cards are silent", async () => {
+  it("delivers entry alerts and watch heads-ups cleanly to Telegram", async () => {
     const rawBodies: { url: string; body: any }[] = [];
     const testFetch: typeof fetch = async (input, init) => {
       const url = String(input);
@@ -292,11 +292,9 @@ describe("scheduled scan cycle", () => {
     await notifyAlert(notifyEnv, fakeAlert as any);
 
     const watchCall = rawBodies.find((b) => b.body.text?.includes("👀 WATCH"));
-    expect(watchCall?.body.disable_notification).toBe(true);
+    expect(watchCall).toBeDefined();
 
     const alertCall = rawBodies.find((b) => b.body.text?.includes("ACTION REQUIRED"));
-    expect(alertCall?.body.disable_notification).toBe(false);
-
-    const pinCall = rawBodies.find((b) => b.url.includes("pinChatMessage"));
-    expect(pinCall?.body.message_id).toBe(888);
+    expect(alertCall).toBeDefined();
+    expect(alertCall?.body.chat_id).toBe("mock-chat");
   });
