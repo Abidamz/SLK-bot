@@ -166,9 +166,9 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const baseEntries = Object.entries(entryTfs);
   baseEntries.sort((a, b) => a[1] - b[1]);
   const baseTimeframe = baseEntries.length ? baseEntries[0][0] : "30m";
-  // ~120 H4 bars of runway for the storyline + a buffer
+  // ~40 H4 bars of runway for the storyline + entry setup window
   const baseSec = TF_SECONDS[baseTimeframe] ?? 1800;
-  const baseCandlesLimit = Math.min(5000, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50);
+  const baseCandlesLimit = Math.min(2000, Math.max(300, Math.ceil((40 * TF_SECONDS["4h"]) / baseSec) + 50));
 
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
