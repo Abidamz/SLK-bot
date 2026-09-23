@@ -933,6 +933,29 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram") && (request.method === "GET" || request.method === "POST")) {
+      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+        return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
+      }
+      const { sendTelegram } = await import("./notify");
+      const text = `🚨 [LIVE TEST] SLK RADAR NOTIFICATION TEST 🚨\n\nYour Telegram bot connection is 100% active, healthy, and communicating with Cloudflare.\n\nPriority Setting : LOUD with AUTO-PIN\nBot Status       : Verified ✅\nTimestamp        : ${new Date().toISOString()}`;
+      try {
+        await sendTelegram(env, text, { silent: false, pin: true });
+        return json({
+          ok: true,
+          action: "test_telegram",
+          status: "delivered",
+          message: "Test message was successfully sent to your Telegram channel and auto-pinned! Check your Telegram channel now.",
+        });
+      } catch (err) {
+        return json({
+          ok: false,
+          action: "test_telegram",
+          error: err instanceof Error ? err.message : String(err),
+        }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/reset-journal" || url.pathname === "/api/reset-journal") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
       await store.resetAllAlerts();
