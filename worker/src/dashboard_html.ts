@@ -738,10 +738,12 @@ function renderAlerts() {
     let statusLabel = a.status;
     let statusClass = 'state';
     if (a.status === 'TP_HIT') {
-      statusLabel = 'TP HIT ✅ (+3R)';
+      const r = a.rMultiple != null ? Number(a.rMultiple) : (a.entry && a.stopLoss && a.tp1 && Math.abs(a.entry - a.stopLoss) > 0 ? Math.abs(a.tp1 - a.entry) / Math.abs(a.entry - a.stopLoss) : 2.5);
+      statusLabel = \`TP HIT ✅ (+\${r.toFixed(2)}R)\`;
       statusClass = 'profit-text';
     } else if (a.status === 'SL_HIT') {
-      statusLabel = 'STOP LOSS 🛑 (-1R)';
+      const r = a.rMultiple != null ? Number(a.rMultiple) : -1.0;
+      statusLabel = \`STOP LOSS 🛑 (\${r < 0 ? '' : '-'}\${Math.abs(r).toFixed(2)}R)\`;
       statusClass = 'loss-text';
     } else if (a.status === 'OPEN') {
       statusLabel = a.alertStatus === 'SUPPRESSED' ? 'OPEN · AUDIT' : 'ACTIVE IN MARKET';
