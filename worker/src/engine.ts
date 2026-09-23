@@ -8,7 +8,7 @@
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
-import { PARAM_VERSION, pipSize } from "./config";
+import { PARAM_VERSION, minStopDistance, pipSize } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
@@ -336,13 +336,13 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     a.diagnostics.riskRejectReasons[risk <= 0 ? "nonPositiveRisk" : "belowMinRiskAtr"]++;
     return null;
   }
-  // Enforce Option A: Minimum Stop Floor in Pips (e.g. 10 pips for forex pairs)
+  // Enforce Option A: Minimum Stop Floor in Pips/Points (e.g. 10 pips forex, 25-30 pts indices)
   // so broker spread never prematurely tags out valid setups.
   if (cfg.minStopPips && cfg.minStopPips > 0) {
-    const minPipDistance = cfg.minStopPips * pipSize(pair);
-    if (risk < minPipDistance) {
-      sl = isShort ? entry + minPipDistance : entry - minPipDistance;
-      risk = minPipDistance;
+    const minDistance = minStopDistance(pair, cfg.minStopPips);
+    if (risk < minDistance) {
+      sl = isShort ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
     }
   }
   // stop-width ceiling: beyond 2× ATR the entry is structurally too far from

@@ -43,6 +43,10 @@ export interface Env {
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
   MIN_RISK_ATR?: string;
+  MIN_STOP_PIPS?: string;
+  MIN_TP_R?: string;
+  SL_BUFFER_ATR?: string;
+  PAIR_BATCH_SIZE?: string;
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
 }
@@ -188,7 +192,16 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
       );
       const feeds: Record<string, Candle[]> = { [cfg.baseTimeframe]: base };
-      feeds["1h"] = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], now);
+      for (const entryTf of Object.keys(cfg.entryTfs)) {
+        if (entryTf === cfg.baseTimeframe) continue;
+        const entrySec = TF_SECONDS[entryTf];
+        if (entrySec && entrySec > TF_SECONDS[cfg.baseTimeframe]) {
+          feeds[entryTf] = dropIncomplete(resampleCandles(base, entrySec), entrySec, now);
+        }
+      }
+      if (!feeds["1h"]) {
+        feeds["1h"] = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], now);
+      }
       let h4 = dropIncomplete(
         resampleCandles(base, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now,
       );
@@ -901,6 +914,19 @@ export default {
         ok: true,
         action: "confirmed_only",
         message: "Successfully muted WATCH alerts and BIAS cards. Telegram will now ONLY receive Confirmed Entry Alerts and Outcomes.",
+        preferences: updated,
+      });
+    }
+
+    if ((url.pathname === "/admin/enable-watch" || url.pathname === "/api/enable-watch") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const current = await store.getNotificationPreferences();
+      const updated: NotificationPreferences = { ...current, telegramWatch: true, discordWatch: true, updatedUtc: new Date().toISOString() };
+      await store.saveNotificationPreferences(updated, "admin-enable-watch");
+      return json({
+        ok: true,
+        action: "enable_watch",
+        message: "Successfully enabled WATCH alerts and BIAS cards. Telegram will now receive Bias Confirmation Cards, Watch heads-up alerts, and Confirmed Entry Alerts.",
         preferences: updated,
       });
     }

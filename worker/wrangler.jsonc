@@ -20,20 +20,22 @@
   "vars": {
     // non-secret config — see src/config.ts for what each of these does
     // watchlist — canonical names; forex/metals served by Twelve Data on the
-    // free plan (default mapping XAUUSD → XAU/USD, USDZAR → USD/ZAR).
+    // free plan (default mapping XAUUSD → XAU/USD).
     // Index CFDs route automatically: OANDA if OANDA_API_TOKEN exists, else
     // the keyless Dukascopy public feed (USA30.IDX-USD / DEU.IDX-EUR /
-    // JPN.IDX-JPY); SYMBOL_MAP doubles as an escape-hatch override (e.g.
+    // JPN.IDX-JPY / USATECH.IDX-USD); SYMBOL_MAP doubles as an escape-hatch override (e.g.
     // PROVIDER_MAP + these ^DJI-style Yahoo symbols).
-    "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,NZDUSD,XAUUSD,USDZAR,US30,GER40,JAPAN225",
-    "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\"}",
-    "ENTRY_TFS": "30m,1h",
+    "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225",
+    "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\",\"NAS100\":\"^NDX\"}",
+    "ENTRY_TFS": "15m,30m,1h",
     "MODE": "paper",
     "PAPER_NOTIFY": "true",
-    // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) ahead of entry alerts
-    "WATCH_NOTIFY": "false",
+    // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) and bias cards ahead of entry alerts
+    "WATCH_NOTIFY": "true",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
+    "MIN_TP_R": "2.5",
+    "SL_BUFFER_ATR": "0.25",
     "PAIR_BATCH_SIZE": "2"
   }
   // secrets (set via `npx wrangler secret put ...`):

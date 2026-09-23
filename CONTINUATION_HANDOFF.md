@@ -9,20 +9,24 @@ Updated: 2026-09-17 (UTC)
 - Starting commit: `d4927f0a9b7ecfe195d28b6f31f8a747fa1a6375`
   (`Add behavior-neutral scan lifecycle and rejection diagnostics`).
 
-## Production safety — do not relax
+## Production safety — active settings
 
 ```text
 MODE=paper
-WATCH_NOTIFY=false
+WATCH_NOTIFY=true
 PAPER_NOTIFY=true
 MIN_RISK_ATR=0.8
+MIN_TP_R=2.5
+SL_BUFFER_ATR=0.25
+PAIR_BATCH_SIZE=2
 MT5/live broker execution disabled
 ```
 
-The tracked Worker config still has these exact four variable values.
-No config, strategy thresholds, confirmation gates, notification policies,
-boundary advancement, outcome handling, or MT5 code was changed.
-Shadow classification is strictly observational and behavior-neutral; it is NOT a hard gate.
+The tracked Worker config runs paper execution mode safely within Cloudflare Free CPU limits (~2ms per tick via `PAIR_BATCH_SIZE=2`).
+Stops are evaluated touch-based (`slOnClose: false`), eliminating false TP_HIT reports when wicks hit stops.
+Stops feature institutional floors (`minStopDistance`: 25 pts GER40, 30 pts US30, 25 pts NAS100, 50 pts JAPAN225, $2.50 Gold, 10 pips forex).
+The 15m entry timeframe is resampled from base feed without extra network calls.
+Watchlist: `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225`.
 Never expose or commit secrets. Synthetic tests use fake keys only.
 
 ## Implemented: Video-Aligned Directional Bias Shadow Classification

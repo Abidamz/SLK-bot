@@ -1,7 +1,7 @@
 /** State-machine parity tests — row-for-row ports of the Python engine
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
-import { defaultStrategy } from "../src/config";
+import { defaultStrategy, minStopDistance } from "../src/config";
 import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
@@ -216,6 +216,16 @@ describe("behavior-neutral replay diagnostics", () => {
     const alert = res.alerts[0];
     // Entry was 104.90, so SL floored at 104.90 + 0.30 = 105.20
     expect(alert.stopLoss).toBeCloseTo(105.20, 4);
+  });
+
+  it("enforces asset-appropriate minimum stop floor distances (indices, gold, forex)", () => {
+    expect(minStopDistance("GER40", 10)).toBe(25.0);
+    expect(minStopDistance("US30", 10)).toBe(30.0);
+    expect(minStopDistance("NAS100", 10)).toBe(25.0);
+    expect(minStopDistance("JAPAN225", 10)).toBe(50.0);
+    expect(minStopDistance("XAUUSD", 10)).toBe(2.5);
+    expect(minStopDistance("GBPJPY", 10)).toBeCloseTo(0.10, 4);
+    expect(minStopDistance("EURUSD", 10)).toBeCloseTo(0.0010, 6);
   });
 
   it("counts invalidation and expiration separately, not as risk rejects", () => {

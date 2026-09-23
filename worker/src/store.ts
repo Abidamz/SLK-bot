@@ -78,7 +78,7 @@ export interface NotificationPreferences {
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  primaryConfirmed: true, telegramWatch: false, discordWatch: false,
+  primaryConfirmed: true, telegramWatch: true, discordWatch: true,
   operationalEnabled: true, cooldownMinutes: 30, updatedUtc: "",
 };
 

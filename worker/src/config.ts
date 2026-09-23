@@ -99,7 +99,7 @@ export function defaultStrategy(): StrategyConfig {
     minStopPips: 10,  // minimum 10-pip stop loss floor for forex pairs
     maxPromotedTpR: 3.0, // far external liquidity remains context, not TP1
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
-    minTpR: 3.0,     // 1:3 minimum reward:risk
+    minTpR: 2.5,     // 1:2.5 minimum reward:risk
     cooldownMinutes: 240,
     sessionsAllowlist: [],
     mapTfLabel: "4h",
@@ -114,6 +114,8 @@ interface EnvVars {
   WATCH_NOTIFY?: string;
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
+  MIN_TP_R?: string;
+  SL_BUFFER_ATR?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
@@ -170,10 +172,14 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
+  const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
+  const minTpR = Number(env.MIN_TP_R ?? "");
   const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
   const strategy = defaultStrategy();
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
+  if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
+  if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
 
   return {
     pairs,
@@ -210,6 +216,19 @@ export function pipSize(pair: string): number {
   if (p.includes("JPY")) return 0.01;
   if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.1;
   return 0.0001;
+}
+
+/** Minimum stop loss floor in absolute price distance to prevent spread and noise stop-outs. */
+export function minStopDistance(pair: string, minStopPips = 10): number {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  if (p === "US30") return Math.max(30.0, minStopPips * 1.0);
+  if (p === "GER40" || p === "DE40") return Math.max(25.0, minStopPips * 1.0);
+  if (p === "NAS100" || p === "US100") return Math.max(25.0, minStopPips * 1.0);
+  if (p === "JAPAN225" || p === "JP225" || p === "N225") return Math.max(50.0, minStopPips * 1.0);
+  if (INDEX_POINT_PAIRS.has(p)) return Math.max(20.0, minStopPips * 1.0);
+  if (p.startsWith("XAU")) return Math.max(2.5, minStopPips * 0.1);
+  if (p.includes("JPY")) return minStopPips * 0.01;
+  return minStopPips * 0.0001;
 }
 
 export function fmtPrice(pair: string, price: number): string {
