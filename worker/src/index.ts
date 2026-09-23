@@ -409,8 +409,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 }
 
 /** Transition states that earn a pre-entry "watch" heads-up when enabled.
- *  MAP is far too early/noisy; RETEST has its own full alert. */
-const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
+ *  MAP and TOUCH are omitted to avoid consolidation noise; SWEEP (liquidity taken)
+ *  and SHIFT (market structure break) provide high-probability context;
+ *  RETEST has its own full confirmed entry alert. */
+const WATCH_STATES = new Set(["SWEEP", "SHIFT"]);
 
 /** Watch events are transient heads-ups, not durable alerts. Only notify when
  * the source candle closed recently; this prevents isolate cold-start replay

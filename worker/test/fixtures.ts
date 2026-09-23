@@ -298,8 +298,11 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
       ), { status: 200 });
     }
     if (url.includes("api.telegram.org")) {
+      if (url.includes("/pinChatMessage")) {
+        return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+      }
       calls.telegram.push(JSON.parse(String(init?.body ?? "{}")).text ?? "");
-      return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 101 } }), { status: 200 });
     }
     if (url.includes("discord.com")) {
       calls.discord.push(JSON.parse(String(init?.body ?? "{}")).content ?? "");

@@ -5,6 +5,7 @@
  *  evidence. */
 import { describe, expect, it } from "vitest";
 import { scanAll, watchEventFresh, type Env } from "../src/index";
+import { notifyAlert, notifyWatch } from "../src/notify";
 import { MemStore } from "../src/store";
 import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
 
@@ -236,4 +237,66 @@ describe("scheduled scan cycle", () => {
       now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
     });
     expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
+  });
+
+  it("sends entry alerts with loud notification and auto-pin, while watch and bias cards are silent", async () => {
+    const rawBodies: { url: string; body: any }[] = [];
+    const testFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      rawBodies.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 888 } }), { status: 200 });
+    };
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "mock-chat",
+      fetchFn: testFetch,
+    };
+    // 1. Notify Watch
+    await notifyWatch(notifyEnv, {
+      setupId: "twelvedata:EURUSD:30m:SHORT:V:104.2:2024-03-02",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS structure shift",
+      price: 104.2,
+    }, "30m");
+
+    // 2. Notify Alert
+    const fakeAlert = {
+      pair: "EURUSD",
+      direction: "SHORT" as const,
+      entryTf: "30m",
+      mapTf: "4h",
+      keyLevelBounds: [104.0, 104.5] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "V" as const,
+      alertStatus: "PAPER" as const,
+      entry: 104.2,
+      stopLoss: 104.7,
+      tpInternal: 103.2,
+      tpExternal: 102.5,
+      drawOnLiquidity: null,
+      rrInternal: 2.0,
+      invalidationLevel: 104.8,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-entry-1",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    const watchCall = rawBodies.find((b) => b.body.text?.includes("👀 WATCH"));
+    expect(watchCall?.body.disable_notification).toBe(true);
+
+    const alertCall = rawBodies.find((b) => b.body.text?.includes("ACTION REQUIRED"));
+    expect(alertCall?.body.disable_notification).toBe(false);
+
+    const pinCall = rawBodies.find((b) => b.url.includes("pinChatMessage"));
+    expect(pinCall?.body.message_id).toBe(888);
   });
