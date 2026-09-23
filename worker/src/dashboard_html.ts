@@ -143,7 +143,7 @@ export const DASHBOARD_HTML = `<!doctype html>
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
             <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
-            <div><dt>Active Markets (10)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · NZDUSD · XAUUSD · USDZAR · US30 · GER40 · JAPAN225</dd></div>
+            <div><dt>Active Markets (10)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
