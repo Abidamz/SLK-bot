@@ -31,7 +31,9 @@ export interface Env {
   OANDA_API_TOKEN?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_DM_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
+  fetchFn?: typeof fetch;
   ADMIN_KEY?: string;
   DASHBOARD_READ_KEY?: string;
   PROVIDER_WEBHOOK_SECRET?: string;
@@ -475,7 +477,8 @@ async function deliver(
     console.info(JSON.stringify({ level: "info", msg: "paper mode, notifications off — logged only", setupId: alert.setupId }));
     return;
   }
-  await notifyAlert({ ...env, fetchFn }, alert);
+  const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId }, alert);
 }
 
 async function resolveOutcomes(
@@ -497,7 +500,10 @@ async function resolveOutcomes(
     if (!oc) continue;
     await store.recordOutcome(String(rec.setup_id), oc);
     console.info(JSON.stringify({ level: "info", msg: "outcome", setupId: rec.setup_id, status: oc.status, r: oc.rMultiple }));
-    if (cfg.notifyOutcomes && !isSuppressed) await notifyOutcome({ ...env, fetchFn }, rec, oc);
+    if (cfg.notifyOutcomes && !isSuppressed) {
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId }, rec, oc);
+    }
   }
 }
 
@@ -968,11 +974,152 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/connect-dm" || url.pathname === "/api/connect-dm") && (request.method === "GET" || request.method === "POST")) {
+      if (!env.TELEGRAM_BOT_TOKEN) {
+        return json({ ok: false, error: "Telegram bot token missing (TELEGRAM_BOT_TOKEN)" }, 400);
+      }
+      const doFetch = env.fetchFn ?? fetch;
+      const getUpdatesUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`;
+      try {
+        const resp = await doFetch(getUpdatesUrl);
+        const data = await resp.json() as { ok: boolean; result?: Array<{ message?: { chat?: { id: number; type: string; first_name?: string; username?: string } } }> };
+        if (!data.ok || !Array.isArray(data.result)) {
+          return json({ ok: false, error: "Failed to fetch updates from Telegram API" }, 502);
+        }
+        // Find private chat updates (from direct user messages)
+        const privateChats = data.result
+          .map((u) => u.message?.chat)
+          .filter((c): c is { id: number; type: string; first_name?: string; username?: string } => Boolean(c && c.type === "private"));
+
+        if (privateChats.length === 0) {
+          return json({
+            ok: false,
+            error: "No private messages found from your Telegram account yet. Please open Telegram, search for your bot, send /start or any message to it, and run /admin/connect-dm again.",
+          }, 404);
+        }
+
+        const lastChat = privateChats[privateChats.length - 1];
+        const dmChatId = String(lastChat.id);
+        const store = makeStore(env.DB);
+        await store.setKv("telegram_dm_chat_id", dmChatId);
+
+        // Immediately send a confirmation DM to user
+        const { sendTelegram } = await import("./notify");
+        const welcomeText = [
+          "🔔 [CONNECTED] SLK PRIVATE DM SIGNALS ACTIVE! 🔔",
+          "",
+          `Hello ${lastChat.first_name || lastChat.username || "there"}!`,
+          "Your personal Telegram chat is now linked directly to the SLK Radar engine.",
+          "",
+          "⚡ Whenever a confirmed entry signal fires, you will receive a loud alert right here simultaneously with the channel so you NEVER miss a trade.",
+          `Linked Chat ID : ${dmChatId}`,
+          `Timestamp      : ${new Date().toISOString()}`,
+        ].join("\n");
+        await sendTelegram(env, welcomeText, { silent: false, pin: false, chatId: dmChatId });
+
+        return json({
+          ok: true,
+          status: "connected",
+          dmChatId,
+          user: lastChat.first_name || lastChat.username || "User",
+          message: `Successfully connected private chat for ${lastChat.first_name || lastChat.username || "User"} (ID: ${dmChatId})! A confirmation message was just sent directly to your phone.`,
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
+    if ((url.pathname === "/admin/set-dm" || url.pathname === "/api/set-dm") && (request.method === "GET" || request.method === "POST")) {
+      const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
+      if (!chatIdParam) {
+        return json({ ok: false, error: "Missing ?chat_id=<your_telegram_id> query parameter" }, 400);
+      }
+      const store = makeStore(env.DB);
+      const dmChatId = chatIdParam.trim();
+      await store.setKv("telegram_dm_chat_id", dmChatId);
+      const { sendTelegram } = await import("./notify");
+      try {
+        await sendTelegram(env, `🔔 SLK Private DM Alert delivery linked to chat ID ${dmChatId}! Loud signals will now be sent here simultaneously with the channel.`, { silent: false, pin: false, chatId: dmChatId });
+      } catch (testErr) {
+        return json({
+          ok: true,
+          status: "saved_with_warning",
+          dmChatId,
+          warning: `Saved chat ID, but initial test message failed: ${testErr instanceof Error ? testErr.message : String(testErr)}. Ensure you have started the bot first by clicking 'Start' in Telegram!`,
+        });
+      }
+      return json({
+        ok: true,
+        status: "connected",
+        dmChatId,
+        message: `Successfully configured private DM alerts for chat ID ${dmChatId}! Test notification sent to your phone.`,
+      });
+    }
+
+    if ((url.pathname === "/admin/test-dm" || url.pathname === "/api/test-dm") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
+      if (!dmChatId) {
+        return json({
+          ok: false,
+          error: "No private DM chat ID configured yet. Run /admin/connect-dm after sending /start to your bot, or set ?chat_id= via /admin/set-dm.",
+        }, 400);
+      }
+      const { sendTelegram } = await import("./notify");
+      const text = [
+        "🚨🚨🚨 [ACTION REQUIRED] — SLK PRIVATE DM SIGNAL 🚨🚨🚨",
+        "🔴 SLK 🧪 PAPER ALERT — NAS100",
+        "Direction   : SHORT 🔴",
+        "Timeframe   : 15m (map 4h)",
+        "State       : RETEST → CONFIRMED (EXECUTE NOW)",
+        "Bias Grade  : 🌟 A_GRADE",
+        "Story       : BEARISH · EXPANSION · ALIGNED",
+        "Entry       : 20,465.00 (retest close)",
+        "Stop        : 20,495.00 (+30.0 pts)",
+        "Target 1    : 20,390.00 (-75.0 pts · 2.50R)",
+        "Target 2    : 20,315.00 nearest external liquidity",
+        "",
+        "Testing PRIVATE DM direct notification! Your phone should have vibrated/rung directly.",
+      ].join("\n");
+      try {
+        await sendTelegram(env, text, { silent: false, pin: false, chatId: dmChatId });
+        return json({
+          ok: true,
+          mode: "loud_dm",
+          targetChatId: dmChatId,
+          status: "delivered",
+          message: "LOUD private signal test was successfully sent directly to your phone!",
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
+    if ((url.pathname === "/admin/telegram-status" || url.pathname === "/api/telegram-status") && request.method === "GET") {
+      const store = makeStore(env.DB);
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
+      return json({
+        ok: true,
+        botConfigured: Boolean(env.TELEGRAM_BOT_TOKEN),
+        channelConfigured: Boolean(env.TELEGRAM_CHAT_ID),
+        channelChatId: env.TELEGRAM_CHAT_ID ? `${env.TELEGRAM_CHAT_ID.slice(0, 4)}...${env.TELEGRAM_CHAT_ID.slice(-4)}` : null,
+        dmConfigured: Boolean(dmChatId),
+        dmChatId: dmChatId ? `${dmChatId.slice(0, 3)}...${dmChatId.slice(-3)}` : null,
+        instructions: {
+          connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
+          setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
+          testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",
+        },
+      });
+    }
+
     if ((url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram" || url.pathname === "/admin/test-loud" || url.pathname === "/api/test-loud") && (request.method === "GET" || request.method === "POST")) {
       if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
       }
-      const { sendTelegram } = await import("./notify");
+      const store = makeStore(env.DB);
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      const { broadcast } = await import("./notify");
       const text = [
         "🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨",
         "🔴 SLK 🧪 PAPER ALERT — NAS100",
@@ -988,15 +1135,23 @@ export default {
         "Draw        : 20,150.00",
         "Invalidation: CLOSE > 20,495.00",
         "",
-        "Testing LOUD notification mode with auto-pin (Phone SHOULD buzz/ring!).",
+        "Testing LOUD notification mode with auto-pin in channel + direct private DM delivery!",
       ].join("\n");
       try {
-        await sendTelegram(env, text, { silent: false, pin: true });
+        const results = await broadcast(
+          { ...env, TELEGRAM_DM_CHAT_ID: dmChatId },
+          text,
+          0xef4444,
+          { silent: false, pin: true, sendToDm: true },
+        );
         return json({
           ok: true,
-          mode: "loud",
-          status: "delivered",
-          message: "LOUD Confirmed Entry test was successfully sent to your Telegram channel and auto-pinned! Your phone should have vibrated/rung.",
+          mode: "loud_simultaneous",
+          results,
+          dmConfigured: Boolean(dmChatId),
+          message: dmChatId
+            ? "LOUD Confirmed Entry test was successfully sent simultaneously to your Telegram channel (with pin) AND directly to your private chat!"
+            : "LOUD Confirmed Entry test sent to your Telegram channel! (Tip: Link your private chat via /admin/connect-dm to receive signals in both places simultaneously).",
         });
       } catch (err) {
         return json({

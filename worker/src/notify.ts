@@ -18,6 +18,15 @@ const AMBER = 0xe67e22;
 export interface TelegramSendOptions {
   silent?: boolean;
   pin?: boolean;
+  chatId?: string;
+}
+
+export function parseChatIds(raw?: string): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export async function sendTelegram(
@@ -25,43 +34,48 @@ export async function sendTelegram(
   text: string,
   options: TelegramSendOptions = {},
 ): Promise<void> {
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-  const doFetch = env.fetchFn ?? fetch;
-  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-  const body: Record<string, unknown> = {
-    chat_id: env.TELEGRAM_CHAT_ID,
-    text,
-    disable_web_page_preview: true,
-  };
-  // Only pass disable_notification when explicitly silent
-  if (options.silent) {
-    body.disable_notification = true;
-  }
-  const resp = await doFetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) throw new Error(`Telegram failed: HTTP ${resp.status} ${await resp.text()}`);
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+  const targetChatIds = options.chatId ? [options.chatId] : parseChatIds(env.TELEGRAM_CHAT_ID);
+  if (targetChatIds.length === 0) return;
 
-  if (options.pin) {
-    try {
-      const data = (await resp.json()) as { ok?: boolean; result?: { message_id?: number } };
-      const msgId = data?.result?.message_id;
-      if (msgId) {
-        const pinUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/pinChatMessage`;
-        await doFetch(pinUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            chat_id: env.TELEGRAM_CHAT_ID,
-            message_id: msgId,
-            disable_notification: true, // Silent pin so it doesn't suppress or overwrite the loud message alert
-          }),
-        });
+  const doFetch = env.fetchFn ?? fetch;
+  for (const chatId of targetChatIds) {
+    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: true,
+    };
+    // Only pass disable_notification when explicitly silent
+    if (options.silent) {
+      body.disable_notification = true;
+    }
+    const resp = await doFetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) throw new Error(`Telegram failed: HTTP ${resp.status} ${await resp.text()}`);
+
+    if (options.pin) {
+      try {
+        const data = (await resp.json()) as { ok?: boolean; result?: { message_id?: number } };
+        const msgId = data?.result?.message_id;
+        if (msgId) {
+          const pinUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/pinChatMessage`;
+          await doFetch(pinUrl, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              message_id: msgId,
+              disable_notification: true, // Silent pin so it doesn't suppress or overwrite the loud message alert
+            }),
+          });
+        }
+      } catch (pinErr) {
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram pin failed", chatId, error: String(pinErr) }));
       }
-    } catch (pinErr) {
-      console.warn(JSON.stringify({ level: "warn", msg: "telegram pin failed", error: String(pinErr) }));
     }
   }
 }
@@ -195,6 +209,7 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
 export interface BroadcastOptions {
   silent?: boolean;
   pin?: boolean;
+  sendToDm?: boolean;
 }
 
 /** Fan out to every configured channel; a failing channel is logged and
@@ -217,6 +232,24 @@ export async function broadcast(
       console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
     }
   }
+
+  // Simultaneously deliver loud signals to private DM if configured and requested
+  const shouldSendDm = options.sendToDm ?? (!options.silent);
+  if (telegramAllowed && shouldSendDm && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_DM_CHAT_ID) {
+    const channelIds = parseChatIds(env.TELEGRAM_CHAT_ID);
+    const dmIds = parseChatIds(env.TELEGRAM_DM_CHAT_ID);
+    for (const dmId of dmIds) {
+      if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in TELEGRAM_CHAT_ID
+      try {
+        await sendTelegram(env, text, { silent: false, pin: false, chatId: dmId });
+        results.telegram_dm = "ok";
+      } catch (err) {
+        results.telegram_dm = `error: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram DM delivery failed", dmId, error: results.telegram_dm }));
+      }
+    }
+  }
+
   if (discordAllowed && env.DISCORD_WEBHOOK_URL) {
     try {
       await sendDiscord(env, text, color);
@@ -235,9 +268,10 @@ export async function broadcast(
 /** Confirmed entry alerts fan out to every configured channel. The alert
  * includes the candidate entry, stop-loss, internal/external targets, and
  * invalidation level; it is still research-only and places no order.
- * Entry alerts are sent LOUD and auto-pinned to prevent missing execution. */
+ * Entry alerts are sent LOUD and auto-pinned to prevent missing execution,
+ * and simultaneously sent to personal private DM so it cannot be missed. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
-  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, { silent: false, pin: true });
+  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, { silent: false, pin: true, sendToDm: true });
 }
 
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT
@@ -329,18 +363,18 @@ export async function notifyBias(
   currentPrice?: number,
 ): Promise<Record<string, string>> {
   const color = direction === "LONG" ? GREEN : RED;
-  return broadcast(env, formatBiasCard(pair, direction, diag, origin, currentPrice), color, { silent: true, pin: false });
+  return broadcast(env, formatBiasCard(pair, direction, diag, origin, currentPrice), color, { silent: true, pin: false, sendToDm: false });
 }
 
 export async function notifyWatch(
   env: NotifyEnv, ev: EngineEvent, entryTf: string,
 ): Promise<Record<string, string>> {
-  return broadcast(env, formatWatch(ev, entryTf), AMBER, { silent: true, pin: false });
+  return broadcast(env, formatWatch(ev, entryTf), AMBER, { silent: true, pin: false, sendToDm: false });
 }
 
 export async function notifyOutcome(
   env: NotifyEnv, rec: AlertRowish, oc: OutcomeLike,
 ): Promise<Record<string, string>> {
   const color = oc.status === "TP_HIT" ? GREEN : oc.status === "SL_HIT" ? RED : GREY;
-  return broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false });
+  return broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true });
 }

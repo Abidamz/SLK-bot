@@ -306,3 +306,86 @@ describe("scheduled scan cycle", () => {
     // Pin is sent silently so it doesn't interrupt or cancel out the loud message buzz
     expect(pinCall?.body.disable_notification).toBe(true);
   });
+
+  it("simultaneously sends loud confirmed alert to both channel and personal private DM", async () => {
+    const rawBodies: Array<{ url: string; body: Record<string, any> }> = [];
+    const testFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const parsedBody = init?.body ? JSON.parse(String(init.body)) : {};
+      rawBodies.push({ url, body: parsedBody });
+      if (url.includes("/pinChatMessage")) {
+        return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 999 } }), { status: 200 });
+    };
+
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "-1001234567890",
+      TELEGRAM_DM_CHAT_ID: "987654321",
+      fetchFn: testFetch,
+    };
+
+    const fakeAlert = {
+      pair: "NAS100",
+      direction: "SHORT" as const,
+      entryTf: "15m",
+      mapTf: "4h",
+      keyLevelBounds: [20400, 20500] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "V" as const,
+      alertStatus: "PAPER" as const,
+      entry: 20465.0,
+      stopLoss: 20495.0,
+      tpInternal: 20390.0,
+      tpExternal: 20315.0,
+      drawOnLiquidity: null,
+      rrInternal: 2.5,
+      invalidationLevel: 20495.0,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-simul-1",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    // Verify channel message was sent
+    const channelAlert = rawBodies.find((b) => b.url.includes("/sendMessage") && b.body.chat_id === "-1001234567890");
+    expect(channelAlert).toBeDefined();
+    expect(channelAlert?.body.disable_notification).toBeUndefined();
+
+    // Verify personal DM message was sent simultaneously
+    const dmAlert = rawBodies.find((b) => b.url.includes("/sendMessage") && b.body.chat_id === "987654321");
+    expect(dmAlert).toBeDefined();
+    expect(dmAlert?.body.disable_notification).toBeUndefined();
+
+    // Verify channel message was pinned silently
+    const channelPin = rawBodies.find((b) => b.url.includes("/pinChatMessage") && b.body.chat_id === "-1001234567890");
+    expect(channelPin).toBeDefined();
+    expect(channelPin?.body.disable_notification).toBe(true);
+
+    // Verify watch alerts are NOT sent to DM
+    rawBodies.length = 0;
+    await notifyWatch(notifyEnv, {
+      setupId: "test:NAS100:15m:SHORT:V:20480:2024-03-02",
+      pair: "NAS100",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 20425,
+    }, "15m");
+
+    const channelWatch = rawBodies.find((b) => b.body.chat_id === "-1001234567890");
+    const dmWatch = rawBodies.find((b) => b.body.chat_id === "987654321");
+    expect(channelWatch).toBeDefined();
+    expect(channelWatch?.body.disable_notification).toBe(true);
+    // DM should NOT receive transient watch cards
+    expect(dmWatch).toBeUndefined();
+  });
