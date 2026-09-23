@@ -293,8 +293,16 @@ describe("scheduled scan cycle", () => {
 
     const watchCall = rawBodies.find((b) => b.body.text?.includes("👀 WATCH"));
     expect(watchCall).toBeDefined();
+    expect(watchCall?.body.disable_notification).toBe(true);
 
     const alertCall = rawBodies.find((b) => b.body.text?.includes("ACTION REQUIRED"));
     expect(alertCall).toBeDefined();
     expect(alertCall?.body.chat_id).toBe("mock-chat");
+    // Loud message does NOT set disable_notification, keeping Telegram's standard vibrating delivery
+    expect(alertCall?.body.disable_notification).toBeUndefined();
+
+    const pinCall = rawBodies.find((b) => b.url.includes("pinChatMessage"));
+    expect(pinCall?.body.message_id).toBe(888);
+    // Pin is sent silently so it doesn't interrupt or cancel out the loud message buzz
+    expect(pinCall?.body.disable_notification).toBe(true);
   });
