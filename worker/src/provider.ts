@@ -362,13 +362,7 @@ export async function fetchDeriv(
   const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
   const granularity = TF_SECONDS[tf] ?? 1800;
 
-  const wsUrls = [
-    `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-    `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-    `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-    `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-  ];
-  const timeoutMs = 15_000;
+  const timeoutMs = 7_000;
 
   return new Promise<Candle[]>((resolve, reject) => {
     let resolved = false;
@@ -388,28 +382,48 @@ export async function fetchDeriv(
         let ws: any = null;
         let lastError = "";
 
-        for (const targetUrl of wsUrls) {
-          try {
-            const resp = await fetchFn(targetUrl, {
-              headers: {
-                Upgrade: "websocket",
-                Connection: "Upgrade",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                Origin: "https://app.deriv.com",
-              },
-            });
-
-            const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
-            if (candidateWs) {
-              ws = candidateWs;
-              break;
-            } else {
-              const status = (resp as any)?.status ?? "unknown";
-              const statusText = (resp as any)?.statusText ?? "";
-              lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+        // In standard Cloudflare Workers runtime, native new WebSocket("wss://...") is supported
+        if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
+          const endpoints = [
+            `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+            `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          ];
+          for (const ep of endpoints) {
+            try {
+              ws = new (globalThis as any).WebSocket(ep);
+              if (ws) break;
+            } catch (e) {
+              lastError = e instanceof Error ? e.message : String(e);
             }
-          } catch (connErr) {
-            lastError = connErr instanceof Error ? connErr.message : String(connErr);
+          }
+        }
+
+        // Fallback or test-injected fetchFn (fetch with Upgrade: websocket)
+        if (!ws) {
+          const httpsUrls = [
+            `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+            `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          ];
+          for (const targetUrl of httpsUrls) {
+            try {
+              const resp = await fetchFn(targetUrl, {
+                headers: {
+                  Upgrade: "websocket",
+                },
+              });
+
+              const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+              if (candidateWs) {
+                ws = candidateWs;
+                break;
+              } else {
+                const status = (resp as any)?.status ?? "unknown";
+                const statusText = (resp as any)?.statusText ?? "";
+                lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+              }
+            } catch (connErr) {
+              lastError = connErr instanceof Error ? connErr.message : String(connErr);
+            }
           }
         }
 
@@ -496,14 +510,37 @@ export async function fetchDeriv(
           ws.onclose = onClose;
         }
 
-        const reqPayload = {
-          ticks_history: symbol,
-          style: "candles",
-          granularity,
-          count: Math.min(limit, 1000),
-          end: "latest",
+        const sendPayload = () => {
+          try {
+            const reqPayload = {
+              ticks_history: symbol,
+              style: "candles",
+              granularity,
+              count: Math.min(limit, 1000),
+              end: "latest",
+            };
+            ws.send(JSON.stringify(reqPayload));
+          } catch (sendErr) {
+            if (!resolved) {
+              resolved = true;
+              cleanup();
+              reject(sendErr);
+            }
+          }
         };
-        ws.send(JSON.stringify(reqPayload));
+
+        // If WebSocket is already open or in a mock test environment (readyState undefined/1), send now; else wait for open event
+        if (ws.readyState === 1 || ws.readyState === undefined) {
+          sendPayload();
+        } else if (ws.readyState === 0) {
+          if (typeof ws.addEventListener === "function") {
+            ws.addEventListener("open", sendPayload, { once: true });
+          } else {
+            ws.onopen = sendPayload;
+          }
+        } else {
+          sendPayload();
+        }
       } catch (err) {
         if (!resolved) {
           resolved = true;
