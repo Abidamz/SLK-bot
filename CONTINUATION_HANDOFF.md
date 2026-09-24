@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `1a011ac` (`style(dashboard): polish segment card stat column widths and nowrap labels`)
+**Latest Synced Commit:** `5265557` (`docs(dashboard): clarify institutional segment covers Asian, London & NY sessions`)
 
 ---
 
