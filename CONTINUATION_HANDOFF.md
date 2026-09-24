@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `d4e5dcd` (`chore: add deploy:worker and deploy:pages helper scripts`)
+**Latest Synced Commit:** `305313c` (`feat(deriv): add Deriv synthetics provider, channel routing, and admin linking endpoints`)
 
 ---
 
@@ -17,6 +17,11 @@
   - Stats: `GET /stats`
   - Public Ledger: `GET /alerts`
   - Scan Logs: `GET /scan-log`
+- **Telegram Channels:**
+  - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID`
+  - **24/7 Synthetics Channel:** `SLK HUB | 24/7 SYNTHETICS` (ID: `-1004426439958`, `https://t.me/+sBrVmW1u8osyM2Q0`)
+  - **Free Community Hub:** Managed via `TELEGRAM_FREE_CHAT_ID`
+  - **Personal VIP Push DM:** Managed via `TELEGRAM_DM_CHAT_ID`
 
 ---
 
@@ -33,10 +38,11 @@ SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
 MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 
-### Active Markets (10 High-Beta Assets)
+### Active Markets (11 High-Beta Assets)
 - **Indices:** `NAS100`, `US30`, `GER40`, `JAPAN225`
 - **Metals:** `XAUUSD` (Gold)
 - **Forex:** `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`
+- **Synthetics (24/7):** `V75` (Volatility 75 Index via Deriv WebSocket provider)
 - **Timeframes:** `15m` (resampled), `30m`, `1h`
 
 ---
