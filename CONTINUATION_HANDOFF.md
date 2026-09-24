@@ -1,77 +1,99 @@
-# SLK-bot Continuation Handoff
+# SLK Radar — Complete Continuation Handoff & Architecture Summary
 
-Updated: 2026-09-17 (UTC)
+**Updated:** 2026-09-24 (UTC)  
+**Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
+**Active Production Branch:** `arena/01a0b153-slk-bot`  
+**Latest Synced Commit:** `d4e5dcd` (`chore: add deploy:worker and deploy:pages helper scripts`)
 
-## Repository and branch
+---
 
-- Repository: `Abidamz/SLK-bot` — https://github.com/Abidamz/SLK-bot
-- Arena session branch: `arena/01a0b153-slk-bot`. Do not switch branches.
-- Starting commit: `d4927f0a9b7ecfe195d28b6f31f8a747fa1a6375`
-  (`Add behavior-neutral scan lifecycle and rejection diagnostics`).
+## 1. Quick Links & Live Deployments
 
-## Production safety — active settings
+- **Public Proof Journal & Dashboard:** `https://slk-radar.pages.dev`
+- **Subscriber Terms & Risk Disclaimer:** `https://slk-radar.pages.dev/terms`
+- **Whop Storefront (VIP Membership):** `https://whop.com/slk-radar/slk-radar-vip-signals`
+- **Cloudflare Worker API (Backend):** `https://slk-alert-worker.abidogundamilola.workers.dev`
+  - Health: `GET /health`
+  - Stats: `GET /stats`
+  - Public Ledger: `GET /alerts`
+  - Scan Logs: `GET /scan-log`
+
+---
+
+## 2. Active Production Safety & Configuration
 
 ```text
 MODE=paper
 WATCH_NOTIFY=true
 PAPER_NOTIFY=true
+PAIR_BATCH_SIZE=1             (Sequential 1-minute staggered scanning to prevent 10ms CPU kills)
 MIN_RISK_ATR=0.8
-MIN_TP_R=2.5
-SL_BUFFER_ATR=0.25
-PAIR_BATCH_SIZE=2
-MT5/live broker execution disabled
+MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
+SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
+MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 
-The tracked Worker config runs paper execution mode safely within Cloudflare Free CPU limits (~2ms per tick via `PAIR_BATCH_SIZE=2`).
-Stops are evaluated touch-based (`slOnClose: false`), eliminating false TP_HIT reports when wicks hit stops.
-Stops feature institutional floors (`minStopDistance`: 25 pts GER40, 30 pts US30, 25 pts NAS100, 50 pts JAPAN225, $2.50 Gold, 10 pips forex).
-The 15m entry timeframe is resampled from base feed without extra network calls.
-Watchlist: `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225`.
-Never expose or commit secrets. Synthetic tests use fake keys only.
+### Active Markets (10 High-Beta Assets)
+- **Indices:** `NAS100`, `US30`, `GER40`, `JAPAN225`
+- **Metals:** `XAUUSD` (Gold)
+- **Forex:** `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`
+- **Timeframes:** `15m` (resampled), `30m`, `1h`
 
-## Implemented: Video-Aligned Directional Bias Shadow Classification
+---
 
-- `worker/src/shadow.ts`: typed directional bias diagnostic components:
-  1. **Weekly liquidity context**: Weekly candle aggregation (Monday-Sunday UTC calendar bounds), weekly high/low sweeps, opposing liquidity standing checks, primary opposing-liquidity targets.
-  2. **Daily context**: Daily body-to-body breakouts (bullish, bearish, neutral/inside), daily liquidity sweep + structure break detection, incomplete/missing daily context flags.
-  3. **4H vantage-point direction**: 4H structural direction (bullish, bearish, neutral), swing break/breakout status.
-  4. **1H execution-context alignment**: 1H directional bias, agreement evaluation with 4H structural direction.
-  5. **Lower-timeframe entry quality**: Sweep verification, BOS / structure shift verification, FVG (fair value gap) detection between sweep and retest, FVG rebalance verification (entry candle wick/body filling into the imbalance), retest verification.
-  6. **Classification categories**:
-     - `A_GRADE`: Aligned 4H vantage and 1H execution context, consistent daily/weekly context, full entry quality (sweep, BOS, FVG rebalance, retest).
-     - `B_GRADE`: Aligned HTF context but missing FVG rebalance or secondary context imperfection.
-     - `HTF_CONFLICT`: 1H execution context conflicts with 4H vantage direction, or daily/weekly direction actively opposes the setup.
-     - `OBSERVATION_ONLY`: Missing HTF context, neutral execution context, or incomplete/failed entry confirmation sequence.
-- **Engine integration** (`worker/src/engine.ts`):
-  - `buildAlert` evaluates directional bias diagnostics on confirmation entries and attaches `shadowClassification` and `directionalBias` to the generated alert object.
-  - Returns `shadowDiagnostics` array in `scanEntry` output.
-  - Zero disruption to alert decisions, deduplication, notifications, outcomes, or risk evaluation.
-- **Orchestration & Structured Logging** (`worker/src/index.ts`):
-  - Emits structured `slk.shadow.classification` JSON logs for confirmed entries containing weekly, daily, 4H, 1H, and entry-quality diagnostic snapshots.
-- **Deterministic Test Suite** (`worker/test/shadow.test.ts`):
-  - Aligned 1H/4H bearish setup diagnosed as `A_GRADE`.
-  - Aligned 1H/4H bullish setup diagnosed as `A_GRADE`.
-  - 1H/4H conflict diagnosed as `HTF_CONFLICT`.
-  - Neutral 1H diagnosed as `OBSERVATION_ONLY`.
-  - Missing weekly or daily context diagnosed as `OBSERVATION_ONLY`.
-  - Valid sweep plus FVG rebalance diagnosed as `A_GRADE`.
-  - Sweep without rebalance diagnosed as `B_GRADE`.
-  - 1H entry timeframe role evaluation (4H structural, 1H execution confirmation).
-  - Existing alert output unchanged (exact baseline parity preserving identical alert IDs, R:R, stops, entries, and event replay determinism).
+## 3. Real Live Track Record (as of 2026-09-24)
 
-## Validation
+- **Total Recorded Setups:** 20
+- **Decided Outcomes:** 14 trades (10 Take Profit ✅ · 4 Stop Loss 🛑)
+- **Decided Win Rate:** **71.4%**
+- **Cumulative Net Return:** **+17.37R**
+- **Max Drawdown:** -3.20R
+- **Top Performer:** Gold (`XAUUSD`) 6 wins / 0 losses (**+11.38R** net)
 
-- Full Worker vitest suite: **95 tests passed** (all 8 test files).
-- Worker `npm run typecheck`: clean pass (`tsc --noEmit`).
-- Dashboard check: `node --check dashboard/app.js` passed.
-- Replay determinism and alert parity verified across all setups.
+---
 
-## Deployment status and next steps
+## 4. Key System Architecture & Files
 
-**NOT deployed.** Ready for review on branch `arena/01a0b153-slk-bot`.
-Validation commands:
+| Path | Purpose |
+| :--- | :--- |
+| `worker/src/index.ts` | Worker router (`/health`, `/alerts`, `/stats`, `/scan-log`, cron handler) |
+| `worker/src/engine.ts` | SLK confirmation state machine (`MAP` $\to$ `TOUCH` $\to$ `SWEEP` $\to$ `SHIFT` $\to$ `RETEST`) |
+| `worker/src/shadow.ts` | Behavior-neutral shadow directional bias classifier (`A_GRADE`, `B_GRADE`, `HTF_CONFLICT`) |
+| `worker/src/notify.ts` | Priority-tiered Telegram dispatcher (loud pinned entries + silent watch cards + private DM push) |
+| `worker/src/provider.ts` | Market data provider with automatic failover (Twelve Data $\to$ Yahoo Finance $\to$ Dukascopy) |
+| `worker/src/store.ts` | SQLite / Cloudflare D1 persistence ledger |
+| `dashboard/index.html` | Public track record UI with cache buster `?v=8` |
+| `dashboard/app.js` | Dashboard client logic with dynamic exact R-multiple calculation |
+| `dashboard/terms.html` | High-risk investment disclaimer and Terms of Service for Whop compliance |
+| `dashboard/SLK_Radar_Terms_of_Service.pdf` | Printable legal PDF for subscriber onboarding |
+| `MARKETING_PLAYBOOK.md` | Full marketing funnels, video scripts, Twitter threads, and launch strategy |
+
+---
+
+## 5. Standard Deployment Commands
+
+When deploying from the repository root:
+
 ```bash
+# 1. Run local tests & validation
 npm test -- --run
 npm run typecheck
 node --check dashboard/app.js
+
+# 2. Deploy Worker (Backend API)
+npm run deploy:worker
+# (or: cd worker && npx wrangler deploy)
+
+# 3. Deploy Pages (Frontend Dashboard to Production)
+npm run deploy:pages
+# (or: npx wrangler pages deploy dashboard --project-name=slk-radar --branch=main)
 ```
+
+---
+
+## 6. How to Continue Elsewhere
+
+If continuing in a new Arena session, Chrome tab, or local environment:
+1. Ensure your git branch is set to `arena/01a0b153-slk-bot`.
+2. Run `git pull origin arena/01a0b153-slk-bot` to stay synced with commit `d4e5dcd`.
+3. Reference `CONTINUATION_HANDOFF.md` for technical development and `MARKETING_PLAYBOOK.md` for subscriber acquisition and Whop launch copy.
