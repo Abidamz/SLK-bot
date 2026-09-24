@@ -286,7 +286,7 @@ export class D1Store implements Store {
 
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
     const res = await this.db
-      .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY id DESC LIMIT ?")
+      .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY ts DESC, id DESC LIMIT ?")
       .bind(limit)
       .all();
     return res.results;

@@ -1388,6 +1388,16 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/trigger-scan" || url.pathname === "/api/trigger-scan") && (request.method === "GET" || request.method === "POST")) {
+      try {
+        const force = url.searchParams.get("force") === "true";
+        const summary = await scanAll(env, { force });
+        return json({ ok: true, summary });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram" || url.pathname === "/admin/test-loud" || url.pathname === "/api/test-loud") && (request.method === "GET" || request.method === "POST")) {
       if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
