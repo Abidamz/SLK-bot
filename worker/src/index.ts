@@ -33,6 +33,7 @@ export interface Env {
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_DM_CHAT_ID?: string;
   TELEGRAM_FREE_CHAT_ID?: string;
+  TELEGRAM_DERIV_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
   fetchFn?: typeof fetch;
   ADMIN_KEY?: string;
@@ -52,6 +53,7 @@ export interface Env {
   PAIR_BATCH_SIZE?: string;
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
+  DERIV_APP_ID?: string;
 }
 
 interface ExecCtxLike {
@@ -170,6 +172,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const providerName = providerForPair(pair, cfg.providerMap, Boolean(env.OANDA_API_KEY ?? env.OANDA_API_TOKEN));
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
+      const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
       // kv adapter for immutable historical buckets (Dukascopy minute/hour/day files)
       const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
 
@@ -180,7 +183,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
         d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
@@ -189,7 +192,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
-      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -212,7 +215,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         // If 4H resampled from base has fewer than 30 bars (e.g. Dukascopy minute feed budget),
         // fetch the 1h feed directly (which uses 1 monthly file in Dukascopy) and resample H4 from it.
         try {
-          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           const h1Candles = validateAndClose(h1Res.candles, TF_SECONDS["1h"], now, 30);
           feeds["1h"] = h1Candles;
           const directH4 = dropIncomplete(resampleCandles(h1Candles, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now);
@@ -263,8 +266,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                   const { findRetracementOrigin } = await import("./features");
                   const origin = findRetracementOrigin(feeds, dir, currentPrice, cfg.strategy) ?? latestStory?.origin ?? null;
                   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+                  const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
                   const { notifyBias } = await import("./notify");
-                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId }, pair, dir, diag, origin, currentPrice);
+                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, pair, dir, diag, origin, currentPrice);
                 }
                 await store.setKv(biasKey, String(lastCandle.t));
               }
@@ -279,7 +283,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
-          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
@@ -308,7 +312,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               && deliverAllowed(cfg, isFirstScan, opts)) {
             const tgAllowed = notificationPrefs.telegramWatch !== false;
             const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
-            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId }, ev, tf);
+            const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, ev, tf);
           }
         }
 
@@ -481,7 +486,8 @@ async function deliver(
     return;
   }
   const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
-  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId }, alert);
+  const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, alert);
 }
 
 async function resolveOutcomes(
@@ -506,7 +512,8 @@ async function resolveOutcomes(
     if (cfg.notifyOutcomes && !isSuppressed) {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
-      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId }, rec, oc);
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, rec, oc);
     }
   }
 }
@@ -1122,6 +1129,190 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/connect-deriv-channel" || url.pathname === "/api/connect-deriv-channel") && (request.method === "GET" || request.method === "POST")) {
+      if (!env.TELEGRAM_BOT_TOKEN) {
+        return json({ ok: false, error: "Telegram bot token missing (TELEGRAM_BOT_TOKEN)" }, 400);
+      }
+      const doFetch = env.fetchFn ?? fetch;
+      const getUpdatesUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`;
+      try {
+        const resp = await doFetch(getUpdatesUrl);
+        const data = await resp.json() as {
+          ok: boolean;
+          result?: Array<{
+            channel_post?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            my_chat_member?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            message?: { chat?: { id: number; title?: string; username?: string; type: string } };
+          }>;
+        };
+        if (!data.ok || !Array.isArray(data.result)) {
+          return json({ ok: false, error: "Failed to fetch updates from Telegram API" }, 502);
+        }
+
+        const store = makeStore(env.DB);
+        const vipChannelId = env.TELEGRAM_CHAT_ID ? env.TELEGRAM_CHAT_ID.trim() : "";
+        const freeChannelId = (env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || "").trim();
+
+        // Find all channel chats from updates
+        const channelChats = data.result
+          .map((u) => u.channel_post?.chat || u.my_chat_member?.chat || (u.message?.chat?.type === "channel" ? u.message.chat : null))
+          .filter((c): c is { id: number; title?: string; username?: string; type: string } => Boolean(c && (c.type === "channel" || c.type === "supergroup")));
+
+        const candidates = channelChats.filter((c) => String(c.id) !== vipChannelId && String(c.id) !== freeChannelId);
+
+        if (candidates.length === 0) {
+          return json({
+            ok: false,
+            error: "No new channel detected. Please ensure: 1) You added your bot as Administrator with 'Post Messages' permission to your new Synthetics Channel, 2) Post any message (e.g. 'hello') in the channel, then refresh /admin/connect-deriv-channel.",
+            allUpdatesCount: data.result.length,
+          }, 404);
+        }
+
+        const chosen = candidates[candidates.length - 1];
+        const derivChatId = String(chosen.id);
+        await store.setKv("telegram_deriv_chat_id", derivChatId);
+
+        const { sendTelegram, toBold } = await import("./notify");
+        const boldV75 = toBold("V75");
+        const welcome = [
+          `⚡ SLK Radar — 24/7 Synthetics Hub Connected! ⚡`,
+          "",
+          `📍 Active Instrument: 🌟【 ${boldV75} 】🌟 (Volatility 75 Index)`,
+          "• Status     : Connected & Active ✅",
+          "• Operational: 24 Hours / 7 Days a Week",
+          "• Engine     : SLK Institutional Market Structure",
+          "",
+          "All confirmed entries, bias cards, and execution setups for Deriv synthetics will be delivered here automatically.",
+        ].join("\n");
+
+        await sendTelegram(env, welcome, { silent: false, pin: true, chatId: derivChatId });
+
+        return json({
+          ok: true,
+          status: "connected",
+          derivChatId,
+          channelTitle: chosen.title || chosen.username || "Synthetics Channel",
+          message: `Successfully linked Synthetics Channel "${chosen.title || chosen.username}" (ID: ${derivChatId})! Verification greeting pinned to channel.`,
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
+    if ((url.pathname === "/admin/set-deriv-channel" || url.pathname === "/api/set-deriv-channel") && (request.method === "GET" || request.method === "POST")) {
+      const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
+      if (!chatIdParam) {
+        return json({ ok: false, error: "Missing ?chat_id=<channel_id> query parameter" }, 400);
+      }
+      const store = makeStore(env.DB);
+      let derivChatId = chatIdParam.trim();
+      if (derivChatId.startsWith("@")) {
+        derivChatId = derivChatId.slice(1);
+      }
+      await store.setKv("telegram_deriv_chat_id", derivChatId);
+      const { sendTelegram } = await import("./notify");
+      try {
+        await sendTelegram(env, `🔔 SLK 24/7 Synthetics Hub linked to ${derivChatId}!\nAutomated Deriv synthetic setups and bias cards will be delivered here automatically.`, { silent: false, pin: true, chatId: derivChatId });
+      } catch (testErr) {
+        return json({
+          ok: true,
+          status: "saved_with_warning",
+          derivChatId,
+          warning: `Saved synthetics channel ID, but test message failed: ${testErr instanceof Error ? testErr.message : String(testErr)}. Ensure you have added your bot as an Administrator in the channel with permission to Post Messages!`,
+        });
+      }
+      return json({
+        ok: true,
+        status: "connected",
+        derivChatId,
+        message: `Successfully linked Synthetics Channel ${derivChatId}! Verification message sent to channel.`,
+      });
+    }
+
+    if ((url.pathname === "/admin/test-deriv" || url.pathname === "/api/test-deriv") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id"));
+      if (!derivChatId) {
+        return json({ ok: false, error: "No Deriv Synthetics Channel configured. Visit /admin/connect-deriv-channel or set ?chat_id= via /admin/set-deriv-channel" }, 400);
+      }
+      if (await checkTestCooldown(store, "test-deriv")) {
+        return json({
+          ok: true,
+          status: "debounced",
+          message: "A test signal was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+        });
+      }
+      const doFetch = env.fetchFn ?? fetch;
+      const { notifyAlert } = await import("./notify");
+      const sampleAlert: Alert = {
+        setupId: `deriv:V75:30m:LONG:V:450250.00:${new Date().toISOString()}`,
+        pair: "V75",
+        entryTf: "30m",
+        mapTf: "4h",
+        direction: "LONG",
+        entry: 450320.00,
+        stopLoss: 449850.00,
+        tpInternal: 451550.00,
+        tpExternal: 452800.00,
+        candleCloseTime: Date.now(),
+        environment: "bullish",
+        phase: "expansion",
+        htfAlignment: "M:↑ W:↑ D:↑ H4:↑",
+        originKeyLevel: 450250.00,
+        keyLevelType: "V",
+        keyLevelBounds: [450100.00, 450400.00],
+        keyLevelTested: true,
+        keyLevelFlipped: false,
+        imbalanceContext: [{ top: 450450.00, bottom: 450280.00 }],
+        internalLiquidity: [],
+        externalLiquidity: [],
+        drawOnLiquidity: 452800.00,
+        nearestExternalTarget: 452800.00,
+        intermediateZones: [],
+        opposingLiquidityStanding: true,
+        sweepTime: Date.now() - 1800_000,
+        bosTime: Date.now() - 900_000,
+        returnTime: Date.now(),
+        invalidationLevel: 449700.00,
+        invalidationReason: null,
+        parameterVersion: "slk-w1.0",
+        alertStatus: "PAPER",
+        suppressReason: null,
+        session: "24/7 Continuous",
+        atrEntry: 250.0,
+        rrInternal: 2.62,
+        cycleStage: "entry_alert",
+        entryMode: "confirmation",
+        shadowClassification: "A_GRADE",
+        directionalBias: {
+          classification: "A_GRADE",
+          weekly: { weeklyHighSwept: false, weeklyLowSwept: true, opposingLiquidityStanding: true, primaryOpposingTarget: 454500.00 },
+          daily: { bias: "bullish", bodyToBodyBreakout: "bullish", liquiditySweepPlusStructureBreak: false, sweepDirection: null, incomplete: false },
+          h4: { direction: "bullish", breakoutStatus: "bullish_breakout", hasStructureBreak: true },
+          h1: { direction: "bullish", agreesWith4H: true },
+          entryQuality: { lowerTimeframeSweep: true, bosStructureShift: true, fvgDetected: true, fvgRebalanceDetected: true, retestDetected: true },
+          timeframeRole: {
+            entryTf: "30m",
+            structuralTf: "4h",
+            executionContextTf: "1h",
+          },
+        },
+      };
+
+      try {
+        const results = await notifyAlert({ ...env, fetchFn: doFetch, TELEGRAM_DERIV_CHAT_ID: derivChatId }, sampleAlert);
+        return json({
+          ok: true,
+          status: "delivered",
+          derivChatId,
+          results,
+          message: `Test V75 Confirmed Entry Signal delivered to Synthetics Channel!`,
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/set-dm" || url.pathname === "/api/set-dm") && (request.method === "GET" || request.method === "POST")) {
       const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
       if (!chatIdParam) {
@@ -1320,6 +1511,7 @@ export default {
       const store = makeStore(env.DB);
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id"));
       return json({
         ok: true,
         botConfigured: Boolean(env.TELEGRAM_BOT_TOKEN),
@@ -1329,9 +1521,14 @@ export default {
         dmChatId: dmChatId ? `${dmChatId.slice(0, 3)}...${dmChatId.slice(-3)}` : null,
         freeChannelConfigured: Boolean(freeChatId),
         freeChannelChatId: freeChatId ? `${freeChatId.slice(0, 4)}...${freeChatId.slice(-4)}` : null,
+        derivChannelConfigured: Boolean(derivChatId),
+        derivChannelChatId: derivChatId ? `${derivChatId.slice(0, 4)}...${derivChatId.slice(-4)}` : null,
         instructions: {
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
+          connectDerivChannel: "1. Add bot as Admin to Synthetics channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",
+          setDerivManually: "Visit /admin/set-deriv-channel?chat_id=<channel_id>",
+          testDeriv: "Visit /admin/test-deriv to dispatch a sample V75 setup card.",
           setFreeChannel: "Visit /admin/set-free-channel?chat_id=@your_free_channel_username",
           testFreeTeaser: "Visit /admin/test-free-teaser to preview the automated TP1 Win Teaser in the free channel.",
           testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",

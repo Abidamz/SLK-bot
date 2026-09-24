@@ -5,7 +5,7 @@
  *  NOTE: messages are sent as plain text (no parse_mode) — alert text
  *  contains characters like ">" that would need escaping under HTML/Markdown
  *  parse modes. */
-import { fmtPips, fmtPrice } from "./config";
+import { fmtPips, fmtPrice, isDerivPair } from "./config";
 import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
 import type { DirectionalBiasDiagnostics } from "./shadow";
 import type { AlertRowish, NotifyEnv, OutcomeLike } from "./notify_types";
@@ -252,6 +252,8 @@ export interface BroadcastOptions {
   silent?: boolean;
   pin?: boolean;
   sendToDm?: boolean;
+  pair?: string;
+  chatId?: string;
 }
 
 /** Fan out to every configured channel; a failing channel is logged and
@@ -265,23 +267,33 @@ export async function broadcast(
   const results: Record<string, string> = {};
   const telegramAllowed = !env.watchOnly || env.WATCH_TELEGRAM !== "false";
   const discordAllowed = !env.watchOnly || env.WATCH_DISCORD !== "false";
-  if (telegramAllowed && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
-    try {
-      await sendTelegram(env, text, options);
-      results.telegram = "ok";
-    } catch (err) {
-      results.telegram = `error: ${err instanceof Error ? err.message : String(err)}`;
-      console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
+  const pair = options.pair ?? "";
+  const isDeriv = isDerivPair(pair);
+  const targetChannelIds = options.chatId
+    ? [options.chatId]
+    : isDeriv
+    ? parseChatIds(env.TELEGRAM_DERIV_CHAT_ID || env.TELEGRAM_CHAT_ID)
+    : parseChatIds(env.TELEGRAM_CHAT_ID);
+
+  if (telegramAllowed && env.TELEGRAM_BOT_TOKEN && targetChannelIds.length > 0) {
+    for (const chatId of targetChannelIds) {
+      try {
+        await sendTelegram(env, text, { ...options, chatId });
+        results.telegram = "ok";
+      } catch (err) {
+        results.telegram = `error: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
+      }
     }
   }
 
   // Simultaneously deliver loud signals to private DM if configured and requested
   const shouldSendDm = options.sendToDm ?? (!options.silent);
   if (telegramAllowed && shouldSendDm && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_DM_CHAT_ID) {
-    const channelIds = parseChatIds(env.TELEGRAM_CHAT_ID);
+    const channelIds = targetChannelIds;
     const dmIds = parseChatIds(env.TELEGRAM_DM_CHAT_ID);
     for (const dmId of dmIds) {
-      if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in TELEGRAM_CHAT_ID
+      if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in target channel
       try {
         await sendTelegram(env, text, { silent: false, pin: false, chatId: dmId });
         results.telegram_dm = "ok";
@@ -313,7 +325,7 @@ export async function broadcast(
  * Entry alerts are sent LOUD and auto-pinned to prevent missing execution,
  * and simultaneously sent to personal private DM so it cannot be missed. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
-  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, { silent: false, pin: true, sendToDm: true });
+  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, { silent: false, pin: true, sendToDm: true, pair: a.pair });
 }
 
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT
@@ -432,7 +444,7 @@ export async function notifyBias(
 ): Promise<Record<string, string>> {
   const color = direction === "LONG" ? GREEN : RED;
   const card = formatBiasCard(pair, direction, diag, origin, currentPrice);
-  const results = await broadcast(env, card, color, { silent: true, pin: false, sendToDm: false });
+  const results = await broadcast(env, card, color, { silent: true, pin: false, sendToDm: false, pair });
 
   // Broadcast bias card to Free Telegram Channel as educational market context
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
@@ -455,7 +467,7 @@ export async function notifyWatch(
   env: NotifyEnv, ev: EngineEvent, entryTf: string,
 ): Promise<Record<string, string>> {
   const text = formatWatch(ev, entryTf);
-  const results = await broadcast(env, text, AMBER, { silent: true, pin: false, sendToDm: false });
+  const results = await broadcast(env, text, AMBER, { silent: true, pin: false, sendToDm: false, pair: ev.pair });
 
   // Broadcast watch heads-up to Free Telegram Channel
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
@@ -478,7 +490,8 @@ export async function notifyOutcome(
   env: NotifyEnv, rec: AlertRowish, oc: OutcomeLike,
 ): Promise<Record<string, string>> {
   const color = oc.status === "TP_HIT" ? GREEN : oc.status === "SL_HIT" ? RED : GREY;
-  const results = await broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true });
+  const pair = String(rec.canonical_symbol ?? "");
+  const results = await broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true, pair });
 
   // When a VIP trade hits Take Profit (TP_HIT), automatically send the high-converting Win Teaser to the Free Channel!
   if (oc.status === "TP_HIT" && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {

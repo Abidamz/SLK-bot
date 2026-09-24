@@ -70,7 +70,8 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
-  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy">;
+  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
+  derivAppId: string;
   strategy: StrategyConfig;
 }
 
@@ -118,7 +119,8 @@ interface EnvVars {
   SL_BUFFER_ATR?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
-  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
+  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
+  DERIV_APP_ID?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -152,7 +154,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
-  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy"> = {};
+  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"> = {};
   if (env.PROVIDER_MAP) {
     try {
       providerMap = JSON.parse(env.PROVIDER_MAP);
@@ -201,6 +203,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     notifyOutcomes: true,
     symbolMap,
     providerMap,
+    derivAppId: env.DERIV_APP_ID ?? "1089",
     strategy,
   };
 }
@@ -210,8 +213,26 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 /** Instruments that quote in points, not pips (index CFD canonical names). */
 export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
 
+/** Deriv synthetic index instruments (24/7 continuous synthetic volatility). */
+export const DERIV_SYNTHETIC_PAIRS = new Set([
+  "V75", "R_75", "VOLATILITY75",
+  "V100", "R_100", "VOLATILITY100",
+  "V50", "R_50", "VOLATILITY50",
+  "V25", "R_25", "VOLATILITY25",
+  "V10", "R_10", "VOLATILITY10",
+  "V75_1S", "1HZ75V",
+  "V100_1S", "1HZ100V",
+]);
+
+export function isDerivPair(pair?: string | null): boolean {
+  if (!pair) return false;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  return DERIV_SYNTHETIC_PAIRS.has(p) || p.startsWith("R_") || p.startsWith("V1") || p.startsWith("V2") || p.startsWith("V5") || p.startsWith("V7");
+}
+
 export function pipSize(pair: string): number {
-  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) return 0.01; // synthetic indices calculate in points/cents
   if (INDEX_POINT_PAIRS.has(p)) return 1.0; // index CFDs quote in points
   if (p.includes("JPY")) return 0.01;
   if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.1;
@@ -220,7 +241,12 @@ export function pipSize(pair: string): number {
 
 /** Minimum stop loss floor in absolute price distance to prevent spread and noise stop-outs. */
 export function minStopDistance(pair: string, minStopPips = 10): number {
-  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) {
+    if (p.includes("75")) return Math.max(50.0, minStopPips * 1.0);
+    if (p.includes("100")) return Math.max(20.0, minStopPips * 1.0);
+    return Math.max(10.0, minStopPips * 0.5);
+  }
   if (p === "US30") return Math.max(30.0, minStopPips * 1.0);
   if (p === "GER40" || p === "DE40") return Math.max(25.0, minStopPips * 1.0);
   if (p === "NAS100" || p === "US100") return Math.max(25.0, minStopPips * 1.0);
@@ -232,13 +258,17 @@ export function minStopDistance(pair: string, minStopPips = 10): number {
 }
 
 export function fmtPrice(pair: string, price: number): string {
+  if (price == null || !Number.isFinite(price)) return "0.00";
+  if (isDerivPair(pair)) {
+    return price.toFixed(2);
+  }
   const ps = pipSize(pair);
   const dec = ps === 1.0 ? 1 : ps === 0.01 ? 3 : ps === 0.1 ? 2 : 5;
   return price.toFixed(dec);
 }
 
 export function fmtPips(pair: string, distance: number): string {
-  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
-  const unit = INDEX_POINT_PAIRS.has(p) ? "pts" : "pips";
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  const unit = (INDEX_POINT_PAIRS.has(p) || isDerivPair(p)) ? "pts" : "pips";
   return `${(Math.abs(distance) / pipSize(pair)).toFixed(1)} ${unit}`;
 }

@@ -5,6 +5,7 @@ export interface NotifyEnv {
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_DM_CHAT_ID?: string;
   TELEGRAM_FREE_CHAT_ID?: string;
+  TELEGRAM_DERIV_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
   /** Injectable transport (tests pass a fake; production uses global fetch). */
   fetchFn?: typeof fetch;

@@ -3,7 +3,7 @@
  *  Canonical symbol mapping is explicit: the research requires normalized
  *  symbols per provider. */
 import type { Candle } from "./types";
-import { INDEX_POINT_PAIRS, TF_SECONDS } from "./config";
+import { INDEX_POINT_PAIRS, TF_SECONDS, isDerivPair } from "./config";
 import { resampleCandles } from "./features";
 
 const TD_INTERVALS: Record<string, string> = {
@@ -318,12 +318,171 @@ export async function fetchDukascopy(
   return out.length > limit ? out.slice(-limit) : out;
 }
 
-export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy";
+export const DERIV_SYMBOLS: Record<string, string> = {
+  V75: "R_75",
+  VOLATILITY75: "R_75",
+  R_75: "R_75",
+  V100: "R_100",
+  VOLATILITY100: "R_100",
+  R_100: "R_100",
+  V50: "R_50",
+  VOLATILITY50: "R_50",
+  R_50: "R_50",
+  V25: "R_25",
+  VOLATILITY25: "R_25",
+  R_25: "R_25",
+  V10: "R_10",
+  VOLATILITY10: "R_10",
+  R_10: "R_10",
+  V75_1S: "1HZ75V",
+  V100_1S: "1HZ100V",
+};
+
+/** Fetch continuous synthetic market data from Deriv via Workers WebSocket API */
+export async function fetchDeriv(
+  pair: string,
+  tf: string,
+  limit: number,
+  symbolMap: Record<string, string> = {},
+  appId = "1089",
+  fetchFn: FetchLike = fetch,
+): Promise<Candle[]> {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
+  const granularity = TF_SECONDS[tf] ?? 1800;
+
+  const wsUrl = `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`;
+  const timeoutMs = 15_000;
+
+  return new Promise<Candle[]>((resolve, reject) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}`));
+      }
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+    };
+
+    (async () => {
+      try {
+        const resp = await fetchFn(wsUrl, {
+          headers: { Upgrade: "websocket" },
+        });
+
+        const ws = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+        if (!ws) {
+          throw new Error("Deriv server did not accept WebSocket connection");
+        }
+        if (typeof ws.accept === "function") {
+          ws.accept();
+        }
+
+        const onMessage = (event: any) => {
+          try {
+            const rawData = typeof event.data === "string"
+              ? event.data
+              : new TextDecoder().decode(event.data as ArrayBuffer);
+            const data = JSON.parse(rawData);
+
+            if (data.error) {
+              if (!resolved) {
+                resolved = true;
+                cleanup();
+                try { ws.close(); } catch {}
+                reject(new Error(`Deriv API error for ${symbol}: ${data.error.message || JSON.stringify(data.error)}`));
+              }
+              return;
+            }
+
+            if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+              if (!resolved) {
+                resolved = true;
+                cleanup();
+                const rawCandles = data.candles as Array<{
+                  epoch: number | string;
+                  open: number | string;
+                  high: number | string;
+                  low: number | string;
+                  close: number | string;
+                }>;
+                const mapped: Candle[] = rawCandles.map((c) => ({
+                  t: Number(c.epoch) * 1000,
+                  o: Number(c.open),
+                  h: Number(c.high),
+                  l: Number(c.low),
+                  c: Number(c.close),
+                }));
+                mapped.sort((a, b) => a.t - b.t);
+                try { ws.close(); } catch {}
+                resolve(mapped);
+              }
+            }
+          } catch (err) {
+            if (!resolved) {
+              resolved = true;
+              cleanup();
+              try { ws.close(); } catch {}
+              reject(err);
+            }
+          }
+        };
+
+        const onError = (err: unknown) => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            reject(new Error(`Deriv WebSocket error for ${symbol}: ${err instanceof Error ? err.message : String(err)}`));
+          }
+        };
+
+        const onClose = () => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            reject(new Error(`Deriv WebSocket closed before candles were received for ${symbol}`));
+          }
+        };
+
+        if (typeof ws.addEventListener === "function") {
+          ws.addEventListener("message", onMessage);
+          ws.addEventListener("error", onError);
+          ws.addEventListener("close", onClose);
+        } else {
+          ws.onmessage = onMessage;
+          ws.onerror = onError;
+          ws.onclose = onClose;
+        }
+
+        const reqPayload = {
+          ticks_history: symbol,
+          style: "candles",
+          granularity,
+          count: Math.min(limit, 1000),
+          end: "latest",
+        };
+        ws.send(JSON.stringify(reqPayload));
+      } catch (err) {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(err);
+        }
+      }
+    })();
+  });
+}
+
+export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
  *  exists (geo-restricted signups), else the keyless Dukascopy public feed
- *  (realtime broker quotes), with Yahoo as last resort. Everything else →
- *  Twelve Data. PROVIDER_MAP overrides. */
+ *  (realtime broker quotes), with Yahoo as last resort. Deriv synthetics
+ *  (e.g., V75, V100) route directly to Deriv. Everything else → Twelve Data.
+ *  PROVIDER_MAP overrides. */
 export function providerForPair(
   pair: string,
   providerMap: Record<string, string> = {},
@@ -331,7 +490,8 @@ export function providerForPair(
   dukascopyEnabled = true,
 ): ProviderName {
   const override = providerMap[pair];
-  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy") return override;
+  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy" || override === "deriv") return override;
+  if (isDerivPair(pair)) return "deriv";
   const p = pair.toUpperCase();
   // NB: classify by the canonical index-name set only — OANDA_INSTRUMENTS
   // also lists metals (future all-OANDA option) and must NOT affect routing.
@@ -409,6 +569,7 @@ export interface MarketDataRequest {
   limit: number;
   tdKey?: string;
   oandaToken?: string;
+  derivAppId?: string;
   symbolMap?: Record<string, string>;
   providerMap?: Record<string, string>;
   fetchFn?: FetchLike;
@@ -420,6 +581,10 @@ export interface MarketDataRequest {
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
   const dukaBudget = req.budget ?? (req.tf === "30m" ? 2 : 4);
+  if (provider === "deriv") {
+    const candles = await fetchDeriv(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.derivAppId ?? "1089", req.fetchFn);
+    return { provider: "deriv", candles };
+  }
   if (provider === "twelvedata") {
     if (!tdCreditsExhausted) {
       try {

@@ -17,6 +17,16 @@ describe("provider routing", () => {
     expect(providerForPair("JAPAN225")).toBe("dukascopy");
   });
 
+  it("routes Deriv synthetics to deriv provider", () => {
+    expect(providerForPair("V75")).toBe("deriv");
+    expect(providerForPair("R_75")).toBe("deriv");
+    expect(providerForPair("V100")).toBe("deriv");
+    expect(providerForPair("V50")).toBe("deriv");
+    expect(providerForPair("V25")).toBe("deriv");
+    expect(providerForPair("V10")).toBe("deriv");
+    expect(providerForPair("V75_1S")).toBe("deriv");
+  });
+
   it("PROVIDER_MAP overrides win over defaults", () => {
     expect(providerForPair("US30", { US30: "twelvedata" })).toBe("twelvedata");
     expect(providerForPair("EURUSD", { EURUSD: "yahoo" })).toBe("yahoo");
@@ -433,5 +443,134 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("dukascopy");
     expect(res.candles.length).toBe(2);
+  });
+});
+
+describe("fetchDeriv", () => {
+  it("requests ticks_history candles and maps to Candle[]", async () => {
+    class MockWebSocket {
+      listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      sent: string[] = [];
+      closed = false;
+      addEventListener(type: string, cb: (...args: any[]) => void) {
+        (this.listeners[type] ??= []).push(cb);
+      }
+      send(data: string) {
+        this.sent.push(data);
+        const req = JSON.parse(data);
+        if (req.ticks_history === "R_75") {
+          setTimeout(() => {
+            const msg = {
+              msg_type: "candles",
+              candles: [
+                { epoch: 1709510400, open: 450100.5, high: 450250.0, low: 450050.2, close: 450200.0 },
+                { epoch: 1709512200, open: 450200.0, high: 450350.0, low: 450180.0, close: 450310.5 },
+              ],
+            };
+            this.listeners["message"]?.forEach((cb) => cb({ data: JSON.stringify(msg) }));
+          }, 10);
+        }
+      }
+      accept() {}
+      close() { this.closed = true; }
+    }
+
+    const mockWs = new MockWebSocket();
+    const fakeFetch = async (): Promise<Response> => {
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const res = await fetchMarketData({
+      pair: "V75",
+      tf: "30m",
+      limit: 10,
+      fetchFn: fakeFetch,
+    });
+
+    expect(res.provider).toBe("deriv");
+    expect(res.candles.length).toBe(2);
+    expect(res.candles[0].o).toBe(450100.5);
+    expect(res.candles[1].c).toBe(450310.5);
+    expect(mockWs.closed).toBe(true);
+  });
+});
+
+describe("Deriv alert routing", () => {
+  it("routes Deriv alerts to TELEGRAM_DERIV_CHAT_ID and institutional alerts to TELEGRAM_CHAT_ID", async () => {
+    const vipCalls: string[] = [];
+    const derivCalls: string[] = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (url.includes("sendMessage")) {
+        if (body.chat_id === "-100VIP") vipCalls.push(body.text);
+        if (body.chat_id === "-100DERIV") derivCalls.push(body.text);
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 123 } }));
+    };
+
+    const env = {
+      TELEGRAM_BOT_TOKEN: "mock_token",
+      TELEGRAM_CHAT_ID: "-100VIP",
+      TELEGRAM_DERIV_CHAT_ID: "-100DERIV",
+      fetchFn: fakeFetch,
+    };
+
+    const derivAlert: any = {
+      pair: "V75",
+      entryTf: "30m",
+      mapTf: "4h",
+      direction: "LONG",
+      entry: 450320.0,
+      stopLoss: 449850.0,
+      tpInternal: 451550.0,
+      tpExternal: 452800.0,
+      drawOnLiquidity: 452800.0,
+      invalidationLevel: 449700.0,
+      sweepTime: Date.now() - 1800_000,
+      bosTime: Date.now() - 900_000,
+      returnTime: Date.now(),
+      candleCloseTime: Date.now(),
+      keyLevelType: "V",
+      keyLevelBounds: [450100.0, 450400.0],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      alertStatus: "PAPER",
+    };
+
+    const xauAlert: any = {
+      pair: "XAUUSD",
+      entryTf: "30m",
+      mapTf: "4h",
+      direction: "LONG",
+      entry: 2150.0,
+      stopLoss: 2145.0,
+      tpInternal: 2165.0,
+      tpExternal: 2180.0,
+      drawOnLiquidity: 2180.0,
+      invalidationLevel: 2140.0,
+      sweepTime: Date.now() - 1800_000,
+      bosTime: Date.now() - 900_000,
+      returnTime: Date.now(),
+      candleCloseTime: Date.now(),
+      keyLevelType: "V",
+      keyLevelBounds: [2148.0, 2152.0],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      alertStatus: "PAPER",
+    };
+
+    const { notifyAlert } = await import("../src/notify");
+    await notifyAlert(env, derivAlert);
+    await notifyAlert(env, xauAlert);
+
+    expect(derivCalls.length).toBe(1);
+    expect(derivCalls[0]).toContain("V75");
+    expect(vipCalls.length).toBe(1);
+    expect(vipCalls[0]).toContain("XAUUSD");
   });
 });

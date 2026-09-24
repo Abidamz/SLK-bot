@@ -221,13 +221,6 @@ export class D1Store implements Store {
         console.warn(JSON.stringify({ level: "warn", msg: "insertScanLog failed", error: String(fallbackErr) }));
       }
     }
-
-    // Auto-prune historical scan logs older than 7 days to keep D1 database lean (<5MB) and lightning fast
-    if (Math.random() < 0.05) {
-      try {
-        await this.db.prepare("DELETE FROM slk_scan_log WHERE ts < datetime('now', '-7 days')").bind().run();
-      } catch {}
-    }
   }
 
   async getNotificationPreferences(): Promise<NotificationPreferences> {
