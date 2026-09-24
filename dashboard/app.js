@@ -281,7 +281,7 @@ function renderStats(s) {
     const instNr = inst.netR != null ? `${inst.netR > 0 ? '+' : ''}${Number(inst.netR).toFixed(2)}R` : '—';
     const instOut = `${inst.tp || 0} TP · ${inst.sl || 0} SL`;
 
-    const synthWr = synth.winRate != null ? `${(synth.winRate * 100).toFixed(1)}%` : (synth.total > 0 ? 'Tracking' : '24/7 Active');
+    const synthWr = synth.winRate != null ? `${(synth.winRate * 100).toFixed(1)}%` : '—';
     const synthNr = synth.netR != null ? `${synth.netR > 0 ? '+' : ''}${Number(synth.netR).toFixed(2)}R` : '0.00R';
     const synthOut = `${synth.tp || 0} TP · ${synth.sl || 0} SL`;
 
