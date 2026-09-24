@@ -8,6 +8,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy",
+    "deploy:worker": "wrangler deploy",
     "dev": "wrangler dev",
     "db:init": "wrangler d1 execute slk-alert-db --file=migrations/0001_init.sql",
     "db:init:local": "wrangler d1 execute slk-alert-db --local --file=migrations/0001_init.sql"
