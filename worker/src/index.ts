@@ -1150,7 +1150,7 @@ export default {
         "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
         "",
         "Stop missing the moves.",
-        "👉 Join VIP ($49/mo Founding Lock): https://whop.com/checkout/slk-radar-vip-signals?d=FOUNDING20",
+        "👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
         "👉 Live Verified Journal: https://slk-radar.pages.dev",
       ].join("\n");
       try {
