@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `936db6c` (`feat(overview): display dual-segment win rate & performance cards and 4-stat metrics directly on Overview`)
+**Latest Synced Commit:** `0c2705b` (`ci: add GitHub Actions workflow to auto-deploy Worker and Pages to Cloudflare`)
 
 ---
 
