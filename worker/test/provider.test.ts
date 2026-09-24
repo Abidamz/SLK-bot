@@ -25,6 +25,10 @@ describe("provider routing", () => {
     expect(providerForPair("V25")).toBe("deriv");
     expect(providerForPair("V10")).toBe("deriv");
     expect(providerForPair("V75_1S")).toBe("deriv");
+    expect(providerForPair("V100_1S")).toBe("deriv");
+    expect(providerForPair("V50_1S")).toBe("deriv");
+    expect(providerForPair("V25_1S")).toBe("deriv");
+    expect(providerForPair("V10_1S")).toBe("deriv");
   });
 
   it("PROVIDER_MAP overrides win over defaults", () => {

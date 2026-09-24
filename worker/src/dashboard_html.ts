@@ -205,8 +205,8 @@ export const DASHBOARD_HTML = `<!doctype html>
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
             <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
-            <div><dt>Active Markets (11)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75</dd></div>
-            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 1 Synthetic (24/7)</dd></div>
+            <div><dt>Active Markets (20)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s)</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 10 Synthetics (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
@@ -217,13 +217,13 @@ export const DASHBOARD_HTML = `<!doctype html>
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
         <button type="button" class="segment-btn active" data-segment="all">
-          <span>🌍</span> All Markets <span class="seg-count">11</span>
+          <span>🌍</span> All Markets <span class="seg-count">20</span>
         </button>
         <button type="button" class="segment-btn" data-segment="institutional">
           <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
         </button>
         <button type="button" class="segment-btn" data-segment="synthetics">
-          <span>⚡</span> 24/7 Synthetics <span class="seg-count">1</span>
+          <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
         </button>
       </div>
 
@@ -231,8 +231,8 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div id="syntheticsNotice" class="synthetics-banner" hidden>
         <div class="synth-banner-content">
           <span class="synth-badge">⚡ 24/7 Continuous Market</span>
-          <h3>Deriv Algorithmic Synthetic Indices (Volatility 75)</h3>
-          <p>Continuous algorithmic liquidity that never sleeps. While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
+          <h3>Deriv Algorithmic Synthetic Indices (10 Volatility Assets)</h3>
+          <p>Continuous algorithmic liquidity across 10 Volatility Indices (V75, V100, V50, V25, V10 and the 1s series). While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
           <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
             <span>👉 Open 24/7 Synthetics Channel (Free Signals & Previews)</span>
           </a>

@@ -79,6 +79,16 @@ export interface ScanSummary {
   durationMs: number;
 }
 
+function isTraditionalMarketWeekend(nowMs: number): boolean {
+  const d = new Date(nowMs);
+  const day = d.getUTCDay(); // 0 = Sun, 6 = Sat
+  const hour = d.getUTCHours();
+  if (day === 6) return true; // all Saturday
+  if (day === 5 && hour >= 22) return true; // Friday post-market close
+  if (day === 0 && hour < 21) return true; // Sunday pre-market open
+  return false;
+}
+
 // -------------------------------------------------------------- scan cycle
 
 export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSummary> {
@@ -120,8 +130,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   // Stagger pair scanning across 1-minute cron ticks to stay comfortably below Cloudflare's 10ms CPU limit.
   let pairsToScan = cfg.pairs;
   if (!opts.force && cfg.pairs.length > cfg.pairBatchSize) {
+    const isWeekend = isTraditionalMarketWeekend(now);
     const pending: string[] = [];
     for (const pair of cfg.pairs) {
+      if (isWeekend && !isDerivPair(pair)) {
+        continue; // Closed institutional pairs skipped on weekends to prioritize 24/7 continuous synthetics
+      }
       let isDue = false;
       for (const { tf, boundary } of due) {
         const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);

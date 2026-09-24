@@ -215,19 +215,24 @@ export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "
 
 /** Deriv synthetic index instruments (24/7 continuous synthetic volatility). */
 export const DERIV_SYNTHETIC_PAIRS = new Set([
+  // 5 Standard Volatility Indices
   "V75", "R_75", "VOLATILITY75",
   "V100", "R_100", "VOLATILITY100",
   "V50", "R_50", "VOLATILITY50",
   "V25", "R_25", "VOLATILITY25",
   "V10", "R_10", "VOLATILITY10",
+  // 5 1-Second (1s) Volatility Indices
   "V75_1S", "1HZ75V",
   "V100_1S", "1HZ100V",
+  "V50_1S", "1HZ50V",
+  "V25_1S", "1HZ25V",
+  "V10_1S", "1HZ10V",
 ]);
 
 export function isDerivPair(pair?: string | null): boolean {
   if (!pair) return false;
   const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
-  return DERIV_SYNTHETIC_PAIRS.has(p) || p.startsWith("R_") || p.startsWith("V1") || p.startsWith("V2") || p.startsWith("V5") || p.startsWith("V7");
+  return DERIV_SYNTHETIC_PAIRS.has(p) || p.startsWith("R_") || p.startsWith("V1") || p.startsWith("V2") || p.startsWith("V5") || p.startsWith("V7") || p.startsWith("1HZ");
 }
 
 export function pipSize(pair: string): number {
@@ -244,8 +249,11 @@ export function minStopDistance(pair: string, minStopPips = 10): number {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
   if (isDerivPair(p)) {
     if (p.includes("75")) return Math.max(50.0, minStopPips * 1.0);
-    if (p.includes("100")) return Math.max(20.0, minStopPips * 1.0);
-    return Math.max(10.0, minStopPips * 0.5);
+    if (p.includes("100")) return Math.max(25.0, minStopPips * 1.0);
+    if (p.includes("25")) return Math.max(20.0, minStopPips * 0.8);
+    if (p.includes("50")) return Math.max(15.0, minStopPips * 0.6);
+    if (p.includes("10")) return Math.max(10.0, minStopPips * 0.5);
+    return Math.max(15.0, minStopPips * 0.5);
   }
   if (p === "US30") return Math.max(30.0, minStopPips * 1.0);
   if (p === "GER40" || p === "DE40") return Math.max(25.0, minStopPips * 1.0);

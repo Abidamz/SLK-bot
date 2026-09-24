@@ -25,7 +25,7 @@
     // the keyless Dukascopy public feed (USA30.IDX-USD / DEU.IDX-EUR /
     // JPN.IDX-JPY / USATECH.IDX-USD); SYMBOL_MAP doubles as an escape-hatch override (e.g.
     // PROVIDER_MAP + these ^DJI-style Yahoo symbols).
-    "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75",
+    "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S",
     "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\",\"NAS100\":\"^NDX\"}",
     "ENTRY_TFS": "15m,30m,1h",
     "MODE": "paper",
@@ -36,7 +36,7 @@
     "MIN_STOP_PIPS": "10",
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
-    "PAIR_BATCH_SIZE": "1"
+    "PAIR_BATCH_SIZE": "2"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID

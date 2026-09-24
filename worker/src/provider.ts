@@ -319,6 +319,7 @@ export async function fetchDukascopy(
 }
 
 export const DERIV_SYMBOLS: Record<string, string> = {
+  // 5 Standard Volatility Indices
   V75: "R_75",
   VOLATILITY75: "R_75",
   R_75: "R_75",
@@ -334,8 +335,18 @@ export const DERIV_SYMBOLS: Record<string, string> = {
   V10: "R_10",
   VOLATILITY10: "R_10",
   R_10: "R_10",
+
+  // 5 1-Second (1s) Volatility Indices
   V75_1S: "1HZ75V",
+  "1HZ75V": "1HZ75V",
   V100_1S: "1HZ100V",
+  "1HZ100V": "1HZ100V",
+  V50_1S: "1HZ50V",
+  "1HZ50V": "1HZ50V",
+  V25_1S: "1HZ25V",
+  "1HZ25V": "1HZ25V",
+  V10_1S: "1HZ10V",
+  "1HZ10V": "1HZ10V",
 };
 
 /** Fetch continuous synthetic market data from Deriv via Workers WebSocket API */
