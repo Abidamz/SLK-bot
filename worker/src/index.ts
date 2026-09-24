@@ -1034,6 +1034,78 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/connect-free-channel" || url.pathname === "/api/connect-free-channel") && (request.method === "GET" || request.method === "POST")) {
+      if (!env.TELEGRAM_BOT_TOKEN) {
+        return json({ ok: false, error: "Telegram bot token missing (TELEGRAM_BOT_TOKEN)" }, 400);
+      }
+      const doFetch = env.fetchFn ?? fetch;
+      const getUpdatesUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`;
+      try {
+        const resp = await doFetch(getUpdatesUrl);
+        const data = await resp.json() as {
+          ok: boolean;
+          result?: Array<{
+            channel_post?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            my_chat_member?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            message?: { chat?: { id: number; title?: string; username?: string; type: string } };
+          }>;
+        };
+        if (!data.ok || !Array.isArray(data.result)) {
+          return json({ ok: false, error: "Failed to fetch updates from Telegram API" }, 502);
+        }
+
+        // Find all channel chats from updates
+        const channelChats = data.result
+          .map((u) => u.channel_post?.chat || u.my_chat_member?.chat || (u.message?.chat?.type === "channel" ? u.message.chat : null))
+          .filter((c): c is { id: number; title?: string; username?: string; type: string } => Boolean(c && (c.type === "channel" || c.type === "supergroup")));
+
+        const vipChannelId = env.TELEGRAM_CHAT_ID ? env.TELEGRAM_CHAT_ID.trim() : "";
+        const candidates = channelChats.filter((c) => String(c.id) !== vipChannelId);
+
+        if (candidates.length === 0) {
+          return json({
+            ok: false,
+            error: "No new channel detected. Please post any message in your Free Channel (e.g. 'hello') or re-add your bot as Admin, then visit /admin/connect-free-channel again.",
+            allUpdatesCount: data.result.length,
+          }, 404);
+        }
+
+        const chosen = candidates[candidates.length - 1];
+        const freeChatId = String(chosen.id);
+        const store = makeStore(env.DB);
+        await store.setKv("telegram_free_chat_id", freeChatId);
+
+        const { sendTelegram } = await import("./notify");
+        const teaser = [
+          "🎯 TP1 HIT — XAUUSD Short (+2.57R)",
+          "",
+          "• Timeframe : 30m",
+          "• Direction : SHORT 🔴",
+          "• Entry     : 4,331.370",
+          "• Target 1  : 4,297.933 (+2.57R) ✅",
+          "• Target 2  : Running risk-free toward external liquidity",
+          "",
+          "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+          "",
+          "Stop missing the moves.",
+          "👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals/",
+          "👉 Live Verified Journal: https://slk-radar.pages.dev",
+        ].join("\n");
+
+        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeChatId });
+
+        return json({
+          ok: true,
+          status: "connected",
+          freeChatId,
+          channelTitle: chosen.title || chosen.username || "Free Channel",
+          message: `Successfully linked Free Channel "${chosen.title || chosen.username}" (ID: ${freeChatId})! The Win Teaser was just delivered to it.`,
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/set-dm" || url.pathname === "/api/set-dm") && (request.method === "GET" || request.method === "POST")) {
       const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
       if (!chatIdParam) {
