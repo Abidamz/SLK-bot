@@ -1238,6 +1238,52 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/test-bias" || url.pathname === "/admin/test-free-bias" || url.pathname === "/api/test-free-bias") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+      const { notifyBias } = await import("./notify");
+      const sampleDiag = {
+        classification: "A_GRADE" as const,
+        weekly: { weeklyHighSwept: false, weeklyLowSwept: true, opposingLiquidityStanding: true, primaryOpposingTarget: 51175.2 },
+        daily: { bias: "bearish" as const, bodyToBodyBreakout: "bearish" as const, liquiditySweepPlusStructureBreak: false, sweepDirection: null, incomplete: false },
+        h4: { direction: "bearish" as const, breakoutStatus: "bearish_breakout" as const, hasStructureBreak: true },
+        h1: { direction: "bearish" as const, agreesWith4H: true },
+        entryQuality: { lowerTimeframeSweep: true, bosStructureShift: true, fvgDetected: true, fvgRebalanceDetected: true, retestDetected: true },
+        timeframeRole: {
+          entryTf: "15m",
+          structuralTf: "4h" as const,
+          executionContextTf: "1h" as const,
+        },
+      };
+      const sampleOrigin = {
+        originPrice: 51588.6,
+        originTime: Date.now() - 3600_000,
+        originIndex: 10,
+        zoneLo: 51537.6,
+        zoneHi: 51639.6,
+        kind: "V" as const,
+        ageBars: 12,
+        touches: 2,
+        broken: false,
+        flipped: true,
+        fvgOverlap: true,
+      };
+      const results = await notifyBias(
+        { ...env, TELEGRAM_FREE_CHAT_ID: freeChatId, watchOnly: true, WATCH_TELEGRAM: "true" },
+        "US30",
+        "SHORT",
+        sampleDiag,
+        sampleOrigin,
+        51385.9,
+      );
+      return json({
+        ok: true,
+        targetFreeChatId: freeChatId,
+        results,
+        message: "Test Bias Confirmation sent! Check VIP channel and Free channel (@SLK_radar).",
+      });
+    }
+
     if ((url.pathname === "/admin/telegram-status" || url.pathname === "/api/telegram-status") && request.method === "GET") {
       const store = makeStore(env.DB);
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
