@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `27a3893` (`feat(synthetics): expand to 10 Deriv Volatility synthetics with weekend bypass and 20-market coverage`)
+**Latest Synced Commit:** `dd01ebd` (`fix(provider): add robust headers and multi-gateway failover for Deriv WebSocket feed`)
 
 ---
 
