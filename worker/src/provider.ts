@@ -362,7 +362,12 @@ export async function fetchDeriv(
   const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
   const granularity = TF_SECONDS[tf] ?? 1800;
 
-  const wsUrl = `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`;
+  const wsUrls = [
+    `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+    `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+    `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+    `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+  ];
   const timeoutMs = 15_000;
 
   return new Promise<Candle[]>((resolve, reject) => {
@@ -380,13 +385,36 @@ export async function fetchDeriv(
 
     (async () => {
       try {
-        const resp = await fetchFn(wsUrl, {
-          headers: { Upgrade: "websocket" },
-        });
+        let ws: any = null;
+        let lastError = "";
 
-        const ws = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+        for (const targetUrl of wsUrls) {
+          try {
+            const resp = await fetchFn(targetUrl, {
+              headers: {
+                Upgrade: "websocket",
+                Connection: "Upgrade",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                Origin: "https://app.deriv.com",
+              },
+            });
+
+            const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+            if (candidateWs) {
+              ws = candidateWs;
+              break;
+            } else {
+              const status = (resp as any)?.status ?? "unknown";
+              const statusText = (resp as any)?.statusText ?? "";
+              lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+            }
+          } catch (connErr) {
+            lastError = connErr instanceof Error ? connErr.message : String(connErr);
+          }
+        }
+
         if (!ws) {
-          throw new Error("Deriv server did not accept WebSocket connection");
+          throw new Error(`Deriv server did not accept WebSocket connection: ${lastError || "no gateway responded with 101"}`);
         }
         if (typeof ws.accept === "function") {
           ws.accept();
