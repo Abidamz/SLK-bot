@@ -962,9 +962,11 @@ export default {
       if (await checkTestCooldown(store, "test-silent")) {
         return json({ ok: true, debounced: true, message: "A test alert was already sent a few seconds ago. Skipping duplicate to prevent spam." });
       }
-      const { sendTelegram } = await import("./notify");
+      const { sendTelegram, toBold } = await import("./notify");
+      const boldNas = toBold("NAS100");
       const text = [
-        "👀 WATCH (Silent Radar) — NAS100 · 15m · SHORT 🔽",
+        `👀 WATCH (Silent Radar) — 🌟【 ${boldNas} 】🌟 · 15m · SHORT 🔽`,
+        `📍 Pair     : 🌟【 ${boldNas} 】🌟`,
         "State      : ⚡ SHIFT",
         "Detail     : BOS through pullback structure 20,430.50",
         "Origin Zone: ~20,480.00 (V-Level Zone)",
@@ -1230,10 +1232,12 @@ export default {
           message: "A test teaser was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
         });
       }
-      const { sendTelegram } = await import("./notify");
+      const { sendTelegram, toBold } = await import("./notify");
+      const boldGold = toBold("XAUUSD");
       const teaser = [
-        "🎯 TP1 HIT — XAUUSD Short (+2.57R)",
+        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 Short (+2.57R)`,
         "",
+        `📍 Pair      : 🌟【 ${boldGold} 】🌟`,
         "• Timeframe : 30m",
         "• Direction : SHORT 🔴",
         "• Entry     : 4,331.370",
@@ -1411,10 +1415,12 @@ export default {
         });
       }
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
-      const { broadcast } = await import("./notify");
+      const { broadcast, toBold } = await import("./notify");
+      const boldNas = toBold("NAS100");
       const text = [
         "🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨",
-        "🔴 SLK 🧪 PAPER ALERT — NAS100",
+        `🔴 SLK 🧪 PAPER ALERT — 🌟【 ${boldNas} 】🌟`,
+        `📍 Pair       : 🌟【 ${boldNas} 】🌟`,
         "Direction   : SHORT 🔴",
         "Timeframe   : 15m (map 4h)",
         "State       : RETEST → CONFIRMED (EXECUTE NOW)",

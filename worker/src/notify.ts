@@ -29,6 +29,18 @@ export function parseChatIds(raw?: string): string[] {
     .filter(Boolean);
 }
 
+/** Converts ASCII letters and digits to Unicode Mathematical Bold characters
+ *  (e.g., "XAUUSD" -> "𝐗𝐀𝐔𝐔𝐒𝐃", "NAS100" -> "𝐍𝐀𝐒𝟏𝟎𝟎") for high-visibility
+ *  native bold rendering in Telegram plain text notifications. */
+export function toBold(str: string): string {
+  return str.split("").map((c) => {
+    const code = c.charCodeAt(0);
+    if (code >= 65 && code <= 90) return String.fromCodePoint(0x1D400 + code - 65); // A-Z bold
+    if (code >= 48 && code <= 57) return String.fromCodePoint(0x1D7CE + code - 48); // 0-9 bold
+    return c;
+  }).join("");
+}
+
 export async function sendTelegram(
   env: NotifyEnv,
   text: string,
@@ -103,6 +115,7 @@ const tfmt = (ms: number) =>
 export function formatAlert(a: Alert): string {
   const emoji = a.direction === "LONG" ? "🟢" : "🔴";
   const paper = a.alertStatus === "PAPER" ? "🧪 PAPER ALERT" : "ALERT";
+  const boldPair = toBold(a.pair);
   const [lo, hi] = a.keyLevelBounds;
   const flags: string[] = [];
   if (a.keyLevelTested) flags.push("tested");
@@ -115,7 +128,8 @@ export function formatAlert(a: Alert): string {
 
   const lines = [
     `🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨`,
-    `${emoji} SLK ${paper} — ${a.pair}`,
+    `${emoji} SLK ${paper} — ${a.pair} · 🌟【 ${boldPair} 】🌟`,
+    `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction   : ${a.direction} ${emoji}`,
     `Timeframe   : ${a.entryTf} (map ${a.mapTf})`,
     `State       : RETEST → CONFIRMED`,
@@ -192,14 +206,16 @@ export function formatAlert(a: Alert): string {
 
 export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
   const pair = String(rec.canonical_symbol);
+  const boldPair = toBold(pair);
   const dir = String(rec.direction);
   const dirEmoji = dir === "LONG" ? "🟢" : "🔴";
   const r = oc.rMultiple;
   const tp1 = rec.tp_internal != null ? fmtPrice(pair, Number(rec.tp_internal)) : fmtPrice(pair, oc.exitPrice);
 
   return [
-    `🎯 TP1 HIT — ${pair} ${dir} (+${r.toFixed(2)}R)`,
+    `🎯 TP1 HIT — 🌟【 ${boldPair} 】🌟 ${dir} (+${r.toFixed(2)}R)`,
     ``,
+    `📍 Pair      : 🌟【 ${boldPair} 】🌟`,
     `• Timeframe : ${rec.entry_timeframe}`,
     `• Direction : ${dir} ${dirEmoji}`,
     `• Entry     : ${fmtPrice(pair, Number(rec.entry))}`,
@@ -216,12 +232,14 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
 
 export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   const pair = String(rec.canonical_symbol);
+  const boldPair = toBold(pair);
   const paper = rec.alert_status === "PAPER" ? "🧪 PAPER — " : "";
   const r = oc.rMultiple;
   const [emoji, label] =
     oc.status === "TP_HIT" ? ["✅", "TP HIT"] : oc.status === "SL_HIT" ? ["❌", "SL HIT"] : ["⌛", "EXPIRED"];
   const lines = [
-    `${paper}${emoji} ${label} — ${pair} · ${rec.entry_timeframe} · ${rec.direction} (setup ${rec.setup_id})`,
+    `${paper}${emoji} ${label} — 🌟【 ${boldPair} 】🌟 · ${rec.entry_timeframe} · ${rec.direction} (setup ${rec.setup_id})`,
+    `📍 Pair     : 🌟【 ${boldPair} 】🌟`,
     `Entry ${fmtPrice(pair, Number(rec.entry))} → Exit ${fmtPrice(pair, oc.exitPrice)}  (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)`,
   ];
   if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
@@ -303,11 +321,13 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
 export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFreeChannel?: boolean }): string {
   const parts = ev.setupId.split(":");
   const direction = parts[3] ?? "";
+  const boldPair = toBold(ev.pair);
   const originKind = parts[4] ?? "";
   const originPrice = parts[5] ? Number(parts[5]) : null;
   const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
   const lines = [
-    `👀 WATCH (Silent Radar) — ${ev.pair} · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
+    `👀 WATCH (Silent Radar) — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
+    `📍 Pair     : 🌟【 ${boldPair} 】🌟`,
     `State      : ${stateEmoji} ${ev.state}`,
     `Detail     : ${ev.reason}`,
   ];
@@ -342,6 +362,7 @@ export function formatBiasCard(
   currentPrice?: number,
   options?: { isFreeChannel?: boolean },
 ): string {
+  const boldPair = toBold(pair);
   const emoji = direction === "LONG" ? "🟢" : "🔴";
   const gradeLabel = diag.classification === "A_GRADE"
     ? "⭐ A_GRADE (HTF Aligned)"
@@ -354,7 +375,8 @@ export function formatBiasCard(
   const h4Status = diag.h4.breakoutStatus.replace(/_/g, " ").split(" ").map(capitalize).join(" ");
 
   const lines = [
-    `🧭 SLK BIAS CONFIRMATION (Silent Context) — ${pair}`,
+    `🧭 SLK BIAS CONFIRMATION (Silent Context) — 🌟【 ${boldPair} 】🌟`,
+    `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
     `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${h4Status})`,
     `1H Alignment : ${diag.h1.direction.toUpperCase()} (${diag.h1.agreesWith4H ? "agrees with 4H ✅" : "neutral"})`,
