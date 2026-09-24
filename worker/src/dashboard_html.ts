@@ -192,7 +192,7 @@ export const DASHBOARD_HTML = `<!doctype html>
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px;">10 Markets</span>
@@ -364,7 +364,7 @@ export const DASHBOARD_HTML = `<!doctype html>
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px;">10 Markets</span>
