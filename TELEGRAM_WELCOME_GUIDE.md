@@ -10,7 +10,7 @@
 
 Welcome to the institutional trading room. 
 
-SLK Radar operates on pure algorithmic orderflow mechanics (ICT/SMC). Our cloud engine monitors 10 high-volatility markets 24/7, filtering out 90% of retail chop and delivering ONLY high-probability, asymmetric setups.
+SLK Radar operates on pure algorithmic orderflow mechanics — the proprietary SLK Model (Structure · Liquidity · Key Levels). Our cloud engine monitors 10 high-volatility markets 24/7, filtering out 90% of retail chop and delivering ONLY high-probability, asymmetric setups.
 
 Please read this execution protocol carefully before placing your first trade.
 
