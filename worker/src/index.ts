@@ -569,6 +569,16 @@ async function verifySignature(raw: string, signature: string, secret: string): 
   return hex === signature.toLowerCase();
 }
 
+async function checkTestCooldown(store: Store, actionKey: string, cooldownMs = 30_000): Promise<boolean> {
+  const lastTs = await store.getKv(`test_cooldown:${actionKey}`);
+  const now = Date.now();
+  if (lastTs && now - Number(lastTs) < cooldownMs) {
+    return true; // debounced
+  }
+  await store.setKv(`test_cooldown:${actionKey}`, String(now));
+  return false;
+}
+
 // --------------------------------------------------------------- entrypoint
 
 export default {
@@ -948,6 +958,10 @@ export default {
       if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
       }
+      const store = makeStore(env.DB);
+      if (await checkTestCooldown(store, "test-silent")) {
+        return json({ ok: true, debounced: true, message: "A test alert was already sent a few seconds ago. Skipping duplicate to prevent spam." });
+      }
       const { sendTelegram } = await import("./notify");
       const text = [
         "👀 WATCH (Silent Radar) — NAS100 · 15m · SHORT 🔽",
@@ -1209,6 +1223,13 @@ export default {
       if (!freeChatId) {
         return json({ ok: false, error: "No Free Telegram Channel configured. Set via /admin/set-free-channel?chat_id=@your_channel" }, 400);
       }
+      if (await checkTestCooldown(store, "test-free-teaser")) {
+        return json({
+          ok: true,
+          status: "debounced",
+          message: "A test teaser was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+        });
+      }
       const { sendTelegram } = await import("./notify");
       const teaser = [
         "🎯 TP1 HIT — XAUUSD Short (+2.57R)",
@@ -1240,6 +1261,13 @@ export default {
 
     if ((url.pathname === "/admin/test-bias" || url.pathname === "/admin/test-free-bias" || url.pathname === "/api/test-free-bias") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
+      if (await checkTestCooldown(store, "test-bias")) {
+        return json({
+          ok: true,
+          status: "debounced",
+          message: "A test bias was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+        });
+      }
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
       const { notifyBias } = await import("./notify");
       const sampleDiag = {
@@ -1365,6 +1393,13 @@ export default {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
       }
       const store = makeStore(env.DB);
+      if (await checkTestCooldown(store, "test-loud")) {
+        return json({
+          ok: true,
+          status: "debounced",
+          message: "A test entry alert was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+        });
+      }
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const { broadcast } = await import("./notify");
       const text = [
