@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `5265557` (`docs(dashboard): clarify institutional segment covers Asian, London & NY sessions`)
+**Latest Synced Commit:** `29c4e53` (`fix(provider): establish Deriv WebSocket connection using native WebSocket constructor and clean headers`)
 
 ---
 
