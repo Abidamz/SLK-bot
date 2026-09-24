@@ -35,6 +35,16 @@ export const DASHBOARD_HTML = `<!doctype html>
 @media(max-width:800px){.preference-actions{width:100%;flex-direction:column}.preference-actions button{width:100%}}
 .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.filter-bar input,.filter-bar select{min-width:130px}.filter-bar input{flex:1}.pagination{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:18px;color:var(--muted);font-size:12px}.pagination button:disabled{opacity:.45;cursor:not-allowed}
 .period-btn{background:transparent;border:1px solid var(--line);color:var(--muted);font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600;transition:all .15s ease}.period-btn:hover{color:var(--text);border-color:#54719c}.period-btn.active{background:var(--panel2);border-color:var(--accent);color:var(--accent)}.breakdown-list{display:grid;gap:8px}.breakdown-row{display:grid;grid-template-columns:1.2fr 1fr .8fr;gap:10px;align-items:center;border:1px solid var(--line);border-radius:11px;padding:12px;background:#0e151f}.breakdown-row span{color:var(--muted);font-size:12px}.breakdown-row b{color:var(--accent);text-align:right;font-size:12px}@media(max-width:800px){.breakdown-row{grid-template-columns:1fr}.breakdown-row b{text-align:left}}
+.announcement-banner{background:linear-gradient(90deg,rgba(245,158,11,.12),rgba(36,129,204,.12));border:1px solid rgba(245,158,11,.3);border-radius:12px;padding:10px 18px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.banner-left{display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap}
+.banner-badge{background:#f59e0b;color:#120c02;font-weight:800;font-size:10px;padding:3px 7px;border-radius:6px;letter-spacing:.05em}
+.code-pill{color:#f6c66d;font-family:monospace;background:rgba(0,0,0,.35);padding:2px 7px;border-radius:5px;border:1px dashed rgba(245,158,11,.5);letter-spacing:.04em}
+.banner-right{display:flex;gap:10px;align-items:center}
+.banner-vip{color:#f6c66d;font-weight:700;font-size:12px;text-decoration:none}
+.banner-vip:hover{text-decoration:underline}
+.banner-sep{color:var(--line)}
+.banner-tg{color:#29b6f6;font-weight:700;font-size:12px;text-decoration:none}
+.banner-tg:hover{text-decoration:underline}
 
 </style>
 </head>
@@ -48,9 +58,13 @@ export const DASHBOARD_HTML = `<!doctype html>
       </div>
     </div>
     <div class="header-actions">
-      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+      <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" title="Join Free Telegram Trading Hub">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
+        <span>Free Telegram</span>
+      </a>
+      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        <span>VIP Access</span>
+        <span>VIP Access ($49/mo)</span>
       </a>
       <div class="status">
         <span id="statusDot" class="dot muted"></span>
@@ -60,17 +74,36 @@ export const DASHBOARD_HTML = `<!doctype html>
   </header>
 
   <main class="shell">
+    <div class="announcement-banner">
+      <div class="banner-left">
+        <span class="banner-badge">FOUNDING OFFER</span>
+        <span>VIP Signals <strong>$49/mo</strong> (50% off $100/mo) with code <strong class="code-pill">FOUNDING20</strong></span>
+      </div>
+      <div class="banner-right">
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim $49/mo VIP →</a>
+        <span class="banner-sep">|</span>
+        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="banner-tg">Free Telegram Hub →</a>
+      </div>
+    </div>
+
     <section class="hero">
       <div>
         <p class="eyebrow">ALGORITHMIC SLK CONFIRMATION ENGINE</p>
         <h1>Live Quantitative Performance & Trade Journal</h1>
         <p class="lede">Real-time verified paper outcomes from institutional key-level liquidity sweeps, market structure shifts, and confirmation entries across 10 Forex, Metal, and Index markets.</p>
-        <div style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 10px 18px; font-size: 13px;">
+        <div style="margin-top: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span>Get VIP Signals Access ($100/mo)</span>
+            <span>Get VIP Signals — $49/mo</span>
+          </a>
+          <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 11px 20px; font-size: 13px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
+            <span>Join Free Telegram Hub (@SLK_radar)</span>
           </a>
         </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: var(--muted);">
+          ⚡ Founding Member Special: Enter promo code <strong style="color: #f6c66d; letter-spacing: 0.04em;">FOUNDING20</strong> on Whop for $49/mo lifetime pricing. Free channel receives daily directional bias & verified win teasers.
+        </p>
       </div>
       <div class="execution-badge">
         <span>EXECUTION</span>
@@ -327,7 +360,8 @@ export const DASHBOARD_HTML = `<!doctype html>
       <span>SLK Radar · Algorithmic Quantitative Portfolio · 24/7 Automated Cloud Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals</a>
+        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($49/mo with FOUNDING20)</a>
       </div>
     </div>
   </footer>

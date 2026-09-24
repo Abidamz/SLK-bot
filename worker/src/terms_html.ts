@@ -236,7 +236,14 @@ export const TERMS_HTML = `<!doctype html>
   </main>
 
   <footer>
-    <span>SLK Radar · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
+    <div class="footer-content" style="display:flex; justify-content:space-between; align-items:center; max-width:860px; margin:0 auto; padding:0 24px; font-size:12px; color:var(--muted);">
+      <span>SLK Radar · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
+      <div>
+        <a href="/" style="color:var(--muted); margin-right: 18px; text-decoration:none;">Performance Journal</a>
+        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; margin-right: 18px; text-decoration:none; font-weight:600;">Free Telegram</a>
+        <a href="/terms" style="color: var(--accent); font-weight: 600; text-decoration:none;">Terms & Conditions</a>
+      </div>
+    </div>
   </footer>
 </body>
 </html>
