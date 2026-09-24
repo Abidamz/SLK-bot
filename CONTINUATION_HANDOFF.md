@@ -19,7 +19,7 @@
   - Scan Logs: `GET /scan-log`
 - **Telegram Channels:**
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID`
-  - **24/7 Synthetics Channel:** `SLK HUB | 24/7 SYNTHETICS` (ID: `-1004426439958`, `https://t.me/+sBrVmW1u8osyM2Q0`)
+  - **24/7 Synthetics Channel:** `SLK HUB | 24/7 SYNTHETICS` (ID: `-1004426439958`, private VIP channel managed via Whop `@whop_bot`)
   - **Free Community Hub:** Managed via `TELEGRAM_FREE_CHAT_ID`
   - **Personal VIP Push DM:** Managed via `TELEGRAM_DM_CHAT_ID`
 
