@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `0c2705b` (`ci: add GitHub Actions workflow to auto-deploy Worker and Pages to Cloudflare`)
+**Latest Synced Commit:** `d1b5ceb` (`fix(dashboard): show em-dash placeholder for synthetics win rate when no closed trades exist`)
 
 ---
 
