@@ -13,7 +13,7 @@
  *
  *  The browser dashboard never touches this Worker with secrets — all
  *  provider keys and channel credentials live as Worker secrets only. */
-import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS } from "./config";
+import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair } from "./config";
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
@@ -775,7 +775,7 @@ export default {
       if (bad) return json({ error: bad }, 400);
       if ((from && !Number.isFinite(fromMs)) || (to && !Number.isFinite(toMs))) return json({ error: "from and to must be valid ISO UTC dates" }, 400);
       if (fromMs !== null && toMs !== null && fromMs > toMs) return json({ error: "from must be earlier than or equal to to" }, 400);
-      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", page, pageSize };
+      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize };
       const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
       return json({ items: rows.map((r) => ({
@@ -797,6 +797,7 @@ export default {
       const period = url.searchParams.get("period");
       const fromParam = url.searchParams.get("from");
       const toParam = url.searchParams.get("to");
+      const segment = url.searchParams.get("segment") || url.searchParams.get("market");
 
       const now = Date.now();
       let fromMs: number | null = fromParam ? Date.parse(fromParam) : null;
@@ -823,6 +824,14 @@ export default {
         periodLabel = "Last 90 Days";
       } else if (fromParam || toParam) {
         periodLabel = `${fromParam ?? "Start"} to ${toParam ?? "Present"}`;
+      }
+
+      if (segment === "synthetics") {
+        rows = rows.filter((r) => isDerivPair(r.canonical_symbol));
+        periodLabel += " · Synthetics (24/7)";
+      } else if (segment === "institutional") {
+        rows = rows.filter((r) => !isDerivPair(r.canonical_symbol));
+        periodLabel += " · Institutional";
       }
 
       if (fromMs != null && Number.isFinite(fromMs)) {

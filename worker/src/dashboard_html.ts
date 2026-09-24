@@ -46,6 +46,25 @@ export const DASHBOARD_HTML = `<!doctype html>
 .banner-tg{color:#29b6f6;font-weight:700;font-size:12px;text-decoration:none}
 .banner-tg:hover{text-decoration:underline}
 
+/* Market Segment Selector & Synthetics Badging */
+.market-segment-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px;background:#0b111a;padding:6px;border-radius:12px;border:1px solid var(--line)}
+.segment-btn{display:inline-flex;align-items:center;gap:7px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;transition:all .15s ease}
+.segment-btn:hover{color:var(--text);background:#131c2a}
+.segment-btn.active{background:#182335;color:#fff;border-color:#3b82f6;box-shadow:0 2px 10px rgba(59,130,246,.15)}
+.segment-btn[data-segment="synthetics"].active{border-color:#a855f7;color:#f3e8ff;box-shadow:0 2px 12px rgba(168,85,247,.25);background:linear-gradient(135deg,#1f1338,#161d2d)}
+.seg-count{font-size:11px;opacity:.75;background:rgba(255,255,255,.08);padding:2px 6px;border-radius:6px}
+.market-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:5px;margin-left:7px;vertical-align:middle}
+.synth-tag{background:rgba(168,85,247,.18);border:1px solid rgba(168,85,247,.45);color:#d8b4fe!important}
+.inst-tag{background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.35);color:#93c5fd!important}
+.synthetics-btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#7e22ce,#9333ea);color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:8px 14px;border-radius:10px;box-shadow:0 4px 14px rgba(147,51,234,.3);transition:transform .15s ease,box-shadow .15s ease}
+.synthetics-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(147,51,234,.45);filter:brightness(1.08)}
+.synthetics-banner{background:linear-gradient(135deg,rgba(88,28,135,.22),rgba(30,27,75,.45));border:1px solid rgba(168,85,247,.35);border-radius:14px;padding:18px 22px;margin-bottom:20px}
+.synth-badge{display:inline-block;background:#9333ea;color:#fff;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-bottom:8px}
+.synth-banner-content h3{margin:0 0 6px;font-size:16px;color:#f3e8ff}
+.synth-banner-content p{margin:0 0 12px;color:#c084fc;font-size:13px;line-height:1.5}
+.synth-tg-link{display:inline-flex;align-items:center;gap:8px;background:#7e22ce;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:8px 16px;border-radius:8px;transition:all .15s ease}
+.synth-tg-link:hover{background:#9333ea;transform:translateY(-1px)}
+
 </style>
 </head>
 <body>
@@ -58,6 +77,10 @@ export const DASHBOARD_HTML = `<!doctype html>
       </div>
     </div>
     <div class="header-actions">
+      <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synthetics-btn" title="Join 24/7 Synthetics Channel">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+        <span>⚡ 24/7 Synthetics</span>
+      </a>
       <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" title="Join Free Telegram Trading Hub">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
         <span>Free Telegram</span>
@@ -82,6 +105,8 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div class="banner-right">
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim $49/mo VIP →</a>
         <span class="banner-sep">|</span>
+        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ 24/7 Synthetics Hub →</a>
+        <span class="banner-sep">|</span>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="banner-tg">Free Telegram Hub →</a>
       </div>
     </div>
@@ -90,11 +115,15 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div>
         <p class="eyebrow">ALGORITHMIC SLK CONFIRMATION ENGINE</p>
         <h1>Live Quantitative Performance & Trade Journal</h1>
-        <p class="lede">Real-time verified paper outcomes from institutional key-level liquidity sweeps, market structure shifts, and confirmation entries across 10 Forex, Metal, and Index markets.</p>
+        <p class="lede">Real-time verified paper outcomes from institutional key-level liquidity sweeps, market structure shifts, and confirmation entries across 11 Forex, Metal, Index, and 24/7 Deriv Synthetic markets.</p>
         <div style="margin-top: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             <span>Get VIP Signals ($100/mo)</span>
+          </a>
+          <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synthetics-btn" style="padding: 11px 18px; font-size: 13px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+            <span>24/7 Synthetics Hub</span>
           </a>
           <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
@@ -176,7 +205,8 @@ export const DASHBOARD_HTML = `<!doctype html>
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
             <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
-            <div><dt>Active Markets (10)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225</dd></div>
+            <div><dt>Active Markets (11)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 1 Synthetic (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
@@ -184,6 +214,31 @@ export const DASHBOARD_HTML = `<!doctype html>
     </section>
 
     <section id="performance" class="tab-panel">
+      <!-- Market Segment Selector -->
+      <div class="market-segment-bar">
+        <button type="button" class="segment-btn active" data-segment="all">
+          <span>🌍</span> All Markets <span class="seg-count">11</span>
+        </button>
+        <button type="button" class="segment-btn" data-segment="institutional">
+          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
+        </button>
+        <button type="button" class="segment-btn" data-segment="synthetics">
+          <span>⚡</span> 24/7 Synthetics <span class="seg-count">1</span>
+        </button>
+      </div>
+
+      <!-- Synthetics Info Banner (Active when Synthetics is selected) -->
+      <div id="syntheticsNotice" class="synthetics-banner" hidden>
+        <div class="synth-banner-content">
+          <span class="synth-badge">⚡ 24/7 Continuous Market</span>
+          <h3>Deriv Algorithmic Synthetic Indices (Volatility 75)</h3>
+          <p>Continuous algorithmic liquidity that never sleeps. While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
+          <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
+            <span>👉 Open 24/7 Synthetics Channel (Free Signals & Previews)</span>
+          </a>
+        </div>
+      </div>
+
       <div class="panel-head" style="align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
         <div>
           <p class="eyebrow">PORTFOLIO TRACK RECORD</p>
@@ -360,6 +415,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       <span>SLK Radar · Algorithmic Quantitative Portfolio · 24/7 Automated Cloud Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
+        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics Hub</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
@@ -379,7 +435,8 @@ const state = {
   alertPageSize: 25,
   perfPeriod: 'all',
   perfFrom: '',
-  perfTo: ''
+  perfTo: '',
+  marketSegment: 'all'
 };
 
 const $ = id => document.getElementById(id);
@@ -390,6 +447,20 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     const panel = $(btn.dataset.tab);
     if (panel) panel.classList.add('active');
+  });
+});
+
+document.querySelectorAll('.segment-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.marketSegment = btn.dataset.segment || 'all';
+    if ($('syntheticsNotice')) {
+      $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+    }
+    state.alertPage = 1;
+    loadStats();
+    loadAlerts();
   });
 });
 
@@ -524,16 +595,19 @@ async function loadAll() {
 
 async function loadStats() {
   try {
-    let q = '';
+    const p = new URLSearchParams();
     if (state.perfPeriod && state.perfPeriod !== 'all' && state.perfPeriod !== 'custom') {
-      q = \`?period=\${encodeURIComponent(state.perfPeriod)}\`;
-    } else if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
-      const p = new URLSearchParams();
+      p.set('period', state.perfPeriod);
+    }
+    if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
       if (state.perfFrom) p.set('from', state.perfFrom);
       if (state.perfTo) p.set('to', state.perfTo);
-      q = \`?\${p.toString()}\`;
     }
-    const s = await api(\`/stats\${q}\`);
+    if (state.marketSegment && state.marketSegment !== 'all') {
+      p.set('segment', state.marketSegment);
+    }
+    const qs = p.toString();
+    const s = await api(\`/stats\${qs ? \`?\${qs}\` : ''}\`);
     renderStats(s);
     return s;
   } catch (e) {
@@ -631,10 +705,14 @@ function renderBreakdown(rows) {
       const l = fmtDateOnly(r.lastDate);
       dateContext = f === l ? \`Date: \${l}\` : \`\${f} → \${l}\`;
     }
+    const isSynth = r.group && (r.group.startsWith('V') || r.group.startsWith('R_'));
+    const groupBadge = isSynth
+      ? '<span class="market-tag synth-tag" style="margin-left:6px;">⚡ 24/7 SYNTHETICS</span>'
+      : '';
     return \`
       <div class="breakdown-row">
         <div>
-          <strong style="color:#f1f5f9;">\${esc(r.group)}</strong>
+          <strong style="color:#f1f5f9;">\${esc(r.group)}\${groupBadge}</strong>
           <small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">📅 \${dateContext}</small>
         </div>
         <span>\${r.completed} completed · <span class="profit-text">\${r.tp} TP</span> · <span class="loss-text">\${r.sl} SL</span></span>
@@ -717,6 +795,9 @@ function alertParams() {
     sort: ($('alertSort') && $('alertSort').value) || 'candleCloseTime',
     order: 'desc'
   });
+  if (state.marketSegment && state.marketSegment !== 'all') {
+    p.set('segment', state.marketSegment);
+  }
   [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch'], ['from', 'alertFrom'], ['to', 'alertTo']].forEach(([key, id]) => {
     const el = $(id);
     if (el && el.value) {
@@ -786,10 +867,14 @@ function renderAlerts() {
       statusLabel = 'EXPIRED ⌛';
       statusClass = 'state';
     }
+    const isSynth = a.pair && (a.pair.startsWith('V') || a.pair.startsWith('R_'));
+    const marketTag = isSynth
+      ? '<span class="market-tag synth-tag">⚡ 24/7 SYNTHETICS</span>'
+      : '<span class="market-tag inst-tag">INSTITUTIONAL</span>';
     return \`
       <button class="alert-row" data-setup="\${esc(a.setupId)}" data-tf="\${esc(a.tf)}">
         <div>
-          <strong class="alert-pair">\${esc(a.pair)} · \${esc(a.tf)} · <span class="\${dirClass}">\${esc(a.direction)}</span></strong>
+          <strong class="alert-pair">\${esc(a.pair)} · \${esc(a.tf)} · <span class="\${dirClass}">\${esc(a.direction)}</span> \${marketTag}</strong>
           <small class="alert-meta">\${esc(a.keyLevel || 'Key Level')} · \${fmtDate(a.candleCloseTime)}</small>
         </div>
         <div>

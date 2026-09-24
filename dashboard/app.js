@@ -11,7 +11,8 @@ const state = {
   alertPageSize: 25,
   perfPeriod: 'all',
   perfFrom: '',
-  perfTo: ''
+  perfTo: '',
+  marketSegment: 'all'
 };
 
 const $ = id => document.getElementById(id);
@@ -22,6 +23,20 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     const panel = $(btn.dataset.tab);
     if (panel) panel.classList.add('active');
+  });
+});
+
+document.querySelectorAll('.segment-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.marketSegment = btn.dataset.segment || 'all';
+    if ($('syntheticsNotice')) {
+      $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+    }
+    state.alertPage = 1;
+    loadStats();
+    loadAlerts();
   });
 });
 
@@ -156,16 +171,19 @@ async function loadAll() {
 
 async function loadStats() {
   try {
-    let q = '';
+    const p = new URLSearchParams();
     if (state.perfPeriod && state.perfPeriod !== 'all' && state.perfPeriod !== 'custom') {
-      q = `?period=${encodeURIComponent(state.perfPeriod)}`;
-    } else if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
-      const p = new URLSearchParams();
+      p.set('period', state.perfPeriod);
+    }
+    if (state.perfPeriod === 'custom' || state.perfFrom || state.perfTo) {
       if (state.perfFrom) p.set('from', state.perfFrom);
       if (state.perfTo) p.set('to', state.perfTo);
-      q = `?${p.toString()}`;
     }
-    const s = await api(`/stats${q}`);
+    if (state.marketSegment && state.marketSegment !== 'all') {
+      p.set('segment', state.marketSegment);
+    }
+    const qs = p.toString();
+    const s = await api(`/stats${qs ? `?${qs}` : ''}`);
     renderStats(s);
     return s;
   } catch (e) {
@@ -263,10 +281,14 @@ function renderBreakdown(rows) {
       const l = fmtDateOnly(r.lastDate);
       dateContext = f === l ? `Date: ${l}` : `${f} → ${l}`;
     }
+    const isSynth = r.group && (r.group.startsWith('V') || r.group.startsWith('R_'));
+    const groupBadge = isSynth
+      ? '<span class="market-tag synth-tag" style="margin-left:6px;">⚡ 24/7 SYNTHETICS</span>'
+      : '';
     return `
       <div class="breakdown-row">
         <div>
-          <strong style="color:#f1f5f9;">${esc(r.group)}</strong>
+          <strong style="color:#f1f5f9;">${esc(r.group)}${groupBadge}</strong>
           <small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">📅 ${dateContext}</small>
         </div>
         <span>${r.completed} completed · <span class="profit-text">${r.tp} TP</span> · <span class="loss-text">${r.sl} SL</span></span>
@@ -349,6 +371,9 @@ function alertParams() {
     sort: ($('alertSort') && $('alertSort').value) || 'candleCloseTime',
     order: 'desc'
   });
+  if (state.marketSegment && state.marketSegment !== 'all') {
+    p.set('segment', state.marketSegment);
+  }
   [['pair', 'alertPair'], ['timeframe', 'alertTimeframe'], ['direction', 'alertDirection'], ['lifecycle', 'alertLifecycle'], ['search', 'alertSearch'], ['from', 'alertFrom'], ['to', 'alertTo']].forEach(([key, id]) => {
     const el = $(id);
     if (el && el.value) {
@@ -418,10 +443,14 @@ function renderAlerts() {
       statusLabel = 'EXPIRED ⌛';
       statusClass = 'state';
     }
+    const isSynth = a.pair && (a.pair.startsWith('V') || a.pair.startsWith('R_'));
+    const marketTag = isSynth
+      ? '<span class="market-tag synth-tag">⚡ 24/7 SYNTHETICS</span>'
+      : '<span class="market-tag inst-tag">INSTITUTIONAL</span>';
     return `
       <button class="alert-row" data-setup="${esc(a.setupId)}" data-tf="${esc(a.tf)}">
         <div>
-          <strong class="alert-pair">${esc(a.pair)} · ${esc(a.tf)} · <span class="${dirClass}">${esc(a.direction)}</span></strong>
+          <strong class="alert-pair">${esc(a.pair)} · ${esc(a.tf)} · <span class="${dirClass}">${esc(a.direction)}</span> ${marketTag}</strong>
           <small class="alert-meta">${esc(a.keyLevel || 'Key Level')} · ${fmtDate(a.candleCloseTime)}</small>
         </div>
         <div>

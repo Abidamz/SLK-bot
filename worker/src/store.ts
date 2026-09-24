@@ -5,6 +5,7 @@
  *  retries and rescans can never double-deliver. */
 import type { Alert, EngineEvent, Outcome } from "./types";
 import type { ScanDiagnostics } from "./diagnostics";
+import { isDerivPair } from "./config";
 
 // A subset of the D1Database API — the real env.DB satisfies this.
 export interface D1Like {
@@ -64,7 +65,9 @@ export interface Store {
 
 export interface AlertQuery {
   pair?: string; timeframe?: string; direction?: string; channel?: string; lifecycle?: string; outcome?: string; provider?: string;
-  from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc"; page: number; pageSize: number;
+  from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc";
+  segment?: "all" | "institutional" | "synthetics";
+  page: number; pageSize: number;
 }
 export interface AlertQueryResult { rows: AlertRow[]; total: number; }
 
@@ -252,6 +255,11 @@ export class D1Store implements Store {
     const where: string[] = []; const binds: unknown[] = [];
     const add = (sql: string, value: unknown) => { where.push(sql); binds.push(value); };
     if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction); if (q.channel === "WATCH") where.push("1 = 0"); if (q.channel === "CONFIRMED") where.push("alert_status IN ('PAPER','SENT')"); if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
+    if (q.segment === "synthetics") {
+      where.push("(canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%')");
+    } else if (q.segment === "institutional") {
+      where.push("(canonical_symbol NOT LIKE 'V%' AND canonical_symbol NOT LIKE 'R_%')");
+    }
     const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     const sortMap: Record<string,string> = { candleCloseTime: "candle_close_time", pair: "canonical_symbol", timeframe: "entry_timeframe", direction: "direction", status: "status", provider: "provider" };
     const order = q.order === "asc" ? "ASC" : "DESC"; const sort = sortMap[q.sort ?? "candleCloseTime"] ?? "candle_close_time";
@@ -393,7 +401,11 @@ export class MemStore implements Store {
 
   async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
     let rows = [...this.alerts.values()]; const match = (v: unknown, x?: string) => !x || String(v).toUpperCase() === x.toUpperCase();
-    rows = rows.filter(r => match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && (q.channel !== "WATCH") && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to));
+    rows = rows.filter(r => {
+      if (q.segment === "synthetics" && !isDerivPair(r.canonical_symbol)) return false;
+      if (q.segment === "institutional" && isDerivPair(r.canonical_symbol)) return false;
+      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && (q.channel !== "WATCH") && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
+    });
     const total=rows.length; rows=rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize); return { rows, total };
   }
 
