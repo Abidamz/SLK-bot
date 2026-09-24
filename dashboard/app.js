@@ -26,17 +26,42 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+function setMarketSegment(seg) {
+  state.marketSegment = seg || 'all';
+  document.querySelectorAll('.segment-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.segment || 'all') === state.marketSegment);
+  });
+  document.querySelectorAll('.segment-card').forEach(card => {
+    const target = card.dataset.targetSegment;
+    card.classList.toggle('active', target === state.marketSegment);
+  });
+  document.querySelectorAll('.syntheticsNotice').forEach(el => {
+    el.hidden = state.marketSegment !== 'synthetics';
+  });
+  if ($('syntheticsNotice')) {
+    $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+  }
+  state.alertPage = 1;
+  loadStats();
+  loadAlerts();
+}
+
 document.querySelectorAll('.segment-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.marketSegment = btn.dataset.segment || 'all';
-    if ($('syntheticsNotice')) {
-      $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+    setMarketSegment(btn.dataset.segment || 'all');
+  });
+});
+
+document.querySelectorAll('.segment-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const target = card.dataset.targetSegment;
+    if (target) {
+      if (state.marketSegment === target) {
+        setMarketSegment('all');
+      } else {
+        setMarketSegment(target);
+      }
     }
-    state.alertPage = 1;
-    loadStats();
-    loadAlerts();
   });
 });
 
@@ -245,7 +270,29 @@ function renderStats(s) {
   if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
   if ($('netR')) $('netR').textContent = netRText;
   if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
-  if ($('winRate')) $('winRate').textContent = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  const winRateText = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  if ($('winRate')) $('winRate').textContent = winRateText;
+  if ($('perfWinRate')) $('perfWinRate').textContent = winRateText;
+
+  if (s.segments) {
+    const inst = s.segments.institutional || {};
+    const synth = s.segments.synthetics || {};
+    const instWr = inst.winRate != null ? `${(inst.winRate * 100).toFixed(1)}%` : '—';
+    const instNr = inst.netR != null ? `${inst.netR > 0 ? '+' : ''}${Number(inst.netR).toFixed(2)}R` : '—';
+    const instOut = `${inst.tp || 0} TP · ${inst.sl || 0} SL`;
+
+    const synthWr = synth.winRate != null ? `${(synth.winRate * 100).toFixed(1)}%` : (synth.total > 0 ? 'Tracking' : '24/7 Active');
+    const synthNr = synth.netR != null ? `${synth.netR > 0 ? '+' : ''}${Number(synth.netR).toFixed(2)}R` : '0.00R';
+    const synthOut = `${synth.tp || 0} TP · ${synth.sl || 0} SL`;
+
+    ['segInstWinRate', 'segInstWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = instWr; });
+    ['segInstNetR', 'segInstNetROverview'].forEach(id => { if ($(id)) $(id).textContent = instNr; });
+    ['segInstOutcomes', 'segInstOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = instOut; });
+
+    ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
+    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => { if ($(id)) $(id).textContent = synthNr; });
+    ['segSynthOutcomes', 'segSynthOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = synthOut; });
+  }
   
   if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
   if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';

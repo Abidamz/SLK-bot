@@ -65,6 +65,19 @@ export const DASHBOARD_HTML = `<!doctype html>
 .synth-tg-link{display:inline-flex;align-items:center;gap:8px;background:#7e22ce;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:8px 16px;border-radius:8px;transition:all .15s ease}
 .synth-tg-link:hover{background:#9333ea;transform:translateY(-1px)}
 
+/* Side-by-side Segment Comparative Cards */
+.segment-comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0 22px}
+.segment-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;transition:all .18s ease;position:relative;user-select:none}
+.segment-card:hover{transform:translateY(-2px);border-color:#54719c;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.segment-card.active{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f6;background:#101724}
+.segment-card.synth-card{border-color:rgba(168,85,247,.3)}
+.segment-card.synth-card:hover{border-color:rgba(168,85,247,.6)}
+.segment-card.synth-card.active{border-color:#a855f7;box-shadow:0 0 0 1px #a855f7;background:linear-gradient(135deg,#18102a,#0f1523)}
+.seg-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;background:#0b111a;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.05);margin-top:10px}
+.seg-card-stats span{font-size:11px;color:var(--muted);display:block}
+.seg-card-stats strong{font-size:14px;display:block;margin-top:2px}
+
+
 </style>
 </head>
 <body>
@@ -150,6 +163,58 @@ export const DASHBOARD_HTML = `<!doctype html>
     </nav>
 
     <section id="overview" class="tab-panel active">
+      <!-- Market Segment Selector -->
+      <div class="market-segment-bar">
+        <button type="button" class="segment-btn active" data-segment="all">
+          <span>🌍</span> All Markets <span class="seg-count">20</span>
+        </button>
+        <button type="button" class="segment-btn" data-segment="institutional">
+          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
+        </button>
+        <button type="button" class="segment-btn" data-segment="synthetics">
+          <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
+        </button>
+      </div>
+
+      <!-- Segment Comparative Performance Overview -->
+      <div class="segment-comparison-grid">
+        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" title="Filter by Institutional FX & Indices">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">🏛️</span>
+              <div>
+                <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Assets · London & NY Sessions</small>
+              </div>
+            </div>
+            <span class="pill" style="font-size:11px;">10 Markets</span>
+          </div>
+          <div class="seg-card-stats">
+            <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
+            <div><span>Net Return</span><strong id="segInstNetROverview" class="accent-text">—</strong></div>
+            <div><span>Outcomes</span><strong id="segInstOutcomesOverview" style="color:var(--text);">—</strong></div>
+          </div>
+        </div>
+
+        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Filter by 24/7 Synthetics">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">⚡</span>
+              <div>
+                <strong style="color:#f3e8ff; font-size:14px; display:block;">24/7 Algorithmic Synthetics</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Assets · Continuous 24/7/365</small>
+              </div>
+            </div>
+            <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
+          </div>
+          <div class="seg-card-stats">
+            <div><span>Win Rate</span><strong id="segSynthWinRateOverview" style="color:#a855f7;">—</strong></div>
+            <div><span>Net Return</span><strong id="segSynthNetROverview" class="accent-text">—</strong></div>
+            <div><span>Outcomes</span><strong id="segSynthOutcomesOverview" style="color:var(--text);">—</strong></div>
+          </div>
+        </div>
+      </div>
+
       <div class="metric-grid">
         <article class="metric">
           <span>Net Return</span>
@@ -269,8 +334,48 @@ export const DASHBOARD_HTML = `<!doctype html>
         </div>
       </div>
 
+      <!-- Market Segment Comparative Performance -->
+      <div class="segment-comparison-grid">
+        <div class="segment-card" id="segCardInst" data-target-segment="institutional" title="Filter by Institutional FX & Indices">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">🏛️</span>
+              <div>
+                <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Assets · London & NY Sessions</small>
+              </div>
+            </div>
+            <span class="pill" style="font-size:11px;">10 Markets</span>
+          </div>
+          <div class="seg-card-stats">
+            <div><span>Win Rate</span><strong id="segInstWinRate" class="profit-text">—</strong></div>
+            <div><span>Net Return</span><strong id="segInstNetR" class="accent-text">—</strong></div>
+            <div><span>Outcomes</span><strong id="segInstOutcomes" style="color:var(--text);">—</strong></div>
+          </div>
+        </div>
+
+        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Filter by 24/7 Synthetics">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:18px;">⚡</span>
+              <div>
+                <strong style="color:#f3e8ff; font-size:14px; display:block;">24/7 Algorithmic Synthetics</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Assets · Continuous 24/7/365</small>
+              </div>
+            </div>
+            <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
+          </div>
+          <div class="seg-card-stats">
+            <div><span>Win Rate</span><strong id="segSynthWinRate" style="color:#a855f7;">—</strong></div>
+            <div><span>Net Return</span><strong id="segSynthNetR" class="accent-text">—</strong></div>
+            <div><span>Outcomes</span><strong id="segSynthOutcomes" style="color:var(--text);">—</strong></div>
+          </div>
+        </div>
+      </div>
+
       <div class="metric-grid">
         <article class="metric"><span>Net Return</span><strong id="netR" class="accent-text">—</strong><small>cumulative R (<span id="perfPeriodLabel">All Time</span>)</small></article>
+        <article class="metric"><span>Win Rate</span><strong id="perfWinRate" class="profit-text">—</strong><small>TP / (TP + SL)</small></article>
         <article class="metric"><span>TP Hits</span><strong id="tp" class="profit-text">—</strong><small>full target reached</small></article>
         <article class="metric"><span>SL Hits</span><strong id="sl" class="loss-text">—</strong><small>stop loss triggered</small></article>
         <article class="metric"><span>Max Drawdown</span><strong id="maxDD">—</strong><small>peak to trough</small></article>
@@ -450,17 +555,42 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+function setMarketSegment(seg) {
+  state.marketSegment = seg || 'all';
+  document.querySelectorAll('.segment-btn').forEach(b => {
+    b.classList.toggle('active', (b.dataset.segment || 'all') === state.marketSegment);
+  });
+  document.querySelectorAll('.segment-card').forEach(card => {
+    const target = card.dataset.targetSegment;
+    card.classList.toggle('active', target === state.marketSegment);
+  });
+  document.querySelectorAll('.syntheticsNotice').forEach(el => {
+    el.hidden = state.marketSegment !== 'synthetics';
+  });
+  if ($('syntheticsNotice')) {
+    $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+  }
+  state.alertPage = 1;
+  loadStats();
+  loadAlerts();
+}
+
 document.querySelectorAll('.segment-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    state.marketSegment = btn.dataset.segment || 'all';
-    if ($('syntheticsNotice')) {
-      $('syntheticsNotice').hidden = state.marketSegment !== 'synthetics';
+    setMarketSegment(btn.dataset.segment || 'all');
+  });
+});
+
+document.querySelectorAll('.segment-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const target = card.dataset.targetSegment;
+    if (target) {
+      if (state.marketSegment === target) {
+        setMarketSegment('all');
+      } else {
+        setMarketSegment(target);
+      }
     }
-    state.alertPage = 1;
-    loadStats();
-    loadAlerts();
   });
 });
 
@@ -669,7 +799,29 @@ function renderStats(s) {
   if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
   if ($('netR')) $('netR').textContent = netRText;
   if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : \`\${Number(s.maxDD).toFixed(2)}R\`;
-  if ($('winRate')) $('winRate').textContent = s.winRate == null ? '—' : \`\${(s.winRate * 100).toFixed(1)}%\`;
+  const winRateText = s.winRate == null ? '—' : \`\${(s.winRate * 100).toFixed(1)}%\`;
+  if ($('winRate')) $('winRate').textContent = winRateText;
+  if ($('perfWinRate')) $('perfWinRate').textContent = winRateText;
+
+  if (s.segments) {
+    const inst = s.segments.institutional || {};
+    const synth = s.segments.synthetics || {};
+    const instWr = inst.winRate != null ? \`\${(inst.winRate * 100).toFixed(1)}%\` : '—';
+    const instNr = inst.netR != null ? \`\${inst.netR > 0 ? '+' : ''}\${Number(inst.netR).toFixed(2)}R\` : '—';
+    const instOut = \`\${inst.tp || 0} TP · \${inst.sl || 0} SL\`;
+
+    const synthWr = synth.winRate != null ? \`\${(synth.winRate * 100).toFixed(1)}%\` : (synth.total > 0 ? 'Tracking' : '24/7 Active');
+    const synthNr = synth.netR != null ? \`\${synth.netR > 0 ? '+' : ''}\${Number(synth.netR).toFixed(2)}R\` : '0.00R';
+    const synthOut = \`\${synth.tp || 0} TP · \${synth.sl || 0} SL\`;
+
+    ['segInstWinRate', 'segInstWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = instWr; });
+    ['segInstNetR', 'segInstNetROverview'].forEach(id => { if ($(id)) $(id).textContent = instNr; });
+    ['segInstOutcomes', 'segInstOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = instOut; });
+
+    ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
+    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => { if ($(id)) $(id).textContent = synthNr; });
+    ['segSynthOutcomes', 'segSynthOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = synthOut; });
+  }
   
   if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
   if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';

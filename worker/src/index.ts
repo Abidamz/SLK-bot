@@ -806,7 +806,7 @@ export default {
     if (url.pathname === "/stats" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
-      let rows = await store.recentAlerts(1000);
+      const allRows = await store.recentAlerts(1000);
 
       const period = url.searchParams.get("period");
       const fromParam = url.searchParams.get("from");
@@ -840,25 +840,27 @@ export default {
         periodLabel = `${fromParam ?? "Start"} to ${toParam ?? "Present"}`;
       }
 
+      let dateFilteredRows = allRows;
+      if (fromMs != null && Number.isFinite(fromMs)) {
+        dateFilteredRows = dateFilteredRows.filter((r) => {
+          const t = Date.parse(String(r.candle_close_time));
+          return Number.isFinite(t) && t >= fromMs!;
+        });
+      }
+      if (toMs != null && Number.isFinite(toMs)) {
+        dateFilteredRows = dateFilteredRows.filter((r) => {
+          const t = Date.parse(String(r.candle_close_time));
+          return Number.isFinite(t) && t <= toMs!;
+        });
+      }
+
+      let rows = dateFilteredRows;
       if (segment === "synthetics") {
         rows = rows.filter((r) => isDerivPair(r.canonical_symbol));
         periodLabel += " · Synthetics (24/7)";
       } else if (segment === "institutional") {
         rows = rows.filter((r) => !isDerivPair(r.canonical_symbol));
         periodLabel += " · Institutional";
-      }
-
-      if (fromMs != null && Number.isFinite(fromMs)) {
-        rows = rows.filter((r) => {
-          const t = Date.parse(String(r.candle_close_time));
-          return Number.isFinite(t) && t >= fromMs!;
-        });
-      }
-      if (toMs != null && Number.isFinite(toMs)) {
-        rows = rows.filter((r) => {
-          const t = Date.parse(String(r.candle_close_time));
-          return Number.isFinite(t) && t <= toMs!;
-        });
       }
 
       let firstDate: string | null = null;
@@ -901,6 +903,32 @@ export default {
       });
       let equity = 0; let peak = 0; let maxDD = 0;
       for (const row of completed) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); maxDD = Math.min(maxDD, equity - peak); }
+
+      const summarizeSet = (items: typeof dateFilteredRows) => {
+        const itemTp = items.filter((r) => r.status === "TP_HIT").length;
+        const itemSl = items.filter((r) => r.status === "SL_HIT").length;
+        const itemExpired = items.filter((r) => r.status === "EXPIRED").length;
+        const itemOpen = items.filter((r) => r.status === "OPEN" && r.alert_status !== "SUPPRESSED").length;
+        const itemCompleted = items.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple)));
+        let eq = 0; let pk = 0; let dd = 0;
+        for (const r of itemCompleted) {
+          eq += Number(r.r_multiple);
+          pk = Math.max(pk, eq);
+          dd = Math.min(dd, eq - pk);
+        }
+        return {
+          total: items.length,
+          open: itemOpen,
+          tp: itemTp,
+          sl: itemSl,
+          expired: itemExpired,
+          completed: itemCompleted.length,
+          winRate: itemTp + itemSl > 0 ? itemTp / (itemTp + itemSl) : null,
+          netR: itemCompleted.length ? eq : 0,
+          maxDD: itemCompleted.length ? dd : 0,
+        };
+      };
+
       return json({
         period: period ?? (fromParam || toParam ? "custom" : "all"),
         periodLabel,
@@ -911,6 +939,10 @@ export default {
         total: rows.length, open: openn, tp, sl, expired, completed: completed.length,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
         netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null, breakdown,
+        segments: {
+          institutional: summarizeSet(dateFilteredRows.filter((r) => !isDerivPair(r.canonical_symbol))),
+          synthetics: summarizeSet(dateFilteredRows.filter((r) => isDerivPair(r.canonical_symbol))),
+        },
         note: "paper metrics from completed alert outcomes — research only, not audited performance",
       });
     }
