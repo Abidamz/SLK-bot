@@ -73,9 +73,11 @@ export const DASHBOARD_HTML = `<!doctype html>
 .segment-card.synth-card{border-color:rgba(168,85,247,.3)}
 .segment-card.synth-card:hover{border-color:rgba(168,85,247,.6)}
 .segment-card.synth-card.active{border-color:#a855f7;box-shadow:0 0 0 1px #a855f7;background:linear-gradient(135deg,#18102a,#0f1523)}
-.seg-card-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;background:#0b111a;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.05);margin-top:10px}
+.seg-card-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;background:#0b111a;padding:12px 8px;border-radius:9px;border:1px solid rgba(255,255,255,.05);margin-top:12px}
 .seg-card-stats span{font-size:11px;color:var(--muted);display:block}
 .seg-card-stats strong{font-size:14px;display:block;margin-top:2px}
+@media(max-width:700px){.seg-card-stats{grid-template-columns:1fr 1fr}}
+.seg-badge-pill{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--muted)}
 
 
 </style>
@@ -163,22 +165,28 @@ export const DASHBOARD_HTML = `<!doctype html>
     </nav>
 
     <section id="overview" class="tab-panel active">
-      <!-- Market Segment Selector -->
-      <div class="market-segment-bar">
-        <button type="button" class="segment-btn active" data-segment="all">
-          <span>🌍</span> All Markets <span class="seg-count">20</span>
-        </button>
-        <button type="button" class="segment-btn" data-segment="institutional">
-          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
-        </button>
-        <button type="button" class="segment-btn" data-segment="synthetics">
-          <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
-        </button>
+      <!-- Market Segment Header on Overview -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+        <div>
+          <p class="eyebrow" style="margin:0 0 2px;">PERFORMANCE BY MARKET SEGMENT</p>
+          <h2 style="margin:0; font-size:18px;">Institutional vs. 24/7 Synthetics Performance</h2>
+        </div>
+        <div class="market-segment-bar" style="margin-bottom:0;">
+          <button type="button" class="segment-btn active" data-segment="all">
+            <span>🌍</span> All Markets <span class="seg-count">20</span>
+          </button>
+          <button type="button" class="segment-btn" data-segment="institutional">
+            <span>🏛️</span> Institutional <span class="seg-count">10</span>
+          </button>
+          <button type="button" class="segment-btn" data-segment="synthetics">
+            <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
+          </button>
+        </div>
       </div>
 
       <!-- Segment Comparative Performance Overview -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" title="Filter by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" title="Click to filter Overview by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -192,11 +200,12 @@ export const DASHBOARD_HTML = `<!doctype html>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
             <div><span>Net Return</span><strong id="segInstNetROverview" class="accent-text">—</strong></div>
-            <div><span>Outcomes</span><strong id="segInstOutcomesOverview" style="color:var(--text);">—</strong></div>
+            <div><span>TP / SL</span><strong id="segInstOutcomesOverview" style="color:var(--text);">—</strong></div>
+            <div><span>Signals</span><strong id="segInstSignalsOverview" style="color:var(--text);">—</strong></div>
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Filter by 24/7 Synthetics">
+        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Click to filter Overview by 24/7 Synthetics">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -210,29 +219,42 @@ export const DASHBOARD_HTML = `<!doctype html>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segSynthWinRateOverview" style="color:#a855f7;">—</strong></div>
             <div><span>Net Return</span><strong id="segSynthNetROverview" class="accent-text">—</strong></div>
-            <div><span>Outcomes</span><strong id="segSynthOutcomesOverview" style="color:var(--text);">—</strong></div>
+            <div><span>TP / SL</span><strong id="segSynthOutcomesOverview" style="color:var(--text);">—</strong></div>
+            <div><span>Signals</span><strong id="segSynthSignalsOverview" style="color:var(--text);">—</strong></div>
           </div>
         </div>
       </div>
 
       <div class="metric-grid">
         <article class="metric">
-          <span>Net Return</span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Net Return</span>
+            <span id="overviewNetRSegmentBadge" class="seg-badge-pill">All</span>
+          </div>
           <strong id="overviewNetR" class="accent-text">—</strong>
           <small>Verified cumulative R</small>
         </article>
         <article class="metric">
-          <span>Win Rate</span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Win Rate</span>
+            <span id="overviewWinRateSegmentBadge" class="seg-badge-pill">All</span>
+          </div>
           <strong id="winRate">—</strong>
           <small>TP / (TP + SL)</small>
         </article>
         <article class="metric">
-          <span>Active / Open</span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Active / Open</span>
+            <span id="overviewOpenSegmentBadge" class="seg-badge-pill">All</span>
+          </div>
           <strong id="open">—</strong>
           <small>trades in market</small>
         </article>
         <article class="metric">
-          <span>Total Signals</span>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Total Signals</span>
+            <span id="overviewTotalSegmentBadge" class="seg-badge-pill">All</span>
+          </div>
           <strong id="total">—</strong>
           <small>confirmed setups</small>
         </article>
@@ -336,7 +358,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 
       <!-- Market Segment Comparative Performance -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInst" data-target-segment="institutional" title="Filter by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInst" data-target-segment="institutional" title="Click to filter by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -350,11 +372,12 @@ export const DASHBOARD_HTML = `<!doctype html>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRate" class="profit-text">—</strong></div>
             <div><span>Net Return</span><strong id="segInstNetR" class="accent-text">—</strong></div>
-            <div><span>Outcomes</span><strong id="segInstOutcomes" style="color:var(--text);">—</strong></div>
+            <div><span>TP / SL</span><strong id="segInstOutcomes" style="color:var(--text);">—</strong></div>
+            <div><span>Signals</span><strong id="segInstSignals" style="color:var(--text);">—</strong></div>
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Filter by 24/7 Synthetics">
+        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Click to filter by 24/7 Synthetics">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -368,7 +391,8 @@ export const DASHBOARD_HTML = `<!doctype html>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segSynthWinRate" style="color:#a855f7;">—</strong></div>
             <div><span>Net Return</span><strong id="segSynthNetR" class="accent-text">—</strong></div>
-            <div><span>Outcomes</span><strong id="segSynthOutcomes" style="color:var(--text);">—</strong></div>
+            <div><span>TP / SL</span><strong id="segSynthOutcomes" style="color:var(--text);">—</strong></div>
+            <div><span>Signals</span><strong id="segSynthSignals" style="color:var(--text);">—</strong></div>
           </div>
         </div>
       </div>
@@ -817,11 +841,18 @@ function renderStats(s) {
     ['segInstWinRate', 'segInstWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = instWr; });
     ['segInstNetR', 'segInstNetROverview'].forEach(id => { if ($(id)) $(id).textContent = instNr; });
     ['segInstOutcomes', 'segInstOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = instOut; });
+    ['segInstSignals', 'segInstSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(inst.total || 0); });
 
     ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
     ['segSynthNetR', 'segSynthNetROverview'].forEach(id => { if ($(id)) $(id).textContent = synthNr; });
     ['segSynthOutcomes', 'segSynthOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = synthOut; });
+    ['segSynthSignals', 'segSynthSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(synth.total || 0); });
   }
+
+  const segBadgeText = state.marketSegment === 'synthetics' ? '⚡ Synthetics' : state.marketSegment === 'institutional' ? '🏛️ Institutional' : 'All';
+  ['overviewNetRSegmentBadge', 'overviewWinRateSegmentBadge', 'overviewOpenSegmentBadge', 'overviewTotalSegmentBadge'].forEach(id => {
+    if ($(id)) $(id).textContent = segBadgeText;
+  });
   
   if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
   if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';
