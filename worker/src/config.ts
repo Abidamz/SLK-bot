@@ -238,5 +238,7 @@ export function fmtPrice(pair: string, price: number): string {
 }
 
 export function fmtPips(pair: string, distance: number): string {
-  return `${(Math.abs(distance) / pipSize(pair)).toFixed(1)} pips`;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  const unit = INDEX_POINT_PAIRS.has(p) ? "pts" : "pips";
+  return `${(Math.abs(distance) / pipSize(pair)).toFixed(1)} ${unit}`;
 }

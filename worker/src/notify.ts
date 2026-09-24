@@ -300,7 +300,7 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
 
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT
  *  transition on an entry timeframe. Delivered SILENTLY so phones do not vibrate. */
-export function formatWatch(ev: EngineEvent, entryTf: string): string {
+export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFreeChannel?: boolean }): string {
   const parts = ev.setupId.split(":");
   const direction = parts[3] ?? "";
   const originKind = parts[4] ?? "";
@@ -323,6 +323,14 @@ export function formatWatch(ev: EngineEvent, entryTf: string): string {
     `Quiet radar heads-up — real entry signal fires on confirmed retest candle close.`,
     `Research signal only. No order was placed.`,
   );
+  if (options?.isFreeChannel) {
+    lines.push(
+      ``,
+      `────────────────────────`,
+      `👑 VIP receives the live entry alert the second confirmation triggers.`,
+      `👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -332,6 +340,7 @@ export function formatBiasCard(
   diag: DirectionalBiasDiagnostics,
   origin?: KeyLevel | null,
   currentPrice?: number,
+  options?: { isFreeChannel?: boolean },
 ): string {
   const emoji = direction === "LONG" ? "🟢" : "🔴";
   const gradeLabel = diag.classification === "A_GRADE"
@@ -341,12 +350,15 @@ export function formatBiasCard(
     ? `${fmtPrice(pair, diag.weekly.primaryOpposingTarget)} (${diag.weekly.opposingLiquidityStanding ? "standing ✅" : "taken"})`
     : "open";
 
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const h4Status = diag.h4.breakoutStatus.replace(/_/g, " ").split(" ").map(capitalize).join(" ");
+
   const lines = [
     `🧭 SLK BIAS CONFIRMATION (Silent Context) — ${pair}`,
     `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
-    `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${diag.h4.breakoutStatus.replace(/_/g, " ")})`,
+    `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${h4Status})`,
     `1H Alignment : ${diag.h1.direction.toUpperCase()} (${diag.h1.agreesWith4H ? "agrees with 4H ✅" : "neutral"})`,
-    `Daily Context: ${diag.daily.bias.toUpperCase()} (${diag.daily.bodyToBodyBreakout} breakout)`,
+    `Daily Context: ${diag.daily.bias.toUpperCase()} (${capitalize(diag.daily.bodyToBodyBreakout)} Breakout)`,
     `Weekly Target: ${weeklyTarget}`,
   ];
 
@@ -375,6 +387,16 @@ export function formatBiasCard(
     `Higher timeframe structure is confirmed. Monitoring for pullback retest into zone.`,
     `Research analysis only. No order was placed.`,
   );
+
+  if (options?.isFreeChannel) {
+    lines.push(
+      ``,
+      `────────────────────────`,
+      `👑 VIP members receive exact entry alerts, stop loss, and 1:2.5R–4.0R target execution.`,
+      `👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    );
+  }
+
   return lines.join("\n");
 }
 
@@ -393,9 +415,10 @@ export async function notifyBias(
   // Broadcast bias card to Free Telegram Channel as educational market context
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
     const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+    const freeCard = formatBiasCard(pair, direction, diag, origin, currentPrice, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {
-        await sendTelegram(env, card, { silent: true, pin: false, chatId: freeId });
+        await sendTelegram(env, freeCard, { silent: true, pin: false, chatId: freeId });
         results.telegram_free_bias = "ok";
       } catch (err) {
         console.warn(JSON.stringify({ level: "warn", msg: "telegram free bias delivery failed", freeId, error: String(err) }));
@@ -415,9 +438,10 @@ export async function notifyWatch(
   // Broadcast watch heads-up to Free Telegram Channel
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
     const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+    const freeText = formatWatch(ev, entryTf, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {
-        await sendTelegram(env, text, { silent: true, pin: false, chatId: freeId });
+        await sendTelegram(env, freeText, { silent: true, pin: false, chatId: freeId });
         results.telegram_free_watch = "ok";
       } catch (err) {
         console.warn(JSON.stringify({ level: "warn", msg: "telegram free watch delivery failed", freeId, error: String(err) }));
