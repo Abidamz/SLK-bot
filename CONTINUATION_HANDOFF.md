@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `f6e049e` (`feat(dashboard): add 24/7 Synthetics market segment switcher, banner, and trade badging`)
+**Latest Synced Commit:** `27a3893` (`feat(synthetics): expand to 10 Deriv Volatility synthetics with weekend bypass and 20-market coverage`)
 
 ---
 
@@ -31,19 +31,22 @@
 MODE=paper
 WATCH_NOTIFY=true
 PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=1             (Sequential 1-minute staggered scanning to prevent 10ms CPU kills)
+PAIR_BATCH_SIZE=2             (Staggered scanning: scans 2 pairs/minute, completing all 20 pairs in 10 minutes)
 MIN_RISK_ATR=0.8
 MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
 MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 
-### Active Markets (11 High-Beta Assets)
-- **Indices:** `NAS100`, `US30`, `GER40`, `JAPAN225`
-- **Metals:** `XAUUSD` (Gold)
-- **Forex:** `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`
-- **Synthetics (24/7):** `V75` (Volatility 75 Index via Deriv WebSocket provider)
+### Active Markets (20 Quantitative Assets)
+- **Indices (4):** `NAS100`, `US30`, `GER40`, `JAPAN225`
+- **Metals (1):** `XAUUSD` (Gold)
+- **Forex (5):** `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`
+- **Deriv Synthetics (10 continuous 24/7 assets):**
+  - Standard Volatility Series: `V75` (`R_75`), `V100` (`R_100`), `V50` (`R_50`), `V25` (`R_25`), `V10` (`R_10`)
+  - 1-Second Continuous Series: `V75_1S` (`1HZ75V`), `V100_1S` (`1HZ100V`), `V50_1S` (`1HZ50V`), `V25_1S` (`1HZ25V`), `V10_1S` (`1HZ10V`)
 - **Timeframes:** `15m` (resampled), `30m`, `1h`
+- **Weekend Mode:** Automatically bypasses closed traditional forex/index markets on weekends (Saturday 00:00 UTC through Sunday 21:00 UTC) so 100% of cron capacity scans the 10 continuous synthetics.
 
 ---
 
