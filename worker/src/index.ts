@@ -1106,7 +1106,11 @@ export default {
         return json({ ok: false, error: "Missing ?chat_id=<your_free_channel_id_or_username> query parameter" }, 400);
       }
       const store = makeStore(env.DB);
-      const freeChatId = chatIdParam.trim();
+      let freeChatId = chatIdParam.trim();
+      // Clean up accidental duplicate @@ prefixes if user typed @ twice
+      while (freeChatId.startsWith("@@")) {
+        freeChatId = freeChatId.slice(1);
+      }
       await store.setKv("telegram_free_chat_id", freeChatId);
       const { sendTelegram } = await import("./notify");
       try {
