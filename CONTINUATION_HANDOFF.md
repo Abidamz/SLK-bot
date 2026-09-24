@@ -3,7 +3,7 @@
 **Updated:** 2026-09-24 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `e6c4f6f` (`feat(dashboard): add dedicated synthetics win rate, comparative performance segment, and cross-tab sync`)
+**Latest Synced Commit:** `936db6c` (`feat(overview): display dual-segment win rate & performance cards and 4-stat metrics directly on Overview`)
 
 ---
 
