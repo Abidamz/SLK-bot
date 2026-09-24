@@ -190,6 +190,30 @@ export function formatAlert(a: Alert): string {
   return lines.join("\n");
 }
 
+export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
+  const pair = String(rec.canonical_symbol);
+  const dir = String(rec.direction);
+  const dirEmoji = dir === "LONG" ? "🟢" : "🔴";
+  const r = oc.rMultiple;
+  const tp1 = rec.tp_internal != null ? fmtPrice(pair, Number(rec.tp_internal)) : fmtPrice(pair, oc.exitPrice);
+
+  return [
+    `🎯 TP1 HIT — ${pair} ${dir} (+${r.toFixed(2)}R)`,
+    ``,
+    `• Timeframe : ${rec.entry_timeframe}`,
+    `• Direction : ${dir} ${dirEmoji}`,
+    `• Entry     : ${fmtPrice(pair, Number(rec.entry))}`,
+    `• Target 1  : ${tp1} (+${r.toFixed(2)}R) ✅`,
+    `• Target 2  : Running risk-free toward external liquidity`,
+    ``,
+    `VIP members received this alert with exact entry, stop floor, and lot size calculations.`,
+    ``,
+    `Stop missing the moves.`,
+    `👉 Join VIP ($49/mo Founding Lock): https://whop.com/checkout/slk-radar-vip-signals?d=FOUNDING20`,
+    `👉 Live Verified Journal: https://slk-radar.pages.dev`,
+  ].join("\n");
+}
+
 export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   const pair = String(rec.canonical_symbol);
   const paper = rec.alert_status === "PAPER" ? "🧪 PAPER — " : "";
@@ -363,18 +387,67 @@ export async function notifyBias(
   currentPrice?: number,
 ): Promise<Record<string, string>> {
   const color = direction === "LONG" ? GREEN : RED;
-  return broadcast(env, formatBiasCard(pair, direction, diag, origin, currentPrice), color, { silent: true, pin: false, sendToDm: false });
+  const card = formatBiasCard(pair, direction, diag, origin, currentPrice);
+  const results = await broadcast(env, card, color, { silent: true, pin: false, sendToDm: false });
+
+  // Broadcast bias card to Free Telegram Channel as educational market context
+  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
+    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+    for (const freeId of freeChatIds) {
+      try {
+        await sendTelegram(env, card, { silent: true, pin: false, chatId: freeId });
+        results.telegram_free_bias = "ok";
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free bias delivery failed", freeId, error: String(err) }));
+      }
+    }
+  }
+
+  return results;
 }
 
 export async function notifyWatch(
   env: NotifyEnv, ev: EngineEvent, entryTf: string,
 ): Promise<Record<string, string>> {
-  return broadcast(env, formatWatch(ev, entryTf), AMBER, { silent: true, pin: false, sendToDm: false });
+  const text = formatWatch(ev, entryTf);
+  const results = await broadcast(env, text, AMBER, { silent: true, pin: false, sendToDm: false });
+
+  // Broadcast watch heads-up to Free Telegram Channel
+  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
+    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+    for (const freeId of freeChatIds) {
+      try {
+        await sendTelegram(env, text, { silent: true, pin: false, chatId: freeId });
+        results.telegram_free_watch = "ok";
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free watch delivery failed", freeId, error: String(err) }));
+      }
+    }
+  }
+
+  return results;
 }
 
 export async function notifyOutcome(
   env: NotifyEnv, rec: AlertRowish, oc: OutcomeLike,
 ): Promise<Record<string, string>> {
   const color = oc.status === "TP_HIT" ? GREEN : oc.status === "SL_HIT" ? RED : GREY;
-  return broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true });
+  const results = await broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true });
+
+  // When a VIP trade hits Take Profit (TP_HIT), automatically send the high-converting Win Teaser to the Free Channel!
+  if (oc.status === "TP_HIT" && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
+    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+    const teaser = formatFreeTpTeaser(rec, oc);
+    for (const freeId of freeChatIds) {
+      try {
+        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeId });
+        results.telegram_free_teaser = "ok";
+      } catch (err) {
+        results.telegram_free_teaser = `error: ${err instanceof Error ? err.message : String(err)}`;
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free TP teaser failed", freeId, error: results.telegram_free_teaser }));
+      }
+    }
+  }
+
+  return results;
 }

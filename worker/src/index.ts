@@ -32,6 +32,7 @@ export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_DM_CHAT_ID?: string;
+  TELEGRAM_FREE_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
   fetchFn?: typeof fetch;
   ADMIN_KEY?: string;
@@ -261,8 +262,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                   const currentPrice = feeds["1h"] && feeds["1h"].length ? feeds["1h"][feeds["1h"].length - 1].c : lastCandle.c;
                   const { findRetracementOrigin } = await import("./features");
                   const origin = findRetracementOrigin(feeds, dir, currentPrice, cfg.strategy) ?? latestStory?.origin ?? null;
+                  const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
                   const { notifyBias } = await import("./notify");
-                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false" }, pair, dir, diag, origin, currentPrice);
+                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId }, pair, dir, diag, origin, currentPrice);
                 }
                 await store.setKv(biasKey, String(lastCandle.t));
               }
@@ -305,7 +307,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               && watchEventFresh(ev, tf, now)
               && deliverAllowed(cfg, isFirstScan, opts)) {
             const tgAllowed = notificationPrefs.telegramWatch !== false;
-            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false" }, ev, tf);
+            const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId }, ev, tf);
           }
         }
 
@@ -502,7 +505,8 @@ async function resolveOutcomes(
     console.info(JSON.stringify({ level: "info", msg: "outcome", setupId: rec.setup_id, status: oc.status, r: oc.rMultiple }));
     if (cfg.notifyOutcomes && !isSuppressed) {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
-      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId }, rec, oc);
+      const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId }, rec, oc);
     }
   }
 }
@@ -1096,9 +1100,72 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/set-free-channel" || url.pathname === "/api/set-free-channel") && (request.method === "GET" || request.method === "POST")) {
+      const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
+      if (!chatIdParam) {
+        return json({ ok: false, error: "Missing ?chat_id=<your_free_channel_id_or_username> query parameter" }, 400);
+      }
+      const store = makeStore(env.DB);
+      const freeChatId = chatIdParam.trim();
+      await store.setKv("telegram_free_chat_id", freeChatId);
+      const { sendTelegram } = await import("./notify");
+      try {
+        await sendTelegram(env, `🔔 SLK Free Trading Hub linked to ${freeChatId}!\nAutomated TP1 Win Teasers, Watch Alerts, and Daily Bias Cards will be delivered here automatically.`, { silent: false, pin: false, chatId: freeChatId });
+      } catch (testErr) {
+        return json({
+          ok: true,
+          status: "saved_with_warning",
+          freeChatId,
+          warning: `Saved free channel ID, but test message failed: ${testErr instanceof Error ? testErr.message : String(testErr)}. Ensure you have added your bot as an Administrator in the channel with permission to Post Messages!`,
+        });
+      }
+      return json({
+        ok: true,
+        status: "connected",
+        freeChatId,
+        message: `Successfully linked Free Channel ${freeChatId}! Verification message sent to channel.`,
+      });
+    }
+
+    if ((url.pathname === "/admin/test-free-teaser" || url.pathname === "/api/test-free-teaser") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
+      if (!freeChatId) {
+        return json({ ok: false, error: "No Free Telegram Channel configured. Set via /admin/set-free-channel?chat_id=@your_channel" }, 400);
+      }
+      const { sendTelegram } = await import("./notify");
+      const teaser = [
+        "🎯 TP1 HIT — XAUUSD Short (+2.57R)",
+        "",
+        "• Timeframe : 30m",
+        "• Direction : SHORT 🔴",
+        "• Entry     : 4,331.370",
+        "• Target 1  : 4,297.933 (+2.57R) ✅",
+        "• Target 2  : Running risk-free toward external liquidity",
+        "",
+        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "",
+        "Stop missing the moves.",
+        "👉 Join VIP ($49/mo Founding Lock): https://whop.com/checkout/slk-radar-vip-signals?d=FOUNDING20",
+        "👉 Live Verified Journal: https://slk-radar.pages.dev",
+      ].join("\n");
+      try {
+        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeChatId });
+        return json({
+          ok: true,
+          targetChatId: freeChatId,
+          status: "delivered",
+          message: "Automated Win Teaser was successfully delivered to your Free Telegram Channel!",
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/telegram-status" || url.pathname === "/api/telegram-status") && request.method === "GET") {
       const store = makeStore(env.DB);
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
+      const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
       return json({
         ok: true,
         botConfigured: Boolean(env.TELEGRAM_BOT_TOKEN),
@@ -1106,9 +1173,13 @@ export default {
         channelChatId: env.TELEGRAM_CHAT_ID ? `${env.TELEGRAM_CHAT_ID.slice(0, 4)}...${env.TELEGRAM_CHAT_ID.slice(-4)}` : null,
         dmConfigured: Boolean(dmChatId),
         dmChatId: dmChatId ? `${dmChatId.slice(0, 3)}...${dmChatId.slice(-3)}` : null,
+        freeChannelConfigured: Boolean(freeChatId),
+        freeChannelChatId: freeChatId ? `${freeChatId.slice(0, 4)}...${freeChatId.slice(-4)}` : null,
         instructions: {
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
+          setFreeChannel: "Visit /admin/set-free-channel?chat_id=@your_free_channel_username",
+          testFreeTeaser: "Visit /admin/test-free-teaser to preview the automated TP1 Win Teaser in the free channel.",
           testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",
         },
       });
