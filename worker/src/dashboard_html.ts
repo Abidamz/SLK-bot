@@ -64,7 +64,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       </a>
       <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        <span>VIP Access ($49/mo)</span>
+        <span>VIP Access ($100/mo)</span>
       </a>
       <div class="status">
         <span id="statusDot" class="dot muted"></span>
@@ -77,7 +77,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     <div class="announcement-banner">
       <div class="banner-left">
         <span class="banner-badge">FOUNDING OFFER</span>
-        <span>VIP Signals <strong>$49/mo</strong> (50% off $100/mo) with code <strong class="code-pill">FOUNDING20</strong></span>
+        <span>VIP Signals regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong></span>
       </div>
       <div class="banner-right">
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim $49/mo VIP →</a>
@@ -94,7 +94,7 @@ export const DASHBOARD_HTML = `<!doctype html>
         <div style="margin-top: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span>Get VIP Signals — $49/mo</span>
+            <span>Get VIP Signals ($100/mo)</span>
           </a>
           <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
@@ -361,7 +361,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($49/mo with FOUNDING20)</a>
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
     </div>
   </footer>

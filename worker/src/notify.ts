@@ -209,7 +209,7 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
     `VIP members received this alert with exact entry, stop floor, and lot size calculations.`,
     ``,
     `Stop missing the moves.`,
-    `👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     `👉 Live Verified Journal: https://slk-radar.pages.dev`,
   ].join("\n");
 }
@@ -328,7 +328,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
       ``,
       `────────────────────────`,
       `👑 VIP receives the live entry alert the second confirmation triggers.`,
-      `👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     );
   }
   return lines.join("\n");
@@ -393,7 +393,7 @@ export function formatBiasCard(
       ``,
       `────────────────────────`,
       `👑 VIP members receive exact entry alerts, stop loss, and 1:2.5R–4.0R target execution.`,
-      `👉 Join VIP ($49/mo with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     );
   }
 
