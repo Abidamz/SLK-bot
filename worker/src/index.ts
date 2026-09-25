@@ -46,6 +46,7 @@ export interface Env {
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
+  VIP_WATCH_NOTIFY?: string;
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
@@ -300,7 +301,16 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
                   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
                   const { notifyBias } = await import("./notify");
-                  await notifyBias({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, pair, dir, diag, origin, currentPrice);
+                  await notifyBias({
+                    ...env,
+                    fetchFn,
+                    watchOnly: true,
+                    WATCH_TELEGRAM: tgAllowed ? "true" : "false",
+                    VIP_WATCH_NOTIFY: env.VIP_WATCH_NOTIFY,
+                    VIP_WATCH_TELEGRAM: env.VIP_WATCH_NOTIFY,
+                    TELEGRAM_FREE_CHAT_ID: freeChatId,
+                    TELEGRAM_DERIV_CHAT_ID: derivChatId,
+                  }, pair, dir, diag, origin, currentPrice);
                 }
                 await store.setKv(biasKey, String(lastCandle.t));
               }
@@ -345,7 +355,17 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             const tgAllowed = notificationPrefs.telegramWatch !== false;
             const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
             const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
-            await notifyWatch({ ...env, fetchFn, watchOnly: true, WATCH_TELEGRAM: tgAllowed ? "true" : "false", WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false", TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, ev, tf);
+            await notifyWatch({
+              ...env,
+              fetchFn,
+              watchOnly: true,
+              WATCH_TELEGRAM: tgAllowed ? "true" : "false",
+              VIP_WATCH_NOTIFY: env.VIP_WATCH_NOTIFY,
+              VIP_WATCH_TELEGRAM: env.VIP_WATCH_NOTIFY,
+              WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false",
+              TELEGRAM_FREE_CHAT_ID: freeChatId,
+              TELEGRAM_DERIV_CHAT_ID: derivChatId,
+            }, ev, tf);
           }
         }
 

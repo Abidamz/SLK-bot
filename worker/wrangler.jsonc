@@ -32,6 +32,8 @@
     "PAPER_NOTIFY": "true",
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) and bias cards ahead of entry alerts
     "WATCH_NOTIFY": "true",
+    // Keep VIP channels (Institutional & Synthetics) clean: only confirmed entry signals + outcomes delivered
+    "VIP_WATCH_NOTIFY": "false",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
     "MIN_TP_R": "2.5",

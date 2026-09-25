@@ -12,6 +12,8 @@ export interface NotifyEnv {
   watchOnly?: boolean;
   WATCH_TELEGRAM?: string;
   WATCH_DISCORD?: string;
+  VIP_WATCH_TELEGRAM?: string;
+  VIP_WATCH_NOTIFY?: string;
 }
 
 /** Row-shaped subset used when formatting outcomes (matches slk_alerts). */

@@ -265,7 +265,8 @@ export async function broadcast(
   options: BroadcastOptions = {},
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-  const telegramAllowed = !env.watchOnly || env.WATCH_TELEGRAM !== "false";
+  const vipWatchEnabled = (env.VIP_WATCH_TELEGRAM ?? env.VIP_WATCH_NOTIFY ?? "false").toLowerCase() === "true";
+  const telegramAllowed = !env.watchOnly || (env.WATCH_TELEGRAM !== "false" && vipWatchEnabled);
   const discordAllowed = !env.watchOnly || env.WATCH_DISCORD !== "false";
   const pair = options.pair ?? "";
   const isDeriv = isDerivPair(pair);
@@ -444,7 +445,7 @@ export async function notifyBias(
 ): Promise<Record<string, string>> {
   const color = direction === "LONG" ? GREEN : RED;
   const card = formatBiasCard(pair, direction, diag, origin, currentPrice);
-  const results = await broadcast(env, card, color, { silent: true, pin: false, sendToDm: false, pair });
+  const results = await broadcast({ ...env, watchOnly: true }, card, color, { silent: true, pin: false, sendToDm: false, pair });
 
   // Broadcast bias card to Free Telegram Channel as educational market context
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
@@ -467,7 +468,7 @@ export async function notifyWatch(
   env: NotifyEnv, ev: EngineEvent, entryTf: string,
 ): Promise<Record<string, string>> {
   const text = formatWatch(ev, entryTf);
-  const results = await broadcast(env, text, AMBER, { silent: true, pin: false, sendToDm: false, pair: ev.pair });
+  const results = await broadcast({ ...env, watchOnly: true }, text, AMBER, { silent: true, pin: false, sendToDm: false, pair: ev.pair });
 
   // Broadcast watch heads-up to Free Telegram Channel
   if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {

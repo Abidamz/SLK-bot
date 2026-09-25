@@ -249,6 +249,7 @@ describe("scheduled scan cycle", () => {
     const notifyEnv = {
       TELEGRAM_BOT_TOKEN: "mock-token",
       TELEGRAM_CHAT_ID: "mock-chat",
+      VIP_WATCH_TELEGRAM: "true",
       fetchFn: testFetch,
     };
     // 1. Notify Watch
@@ -323,6 +324,7 @@ describe("scheduled scan cycle", () => {
       TELEGRAM_BOT_TOKEN: "mock-token",
       TELEGRAM_CHAT_ID: "-1001234567890",
       TELEGRAM_DM_CHAT_ID: "987654321",
+      VIP_WATCH_TELEGRAM: "true",
       fetchFn: testFetch,
     };
 
@@ -388,6 +390,94 @@ describe("scheduled scan cycle", () => {
     expect(channelWatch?.body.disable_notification).toBe(true);
     // DM should NOT receive transient watch cards
     expect(dmWatch).toBeUndefined();
+  });
+
+  it("limits VIP and synthetic channels to confirmed entry alerts only while keeping free channel armed with watch alerts", async () => {
+    const rawBodies: { url: string; body: any }[] = [];
+    const testFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      rawBodies.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 101 } }), { status: 200 });
+    };
+
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "-100_VIP_INSTITUTIONAL",
+      TELEGRAM_DERIV_CHAT_ID: "-100_VIP_SYNTHETICS",
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_RADAR",
+      fetchFn: testFetch,
+    };
+
+    // 1. Notify Watch for Institutional pair (EURUSD)
+    await notifyWatch(notifyEnv, {
+      setupId: "test:EURUSD:15m:SHORT:V:1.0850:2026-09-25",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 1.0850,
+    }, "15m");
+
+    // 2. Notify Watch for Synthetic pair (V75)
+    await notifyWatch(notifyEnv, {
+      setupId: "test:V75:15m:LONG:V:45000:2026-09-25",
+      pair: "V75",
+      candleTime: Date.now(),
+      state: "SWEEP",
+      reason: "internal sweep",
+      price: 45000,
+    }, "15m");
+
+    // VIP Institutional and VIP Synthetics should NOT receive any watch messages (0 spam)
+    const vipInstWatch = rawBodies.filter((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL");
+    const vipDerivWatch = rawBodies.filter((b) => b.body.chat_id === "-100_VIP_SYNTHETICS");
+    expect(vipInstWatch).toHaveLength(0);
+    expect(vipDerivWatch).toHaveLength(0);
+
+    // Free Channel SHOULD receive the watch alerts with the upgrade teaser
+    const freeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_RADAR");
+    expect(freeWatches).toHaveLength(2);
+    expect(freeWatches[0].body.text).toContain("Join VIP");
+
+    // 3. Notify Confirmed Alert for Institutional pair
+    rawBodies.length = 0;
+    const fakeAlert = {
+      pair: "XAUUSD",
+      direction: "SHORT" as const,
+      entryTf: "15m",
+      mapTf: "4h",
+      keyLevelBounds: [4310, 4320] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "OC" as const,
+      alertStatus: "PAPER" as const,
+      entry: 4316.0,
+      stopLoss: 4322.2,
+      tpInternal: 4298.0,
+      tpExternal: null,
+      drawOnLiquidity: null,
+      rrInternal: 2.9,
+      invalidationLevel: 4322.2,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-gold-entry",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    // VIP Institutional receives the loud confirmed alert
+    const vipAlert = rawBodies.find((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL" && b.url.includes("/sendMessage"));
+    expect(vipAlert).toBeDefined();
+    expect(vipAlert?.body.text).toContain("SLK CONFIRMED ENTRY");
+
+    // Free channel does NOT receive the confirmed alert (VIP exclusive)
+    const freeAlert = rawBodies.find((b) => b.body.chat_id === "-100_FREE_RADAR" && b.url.includes("/sendMessage"));
+    expect(freeAlert).toBeUndefined();
   });
 
   it("interleaves institutional and synthetic pairs in round-robin batches so neither starves", async () => {

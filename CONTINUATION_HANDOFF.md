@@ -33,7 +33,8 @@
 
 ```text
 MODE=paper
-WATCH_NOTIFY=true
+WATCH_NOTIFY=true             (Active radar for heads-up detection)
+VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics channels receive ONLY confirmed entries and outcomes)
 PAPER_NOTIFY=true
 PAIR_BATCH_SIZE=2             (Interleaved round-robin: scans 1 institutional + 1 synthetic pair per minute)
 MIN_RISK_ATR=0.8
@@ -41,6 +42,16 @@ MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
 MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
+
+### Channel Routing Protocol
+- **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero noise, zero watch spam.
+- **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs.
+- **Free Signal Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards (with armed retracement zones), and automated win teasers when VIP trades hit Take Profit.
+- **Personal DM (`TELEGRAM_DM_CHAT_ID`):** Simultaneous personal push for confirmed entries.
+
+### Freshness & Anti-Spam Safety Gates
+- **`alertEventFresh`**: Alerts are only delivered to Telegram if their candle closed within $2 \times \text{timeframe}$ of the current time (e.g. within 30 minutes for a 15m candle). Historical backfilled setups discovered during boot are recorded into D1 for public ledger transparency with `alertStatus: "SUPPRESSED"`, preventing outdated trades from being blasted to Telegram.
+- **`isFirstScan`**: On initial startup or when adding a new timeframe, the first scan is record-only, preventing burst alerts from past candles. Subsequent scans operate in real-time.
 
 ### Active Markets (20 Quantitative Assets)
 - **Indices (4):** `NAS100`, `US30`, `GER40`, `JAPAN225`
