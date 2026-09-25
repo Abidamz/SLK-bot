@@ -23,6 +23,8 @@ module.exports = async (req, res) => {
   const start = Date.now();
 
   const candidates = [
+    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "https://api.deriv.com", label: "deriv_public_options" },
+    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "", label: "deriv_public_options_plain" },
     { url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "binaryws_1089_plain" },
     { url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "derivws_1089_plain" },
   ];

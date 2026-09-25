@@ -10,14 +10,14 @@ module.exports = async (req, res) => {
   res.setHeader("Content-Type", "application/json");
 
   const symbol = req.query.symbol || "R_75";
-  const requestedTarget = req.query.target || req.query.cluster || "binaryws";
+  const requestedTarget = req.query.target || req.query.cluster || "public";
   const timeoutMs = Math.min(Number(req.query.timeout) || 8000, 9500);
 
   const allCandidates = [
-    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", label: "binaryws_1089_plain" },
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", label: "derivws_1089_plain" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", label: "frontend_1089_plain" },
-    { url: "wss://green.derivws.com/websockets/v3?app_id=1089", label: "green_1089_plain" },
+    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "https://api.deriv.com", label: "deriv_public_options" },
+    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "", label: "deriv_public_options_plain" },
+    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089_plain" },
+    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089_plain" },
   ];
 
   const matched = allCandidates.filter((c) => c.label.includes(requestedTarget));
@@ -34,7 +34,11 @@ module.exports = async (req, res) => {
   try {
     const candleData = await new Promise((resolve, reject) => {
       let settled = false;
-      const ws = new WebSocketClient(cand.url);
+      const opts = {};
+      if (cand.origin) {
+        opts.headers = { Origin: cand.origin };
+      }
+      const ws = new WebSocketClient(cand.url, opts);
 
       const timer = setTimeout(() => {
         if (!settled) {

@@ -419,11 +419,14 @@ export async function fetchDeriv(
       try {
 
         const candidates: { type: "fetch" | "ws"; url: string; label: string }[] = [
-          // 1. Fetch Upgrade with explicit browser Origin headers (bypasses Deriv Cloudflare WAF block)
+          // 1. New official public market data endpoint (no app_id or auth required)
+          { type: "fetch", url: "https://api.derivws.com/trading/v1/options/ws/public", label: "fetch:api.derivws.com/public" },
+          { type: "ws", url: "wss://api.derivws.com/trading/v1/options/ws/public", label: "ws:api.derivws.com/public" },
+          // 2. Fetch Upgrade with explicit browser Origin headers
           { type: "fetch", url: `https://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:frontend.binaryws.com" },
           { type: "fetch", url: `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:ws.derivws.com" },
           { type: "fetch", url: `https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "fetch:green.derivws.com" },
-          // 2. Direct native WebSocket client across Deriv edge clusters
+          // 3. Direct native WebSocket client across Deriv edge clusters
           { type: "ws", url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:frontend.binaryws.com" },
           { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:ws.derivws.com:16929" },
           { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:ws.derivws.com:1089" },
