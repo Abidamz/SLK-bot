@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `0bf4762` (`fix(relay): define appId default in candles handler`)
+**Latest Synced Commit:** `1a21c33` (`fix(relay): optimize candidate window and add comprehensive diagnostic probe`)
 
 ---
 
