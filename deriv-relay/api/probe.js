@@ -11,29 +11,27 @@ module.exports = async (req, res) => {
 
   const symbol = req.query.symbol || "R_75";
 
-  const candidates = [
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "derivws_16929_origin" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "frontend_16929_origin" },
-    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929_origin" },
-    { url: "wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "blue_16929_origin" },
+  const requestedTarget = req.query.target || req.query.cluster;
+
+  const allCandidates = [
     { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089_plain" },
     { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "frontend_1089_plain" },
     { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089_plain" },
-    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "https://deriv.com", label: "options_public" },
+    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929_origin" },
   ];
+
+  const candidates = requestedTarget
+    ? allCandidates.filter((c) => c.label.includes(requestedTarget))
+    : allCandidates.slice(0, 2);
 
   const results = [];
 
   for (const cand of candidates) {
     const start = Date.now();
     try {
-      const opts = {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-      };
+      const opts = {};
       if (cand.origin) {
-        opts.headers.Origin = cand.origin;
+        opts.headers = { Origin: cand.origin };
       }
 
       const candleData = await new Promise((resolve, reject) => {
@@ -44,9 +42,9 @@ module.exports = async (req, res) => {
           if (!settled) {
             settled = true;
             try { ws.close(); } catch {}
-            reject(new Error("Timeout after 3000ms"));
+            reject(new Error("Timeout after 4000ms"));
           }
-        }, 3000);
+        }, 4000);
 
         ws.onopen = () => {
           try {

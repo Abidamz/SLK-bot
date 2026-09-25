@@ -22,25 +22,18 @@ module.exports = async (req, res) => {
   const start = Date.now();
 
   const candidates = [
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "derivws_16929" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "frontend_16929" },
-    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929" },
-    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "frontend_1089" },
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089" },
+    { url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "binaryws_1089_plain" },
+    { url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "frontend_1089_plain" },
+    { url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "derivws_1089_plain" },
   ];
 
   let lastError = "";
 
   for (const cand of candidates) {
     try {
-      const opts = {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-      };
+      const opts = {};
       if (cand.origin) {
-        opts.headers.Origin = cand.origin;
+        opts.headers = { Origin: cand.origin };
       }
 
       const candles = await new Promise((resolve, reject) => {
@@ -51,9 +44,9 @@ module.exports = async (req, res) => {
           if (!settled) {
             settled = true;
             try { ws.close(); } catch {}
-            reject(new Error(`Timeout after 2500ms on ${cand.label}`));
+            reject(new Error(`Timeout after 4500ms on ${cand.label}`));
           }
-        }, 2500);
+        }, 4500);
 
         ws.onopen = () => {
           try {
