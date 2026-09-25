@@ -681,7 +681,7 @@ export async function fetchDeriv(
   });
 }
 
-/** Diagnostic probe: tests candidate Deriv endpoints and connection modes, returning individual latency and outcome. */
+/** Diagnostic probe: tests candidate Deriv endpoints and connection modes in parallel, returning individual latency and outcome. */
 export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
   const targets = [
     { type: "fetch", url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:ws.derivws.com" },
@@ -694,8 +694,7 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
     { type: "ws", url: "wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:blue.derivws.com" },
   ];
 
-  const results: any[] = [];
-  for (const t of targets) {
+  return await Promise.all(targets.map(async (t) => {
     const start = Date.now();
     try {
       let ws: any;
@@ -711,16 +710,14 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
         });
         ws = (resp as any).webSocket;
         if (!ws) {
-          results.push({ ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: "no webSocket on response" });
-          continue;
+          return { ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: "no webSocket on response" };
         }
         if (typeof ws.accept === "function") {
           try { ws.accept(); } catch {}
         }
       } else {
         if (typeof (globalThis as any).WebSocket !== "function") {
-          results.push({ ...t, success: false, error: "WebSocket constructor not available" });
-          continue;
+          return { ...t, success: false, error: "WebSocket constructor not available" };
         }
         ws = new (globalThis as any).WebSocket(t.url);
       }
@@ -779,12 +776,11 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
         sendMsg();
       });
 
-      results.push({ ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start });
+      return { ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start };
     } catch (err: any) {
-      results.push({ ...t, success: false, error: err.message, durationMs: Date.now() - start });
+      return { ...t, success: false, error: err.message, durationMs: Date.now() - start };
     }
-  }
-  return results;
+  }));
 }
 
 export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
