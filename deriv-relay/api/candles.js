@@ -24,7 +24,6 @@ module.exports = async (req, res) => {
 
   const candidates = [
     { url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "binaryws_1089_plain" },
-    { url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "frontend_1089_plain" },
     { url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "derivws_1089_plain" },
   ];
 
@@ -45,9 +44,9 @@ module.exports = async (req, res) => {
           if (!settled) {
             settled = true;
             try { ws.close(); } catch {}
-            reject(new Error(`Timeout after 4500ms on ${cand.label}`));
+            reject(new Error(`Timeout after 5000ms on ${cand.label}`));
           }
-        }, 4500);
+        }, 5000);
 
         ws.onopen = () => {
           try {

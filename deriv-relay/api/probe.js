@@ -10,118 +10,133 @@ module.exports = async (req, res) => {
   res.setHeader("Content-Type", "application/json");
 
   const symbol = req.query.symbol || "R_75";
-
-  const requestedTarget = req.query.target || req.query.cluster;
+  const requestedTarget = req.query.target || req.query.cluster || "binaryws";
+  const timeoutMs = Math.min(Number(req.query.timeout) || 8000, 9500);
 
   const allCandidates = [
-    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089_plain" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "frontend_1089_plain" },
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089_plain" },
-    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929_origin" },
+    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", label: "binaryws_1089_plain" },
+    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", label: "derivws_1089_plain" },
+    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", label: "frontend_1089_plain" },
+    { url: "wss://green.derivws.com/websockets/v3?app_id=1089", label: "green_1089_plain" },
   ];
 
-  const candidates = requestedTarget
-    ? allCandidates.filter((c) => c.label.includes(requestedTarget))
-    : allCandidates.slice(0, 2);
+  const matched = allCandidates.filter((c) => c.label.includes(requestedTarget));
+  const cand = matched.length > 0 ? matched[0] : allCandidates[0];
 
-  const results = [];
+  const start = Date.now();
+  let opened = false;
+  let openedAt = 0;
+  let firstMsg = null;
+  let firstMsgAt = 0;
+  let closeInfo = null;
+  let errorInfo = null;
 
-  for (const cand of candidates) {
-    const start = Date.now();
-    try {
-      const opts = {};
-      if (cand.origin) {
-        opts.headers = { Origin: cand.origin };
-      }
+  try {
+    const candleData = await new Promise((resolve, reject) => {
+      let settled = false;
+      const ws = new WebSocketClient(cand.url);
 
-      const candleData = await new Promise((resolve, reject) => {
-        let settled = false;
-        const ws = new WebSocketClient(cand.url, opts);
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { ws.close(); } catch {}
+          reject(new Error(`Timeout after ${timeoutMs}ms (opened=${opened}, openedAt=${openedAt}ms, firstMsg=${JSON.stringify(firstMsg)}, close=${JSON.stringify(closeInfo)}, err=${errorInfo})`));
+        }
+      }, timeoutMs);
 
-        const timer = setTimeout(() => {
+      ws.onopen = () => {
+        opened = true;
+        openedAt = Date.now() - start;
+        try {
+          ws.send(JSON.stringify({
+            ticks_history: symbol,
+            style: "candles",
+            granularity: 1800,
+            count: 5,
+            end: "latest",
+            req_id: 1,
+          }));
+        } catch (e) {
+          errorInfo = `sendErr: ${e.message}`;
           if (!settled) {
-            settled = true;
-            try { ws.close(); } catch {}
-            reject(new Error("Timeout after 4000ms"));
-          }
-        }, 4000);
-
-        ws.onopen = () => {
-          try {
-            ws.send(JSON.stringify({
-              ticks_history: symbol,
-              style: "candles",
-              granularity: 1800,
-              count: 3,
-              end: "latest",
-              req_id: 1,
-            }));
-          } catch (e) {
-            if (!settled) {
-              settled = true;
-              clearTimeout(timer);
-              try { ws.close(); } catch {}
-              reject(e);
-            }
-          }
-        };
-
-        ws.onmessage = (event) => {
-          if (settled) return;
-          try {
-            const raw = typeof event.data === "string" ? event.data : event.data.toString();
-            const data = JSON.parse(raw);
-            if (data.error) {
-              settled = true;
-              clearTimeout(timer);
-              try { ws.close(); } catch {}
-              reject(new Error(data.error.message || JSON.stringify(data.error)));
-              return;
-            }
-            if (data.candles && Array.isArray(data.candles)) {
-              settled = true;
-              clearTimeout(timer);
-              try { ws.close(); } catch {}
-              resolve(data.candles);
-            }
-          } catch (e) {
             settled = true;
             clearTimeout(timer);
             try { ws.close(); } catch {}
             reject(e);
           }
-        };
+        }
+      };
 
-        ws.onerror = (err) => {
+      ws.onclose = (ev) => {
+        closeInfo = { code: ev.code, reason: ev.reason, wasClean: ev.wasClean, at: Date.now() - start };
+      };
+
+      ws.onerror = (err) => {
+        errorInfo = `wsErr: ${err.message || "unknown"}`;
+      };
+
+      ws.onmessage = (event) => {
+        const at = Date.now() - start;
+        try {
+          const raw = typeof event.data === "string" ? event.data : event.data.toString();
+          const data = JSON.parse(raw);
+          if (!firstMsg) {
+            firstMsg = data.msg_type || Object.keys(data);
+            firstMsgAt = at;
+          }
+          if (data.error) {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              reject(new Error(data.error.message || JSON.stringify(data.error)));
+            }
+            return;
+          }
+          if (data.candles && Array.isArray(data.candles)) {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              resolve(data.candles);
+            }
+          }
+        } catch (e) {
           if (!settled) {
             settled = true;
             clearTimeout(timer);
             try { ws.close(); } catch {}
-            reject(new Error(err.message || "WS error"));
+            reject(e);
           }
-        };
-      });
+        }
+      };
+    });
 
-      results.push({
-        label: cand.label,
-        url: cand.url,
-        success: true,
-        count: candleData.length,
-        durationMs: Date.now() - start,
-        sample: candleData[0],
-      });
-      // Break on first success
-      break;
-    } catch (err) {
-      results.push({
-        label: cand.label,
-        url: cand.url,
-        success: false,
-        durationMs: Date.now() - start,
-        error: err.message,
-      });
-    }
+    return res.status(200).json({
+      ok: true,
+      symbol,
+      candidate: cand.label,
+      url: cand.url,
+      durationMs: Date.now() - start,
+      openedAt,
+      firstMsgAt,
+      count: candleData.length,
+      sample: candleData[0],
+    });
+  } catch (err) {
+    return res.status(502).json({
+      ok: false,
+      symbol,
+      candidate: cand.label,
+      url: cand.url,
+      durationMs: Date.now() - start,
+      opened,
+      openedAt,
+      firstMsg,
+      firstMsgAt,
+      closeInfo,
+      errorInfo,
+      error: err.message,
+    });
   }
-
-  res.status(200).json({ ok: true, symbol, results });
 };
