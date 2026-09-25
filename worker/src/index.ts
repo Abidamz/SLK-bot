@@ -1665,9 +1665,10 @@ export default {
     if ((url.pathname === "/api/probe-deriv" || url.pathname === "/admin/probe-deriv") && request.method === "GET") {
       try {
         const symbol = url.searchParams.get("symbol") || url.searchParams.get("pair") || "R_75";
+        const target = url.searchParams.get("target") || undefined;
         const { testDerivEndpoints } = await import("./provider");
-        const results = await testDerivEndpoints(symbol);
-        return json({ ok: true, symbol, results }, 200);
+        const results = await testDerivEndpoints(symbol, target);
+        return json({ ok: true, symbol, target: target ?? "default", results }, 200);
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
       }

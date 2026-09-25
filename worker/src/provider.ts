@@ -388,15 +388,13 @@ export async function fetchDeriv(
 
         const candidates: { type: "fetch" | "ws"; url: string; label: string }[] = [
           // 1. Fetch Upgrade with explicit browser Origin headers (bypasses Deriv Cloudflare WAF block)
-          { type: "fetch", url: `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:ws.derivws.com" },
           { type: "fetch", url: `https://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:frontend.binaryws.com" },
+          { type: "fetch", url: `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:ws.derivws.com" },
           { type: "fetch", url: `https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "fetch:green.derivws.com" },
           // 2. Direct native WebSocket client across Deriv edge clusters
           { type: "ws", url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:frontend.binaryws.com" },
-          { type: "ws", url: `wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:green.derivws.com" },
           { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:ws.derivws.com:16929" },
           { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:ws.derivws.com:1089" },
-          { type: "ws", url: `wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:blue.derivws.com" },
         ];
 
         // 1. Production runtime: native WebSocket or Fetch Upgrade
@@ -414,7 +412,7 @@ export async function fetchDeriv(
                     Origin: "https://deriv.com",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                   },
-                  signal: AbortSignal.timeout(2500),
+                  signal: AbortSignal.timeout(4500),
                 });
                 const candidateWs = (resp as any).webSocket;
                 if (!candidateWs) {
@@ -434,7 +432,7 @@ export async function fetchDeriv(
                 const wsTimer = setTimeout(() => {
                   try { ws.close(); } catch {}
                   rejectWs(new Error(`timeout on ${cand.label} (sent=${sent}, rs=${ws?.readyState})`));
-                }, 2800);
+                }, 4500);
 
                 const onWsMessage = async (event: any) => {
                   try {
@@ -682,37 +680,83 @@ export async function fetchDeriv(
 }
 
 /** Diagnostic probe: tests candidate Deriv endpoints sequentially within subrequest limits. */
-export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
-  const targets = [
-    { type: "fetch", url: "https://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:frontend.binaryws.com" },
-    { type: "fetch", url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:ws.derivws.com" },
-    { type: "fetch", url: "https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "fetch:green.derivws.com" },
-    { type: "ws", url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "ws:frontend.binaryws.com" },
-    { type: "ws", url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:ws.derivws.com:16929" },
+export async function testDerivEndpoints(symbol = "R_75", requestedTarget?: string): Promise<any[]> {
+  const allTargets: { id: string; type: "fetch" | "ws"; url: string; label: string; headers: Record<string, string> }[] = [
+    {
+      id: "fetch_frontend",
+      type: "fetch",
+      url: "https://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "fetch:frontend.binaryws.com",
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        Origin: "https://deriv.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    },
+    {
+      id: "fetch_derivws",
+      type: "fetch",
+      url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "fetch:ws.derivws.com",
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        Origin: "https://deriv.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    },
+    {
+      id: "fetch_plain",
+      type: "fetch",
+      url: "https://frontend.binaryws.com/websockets/v3?app_id=1089",
+      label: "fetch:frontend:bare",
+      headers: {
+        Upgrade: "websocket",
+      },
+    },
+    {
+      id: "ws_frontend",
+      type: "ws",
+      url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "ws:frontend.binaryws.com",
+      headers: {},
+    },
   ];
+
+  const targets = requestedTarget
+    ? allTargets.filter((t) => t.id === requestedTarget || t.label.includes(requestedTarget))
+    : allTargets.slice(0, 2); // Default to testing top 2 endpoints with generous timeout
 
   const results: any[] = [];
   for (const t of targets) {
     const start = Date.now();
     try {
       let ws: any;
+      let handshakeDuration = 0;
       if (t.type === "fetch") {
         const resp = await fetch(t.url, {
-          headers: {
-            Upgrade: "websocket",
-            Connection: "Upgrade",
-            Origin: "https://deriv.com",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          signal: AbortSignal.timeout(1800),
+          headers: t.headers,
+          signal: AbortSignal.timeout(6000),
         });
+        handshakeDuration = Date.now() - start;
         ws = (resp as any).webSocket;
         if (!ws) {
-          results.push({ ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: `HTTP ${resp.status}: no webSocket` });
+          results.push({
+            ...t,
+            success: false,
+            status: resp.status,
+            statusText: resp.statusText,
+            handshakeMs: handshakeDuration,
+            durationMs: Date.now() - start,
+            error: `HTTP ${resp.status}: no webSocket on response`,
+          });
           continue;
         }
         if (typeof ws.accept === "function") {
-          try { ws.accept(); } catch {}
+          try { ws.accept(); } catch (acceptErr) {
+            // accept failure
+          }
         }
       } else {
         if (typeof (globalThis as any).WebSocket !== "function") {
@@ -725,8 +769,8 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
       const res = await new Promise<{ count: number; sample?: any }>((resolve, reject) => {
         const timer = setTimeout(() => {
           try { ws.close(); } catch {}
-          reject(new Error("timeout after 1800ms"));
-        }, 1800);
+          reject(new Error(`timeout after 6000ms (readyState=${ws?.readyState})`));
+        }, 6000);
 
         ws.onmessage = (event: any) => {
           try {
@@ -776,9 +820,23 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
         sendMsg();
       });
 
-      results.push({ ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start });
+      results.push({
+        ...t,
+        success: true,
+        count: res.count,
+        sample: res.sample,
+        handshakeMs: handshakeDuration,
+        durationMs: Date.now() - start,
+      });
+      // If the first candidate succeeded, we don't need to test slower fallbacks
+      if (!requestedTarget) break;
     } catch (err: any) {
-      results.push({ ...t, success: false, error: err instanceof Error ? err.message : String(err), durationMs: Date.now() - start });
+      results.push({
+        ...t,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - start,
+      });
     }
   }
   return results;
