@@ -362,14 +362,19 @@ export async function fetchDeriv(
   const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
   const granularity = TF_SECONDS[tf] ?? 1800;
 
-  const timeoutMs = 7_000;
+  const timeoutMs = 8_000;
 
   return new Promise<Candle[]>((resolve, reject) => {
     let resolved = false;
+    let wsRef: any = null;
+    let sent = false;
+    let lastSendError = "";
+
     const timer = setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}`));
+        const extra = lastSendError ? ` [send err: ${lastSendError}]` : ` [sent=${sent}, rs=${wsRef?.readyState}]`;
+        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}${extra}`));
       }
     }, timeoutMs);
 
@@ -384,7 +389,6 @@ export async function fetchDeriv(
 
         // In Cloudflare Workers runtime, outbound client WebSocket connections are established
         // using fetch(url, { headers: { Upgrade: "websocket" } }) followed by candidateWs.accept().
-        // (Using new WebSocket() directly in Workers runtime causes an accept() error).
         const httpsUrls = [
           `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
           `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
@@ -395,16 +399,23 @@ export async function fetchDeriv(
               headers: {
                 Upgrade: "websocket",
                 Connection: "Upgrade",
+                Origin: "https://deriv.com",
               },
             });
 
             const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
             if (candidateWs) {
               ws = candidateWs;
+              wsRef = ws;
+              try {
+                if ("binaryType" in ws) ws.binaryType = "arraybuffer";
+              } catch {}
               if (typeof ws.accept === "function") {
                 try {
                   ws.accept();
-                } catch {}
+                } catch (acceptErr) {
+                  lastError = `accept() failed: ${acceptErr instanceof Error ? acceptErr.message : String(acceptErr)}`;
+                }
               }
               break;
             } else {
@@ -426,6 +437,7 @@ export async function fetchDeriv(
           for (const ep of endpoints) {
             try {
               ws = new (globalThis as any).WebSocket(ep);
+              wsRef = ws;
               if (ws) break;
             } catch (e) {
               lastError = e instanceof Error ? e.message : String(e);
@@ -437,11 +449,20 @@ export async function fetchDeriv(
           throw new Error(`Deriv server did not accept WebSocket connection: ${lastError || "no gateway responded with 101"}`);
         }
 
-        const onMessage = (event: any) => {
+        const onMessage = async (event: any) => {
           try {
-            const rawData = typeof event.data === "string"
-              ? event.data
-              : new TextDecoder().decode(event.data as ArrayBuffer);
+            let rawData: string;
+            if (typeof event.data === "string") {
+              rawData = event.data;
+            } else if (event.data instanceof ArrayBuffer) {
+              rawData = new TextDecoder().decode(event.data);
+            } else if (event.data && typeof event.data.text === "function") {
+              rawData = await event.data.text();
+            } else if (event.data) {
+              rawData = new TextDecoder().decode(event.data as ArrayBuffer);
+            } else {
+              return;
+            }
             const data = JSON.parse(rawData);
 
             if (data.error) {
@@ -513,7 +534,6 @@ export async function fetchDeriv(
           ws.onclose = onClose;
         }
 
-        let sent = false;
         const sendPayload = () => {
           if (sent) return;
           try {
@@ -523,12 +543,12 @@ export async function fetchDeriv(
               granularity,
               count: Math.min(limit, 1000),
               end: "latest",
+              req_id: 1,
             };
             ws.send(JSON.stringify(reqPayload));
             sent = true;
           } catch (sendErr) {
-            // In runtimes where ws is not yet open (e.g. Node new WebSocket()),
-            // ws.send may throw. If so, wait for the open event below.
+            lastSendError = sendErr instanceof Error ? sendErr.message : String(sendErr);
           }
         };
 
