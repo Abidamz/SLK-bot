@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `92a7693` (`fix(deriv): send ticks_history immediately on accepted Workers WebSocket`)
+**Latest Synced Commit:** `2fce812` (`fix(deriv): add origin header, binaryType arraybuffer, and diagnostic logging`)
 
 ---
 
