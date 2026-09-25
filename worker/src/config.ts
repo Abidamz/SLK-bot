@@ -72,6 +72,7 @@ export interface WorkerConfig {
   symbolMap: Record<string, string>;
   providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
   derivAppId: string;
+  derivProxyUrl?: string;
   strategy: StrategyConfig;
 }
 
@@ -121,6 +122,7 @@ interface EnvVars {
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
   DERIV_APP_ID?: string;
+  DERIV_PROXY_URL?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -204,6 +206,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     symbolMap,
     providerMap,
     derivAppId: env.DERIV_APP_ID ?? "1089",
+    derivProxyUrl: env.DERIV_PROXY_URL?.trim() || undefined,
     strategy,
   };
 }

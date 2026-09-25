@@ -665,4 +665,68 @@ describe("Deriv alert routing", () => {
     expect(candles.length).toBe(1);
     expect(candles[0].c).toBe(104);
   });
+
+  it("fetchDeriv routes through HTTP proxy relay when proxyUrl is supplied", async () => {
+    let proxyCalled = false;
+    const mockFetcher: any = async (u: string) => {
+      if (u.includes("https://relay.test.com/candles")) {
+        proxyCalled = true;
+        return new Response(JSON.stringify({
+          ok: true,
+          candles: [
+            { t: 1710000000000, o: 100, h: 105, l: 99, c: 104.5 },
+            { t: 1710001800000, o: 104.5, h: 108, l: 104, c: 107 },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const candles = await fetchDeriv("V75", "30m", 10, {}, "1089", mockFetcher, "https://relay.test.com");
+    expect(proxyCalled).toBe(true);
+    expect(candles.length).toBe(2);
+    expect(candles[1].c).toBe(107);
+  });
+
+  it("fetchDeriv falls back to WebSocket if proxy relay returns error", async () => {
+    let wsCalled = false;
+    const mockFetcher: any = async (u: string) => {
+      if (u.includes("https://relay.test.com")) {
+        return new Response(JSON.stringify({ ok: false, error: "Relay offline" }), { status: 502 });
+      }
+      // WebSocket fallback
+      wsCalled = true;
+      const listeners: Record<string, Function[]> = {};
+      const mockWs = {
+        readyState: 1,
+        listeners,
+        addEventListener(event: string, cb: Function) {
+          listeners[event] = listeners[event] || [];
+          listeners[event].push(cb);
+        },
+        send() {
+          setTimeout(() => {
+            listeners["message"]?.forEach((cb) =>
+              cb({
+                data: JSON.stringify({
+                  msg_type: "candles",
+                  candles: [{ epoch: 1710000000, open: 200, high: 205, low: 199, close: 204 }],
+                }),
+              })
+            );
+          }, 5);
+        },
+        accept() {},
+        close() {},
+      };
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const candles = await fetchDeriv("V75", "30m", 10, {}, "1089", mockFetcher, "https://relay.test.com");
+    expect(wsCalled).toBe(true);
+    expect(candles.length).toBe(1);
+    expect(candles[0].c).toBe(204);
+  });
 });

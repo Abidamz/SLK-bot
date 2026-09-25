@@ -54,6 +54,7 @@ export interface Env {
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
   DERIV_APP_ID?: string;
+  DERIV_PROXY_URL?: string;
 }
 
 interface ExecCtxLike {
@@ -203,6 +204,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
       const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
+      const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || undefined;
       // kv adapter for immutable historical buckets (Dukascopy minute/hour/day files)
       const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
 
@@ -213,7 +215,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
         d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
@@ -222,7 +224,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
-      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -245,7 +247,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         // If 4H resampled from base has fewer than 30 bars (e.g. Dukascopy minute feed budget),
         // fetch the 1h feed directly (which uses 1 monthly file in Dukascopy) and resample H4 from it.
         try {
-          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           const h1Candles = validateAndClose(h1Res.candles, TF_SECONDS["1h"], now, 30);
           feeds["1h"] = h1Candles;
           const directH4 = dropIncomplete(resampleCandles(h1Candles, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now);
@@ -1662,13 +1664,75 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/set-deriv-proxy" || url.pathname === "/api/set-deriv-proxy") && (request.method === "GET" || request.method === "POST")) {
+      const proxyParam = url.searchParams.get("url") || url.searchParams.get("proxy_url");
+      if (!proxyParam) {
+        return json({ ok: false, error: "Missing ?url=<proxy_url> query parameter (e.g. ?url=https://slk-deriv-relay.onrender.com)" }, 400);
+      }
+      const store = makeStore(env.DB);
+      const cleanUrl = proxyParam.trim().replace(/\/+$/, "");
+      await store.setKv("deriv_proxy_url", cleanUrl);
+
+      // Verify the proxy endpoint
+      let testResult: any = null;
+      try {
+        const doFetch = env.fetchFn ?? fetch;
+        const testResp = await doFetch(`${cleanUrl}/candles?symbol=R_75&granularity=1800&limit=5`);
+        if (testResp.ok) {
+          const data = await testResp.json() as { candles?: any[] };
+          testResult = { success: true, count: data?.candles?.length || 0 };
+        } else {
+          testResult = { success: false, status: testResp.status };
+        }
+      } catch (testErr) {
+        testResult = { success: false, error: testErr instanceof Error ? testErr.message : String(testErr) };
+      }
+
+      return json({
+        ok: true,
+        status: "saved",
+        derivProxyUrl: cleanUrl,
+        proxyVerification: testResult,
+        message: `Successfully configured Deriv proxy URL: ${cleanUrl}`,
+      });
+    }
+
     if ((url.pathname === "/api/probe-deriv" || url.pathname === "/admin/probe-deriv") && request.method === "GET") {
       try {
         const symbol = url.searchParams.get("symbol") || url.searchParams.get("pair") || "R_75";
         const target = url.searchParams.get("target") || undefined;
+        const store = makeStore(env.DB);
+        const proxyUrl = url.searchParams.get("proxy") || env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || undefined;
+
+        let proxyResult: any = null;
+        if (proxyUrl) {
+          const pStart = Date.now();
+          try {
+            const doFetch = env.fetchFn ?? fetch;
+            const cleanProxy = proxyUrl.trim().replace(/\/+$/, "");
+            const pResp = await doFetch(`${cleanProxy}/candles?symbol=${encodeURIComponent(symbol)}&granularity=1800&limit=5`);
+            const pData = await pResp.json() as { ok: boolean; candles?: any[]; error?: string; cached?: boolean };
+            proxyResult = {
+              success: pResp.ok && pData.ok,
+              status: pResp.status,
+              count: pData.candles?.length || 0,
+              sample: pData.candles?.[0],
+              cached: pData.cached,
+              durationMs: Date.now() - pStart,
+              error: pData.error,
+            };
+          } catch (pErr) {
+            proxyResult = {
+              success: false,
+              durationMs: Date.now() - pStart,
+              error: pErr instanceof Error ? pErr.message : String(pErr),
+            };
+          }
+        }
+
         const { testDerivEndpoints } = await import("./provider");
         const results = await testDerivEndpoints(symbol, target);
-        return json({ ok: true, symbol, target: target ?? "default", results }, 200);
+        return json({ ok: true, symbol, target: target ?? "default", proxyUrl, proxyResult, results }, 200);
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
       }

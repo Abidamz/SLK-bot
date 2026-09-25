@@ -349,7 +349,7 @@ export const DERIV_SYMBOLS: Record<string, string> = {
   "1HZ10V": "1HZ10V",
 };
 
-/** Fetch continuous synthetic market data from Deriv via Workers WebSocket API */
+/** Fetch continuous synthetic market data from Deriv via Workers WebSocket API or optional HTTP relay */
 export async function fetchDeriv(
   pair: string,
   tf: string,
@@ -357,10 +357,42 @@ export async function fetchDeriv(
   symbolMap: Record<string, string> = {},
   appId = "1089",
   fetchFn: FetchLike = fetch,
+  proxyUrl?: string,
 ): Promise<Candle[]> {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
   const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
   const granularity = TF_SECONDS[tf] ?? 1800;
+
+  // 1. If HTTP proxy/relay is configured (e.g. Render / Railway), query via standard HTTP subrequest
+  if (proxyUrl) {
+    try {
+      const cleanProxy = proxyUrl.trim().replace(/\/+$/, "");
+      const url = `${cleanProxy}/candles?symbol=${encodeURIComponent(symbol)}&granularity=${granularity}&limit=${encodeURIComponent(String(limit))}`;
+      const resp = await fetchFn(url, { headers: { Accept: "application/json" } });
+      if (resp.ok) {
+        const data = await resp.json() as { ok: boolean; candles?: Array<{ t: number; o: number; h: number; l: number; c: number }> };
+        if (data && data.ok && Array.isArray(data.candles) && data.candles.length > 0) {
+          const mapped: Candle[] = data.candles.map((c) => ({
+            t: Number(c.t),
+            o: Number(c.o),
+            h: Number(c.h),
+            l: Number(c.l),
+            c: Number(c.c),
+          })).sort((a, b) => a.t - b.t);
+          return mapped;
+        }
+      }
+    } catch (proxyErr) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "deriv.proxy.error",
+        pair,
+        symbol,
+        proxyUrl,
+        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+      }));
+    }
+  }
 
   const timeoutMs = 12_000;
 
@@ -936,6 +968,7 @@ export interface MarketDataRequest {
   tdKey?: string;
   oandaToken?: string;
   derivAppId?: string;
+  derivProxyUrl?: string;
   symbolMap?: Record<string, string>;
   providerMap?: Record<string, string>;
   fetchFn?: FetchLike;
@@ -948,7 +981,15 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
   const dukaBudget = req.budget ?? (req.tf === "30m" ? 2 : 4);
   if (provider === "deriv") {
-    const candles = await fetchDeriv(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.derivAppId ?? "1089", req.fetchFn);
+    const candles = await fetchDeriv(
+      req.pair,
+      req.tf,
+      req.limit,
+      req.symbolMap ?? {},
+      req.derivAppId ?? "1089",
+      req.fetchFn,
+      req.derivProxyUrl,
+    );
     return { provider: "deriv", candles };
   }
   if (provider === "twelvedata") {
