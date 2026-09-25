@@ -384,37 +384,141 @@ export async function fetchDeriv(
 
     (async () => {
       try {
-        let ws: any = null;
-        let isAcceptedFromFetch = false;
         let lastError = "";
 
-        // Strategy: In Cloudflare Workers runtime and Node/browser, new WebSocket(wss://...)
-        // is the standard client connection.
-        // CRITICAL NOTE: In Cloudflare Workers, WebSockets created via `new WebSocket(url)`
-        // are ALREADY automatically accepted by the runtime. Calling .accept() on them throws:
-        // "Websockets obtained from the 'new WebSocket()' constructor cannot call accept".
-        // Therefore, we NEVER call ws.accept() on sockets created via new WebSocket().
-        // Only if mock fetchFn is passed (tests) or new WebSocket is unavailable do we use fetch Upgrade.
-
         const endpoints = [
-          `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
           `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
         ];
 
+        // 1. Production runtime: native WebSocket client connection (auto-accepted by Workers runtime)
         if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
           for (const ep of endpoints) {
+            if (resolved) break;
             try {
-              ws = new (globalThis as any).WebSocket(ep);
+              const ws = new (globalThis as any).WebSocket(ep);
               wsRef = ws;
-              if (ws) break;
-            } catch (e) {
-              lastError = e instanceof Error ? e.message : String(e);
+
+              const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
+                const wsTimer = setTimeout(() => {
+                  try { ws.close(); } catch {}
+                  rejectWs(new Error(`timeout on ${ep}`));
+                }, 3800);
+
+                const onWsMessage = async (event: any) => {
+                  try {
+                    let rawData: string;
+                    if (typeof event.data === "string") {
+                      rawData = event.data;
+                    } else if (event.data instanceof ArrayBuffer) {
+                      rawData = new TextDecoder().decode(event.data);
+                    } else if (event.data && typeof event.data.text === "function") {
+                      rawData = await event.data.text();
+                    } else {
+                      rawData = new TextDecoder().decode(event.data as ArrayBuffer);
+                    }
+                    const data = JSON.parse(rawData);
+
+                    if (data.error) {
+                      clearTimeout(wsTimer);
+                      try { ws.close(); } catch {}
+                      rejectWs(new Error(`Deriv API error: ${data.error.message || JSON.stringify(data.error)}`));
+                      return;
+                    }
+
+                    if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+                      clearTimeout(wsTimer);
+                      const rawCandles = data.candles as Array<{
+                        epoch: number | string;
+                        open: number | string;
+                        high: number | string;
+                        low: number | string;
+                        close: number | string;
+                      }>;
+                      const mapped: Candle[] = rawCandles.map((c) => ({
+                        t: Number(c.epoch) * 1000,
+                        o: Number(c.open),
+                        h: Number(c.high),
+                        l: Number(c.low),
+                        c: Number(c.close),
+                      }));
+                      mapped.sort((a, b) => a.t - b.t);
+                      try { ws.close(); } catch {}
+                      resolveWs(mapped);
+                    }
+                  } catch (e) {
+                    clearTimeout(wsTimer);
+                    try { ws.close(); } catch {}
+                    rejectWs(e instanceof Error ? e : new Error(String(e)));
+                  }
+                };
+
+                const onWsError = (err: any) => {
+                  clearTimeout(wsTimer);
+                  try { ws.close(); } catch {}
+                  const errObj = err?.error;
+                  const errMsg = errObj?.message || err?.message || (typeof errObj === "string" ? errObj : "") || (err?.type ? `event:${err.type}` : "ws error");
+                  rejectWs(new Error(`${ep} error (${errMsg})`));
+                };
+
+                const onWsClose = (evt: any) => {
+                  clearTimeout(wsTimer);
+                  rejectWs(new Error(`${ep} closed (${evt?.code || "unknown"}: ${evt?.reason || "clean"})`));
+                };
+
+                if (typeof ws.addEventListener === "function") {
+                  ws.addEventListener("message", onWsMessage);
+                  ws.addEventListener("error", onWsError);
+                  ws.addEventListener("close", onWsClose);
+                } else {
+                  ws.onmessage = onWsMessage;
+                  ws.onerror = onWsError;
+                  ws.onclose = onWsClose;
+                }
+
+                const doSend = () => {
+                  try {
+                    ws.send(JSON.stringify({
+                      ticks_history: symbol,
+                      style: "candles",
+                      granularity,
+                      count: Math.min(limit, 1000),
+                      end: "latest",
+                      req_id: 1,
+                    }));
+                    sent = true;
+                  } catch (sErr) {
+                    lastSendError = sErr instanceof Error ? sErr.message : String(sErr);
+                    clearTimeout(wsTimer);
+                    rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                  }
+                };
+
+                if (ws.readyState === 1) {
+                  doSend();
+                } else {
+                  if (typeof ws.addEventListener === "function") {
+                    ws.addEventListener("open", doSend, { once: true });
+                  } else if ("onopen" in ws) {
+                    ws.onopen = doSend;
+                  }
+                }
+              });
+
+              if (!resolved) {
+                resolved = true;
+                cleanup();
+                resolve(res);
+                return;
+              }
+            } catch (endpointErr) {
+              lastError = endpointErr instanceof Error ? endpointErr.message : String(endpointErr);
             }
           }
         }
 
-        // Fallback or when a custom fetchFn is provided (e.g. test fixtures)
-        if (!ws) {
+        // 2. Custom fetchFn path (used by mock test suites)
+        if (!resolved && fetchFn !== fetch) {
           for (const targetUrl of endpoints) {
             try {
               const resp = await fetchFn(targetUrl, {
@@ -427,9 +531,8 @@ export async function fetchDeriv(
 
               const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
               if (candidateWs) {
-                ws = candidateWs;
+                const ws = candidateWs;
                 wsRef = ws;
-                isAcceptedFromFetch = true;
                 try {
                   if ("binaryType" in ws) ws.binaryType = "arraybuffer";
                 } catch {}
@@ -440,137 +543,92 @@ export async function fetchDeriv(
                     lastError = `accept() failed: ${acceptErr instanceof Error ? acceptErr.message : String(acceptErr)}`;
                   }
                 }
-                break;
-              } else {
-                const status = (resp as any)?.status ?? "unknown";
-                const statusText = (resp as any)?.statusText ?? "";
-                lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+
+                const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
+                  const wsTimer = setTimeout(() => {
+                    try { ws.close(); } catch {}
+                    rejectWs(new Error(`timeout on mock ${targetUrl}`));
+                  }, 3800);
+
+                  const onMockMessage = async (event: any) => {
+                    try {
+                      const data = typeof event.data === "string" ? JSON.parse(event.data) : JSON.parse(new TextDecoder().decode(event.data));
+                      if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+                        clearTimeout(wsTimer);
+                        const rawCandles = data.candles as Array<{
+                          epoch: number | string;
+                          open: number | string;
+                          high: number | string;
+                          low: number | string;
+                          close: number | string;
+                        }>;
+                        const mapped: Candle[] = rawCandles.map((c) => ({
+                          t: Number(c.epoch) * 1000,
+                          o: Number(c.open),
+                          h: Number(c.high),
+                          l: Number(c.low),
+                          c: Number(c.close),
+                        }));
+                        mapped.sort((a, b) => a.t - b.t);
+                        try { ws.close(); } catch {}
+                        resolveWs(mapped);
+                      }
+                    } catch (e) {
+                      clearTimeout(wsTimer);
+                      try { ws.close(); } catch {}
+                      rejectWs(e instanceof Error ? e : new Error(String(e)));
+                    }
+                  };
+
+                  if (typeof ws.addEventListener === "function") {
+                    ws.addEventListener("message", onMockMessage);
+                  } else {
+                    ws.onmessage = onMockMessage;
+                  }
+
+                  const doMockSend = () => {
+                    try {
+                      ws.send(JSON.stringify({
+                        ticks_history: symbol,
+                        style: "candles",
+                        granularity,
+                        count: Math.min(limit, 1000),
+                        end: "latest",
+                        req_id: 1,
+                      }));
+                      sent = true;
+                    } catch (sErr) {
+                      clearTimeout(wsTimer);
+                      rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                    }
+                  };
+
+                  if (ws.readyState === 1 || ws.readyState === 0 || ws.readyState === undefined) {
+                    doMockSend();
+                  } else {
+                    if (typeof ws.addEventListener === "function") {
+                      ws.addEventListener("open", doMockSend, { once: true });
+                    }
+                  }
+                });
+
+                if (!resolved) {
+                  resolved = true;
+                  cleanup();
+                  resolve(res);
+                  return;
+                }
               }
-            } catch (connErr) {
-              lastError = connErr instanceof Error ? connErr.message : String(connErr);
+            } catch (fetchErr) {
+              lastError = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
             }
           }
         }
 
-        if (!ws) {
-          throw new Error(`Deriv server did not accept WebSocket connection: ${lastError || "no gateway responded with 101"}`);
-        }
-
-        const onMessage = async (event: any) => {
-          try {
-            let rawData: string;
-            if (typeof event.data === "string") {
-              rawData = event.data;
-            } else if (event.data instanceof ArrayBuffer) {
-              rawData = new TextDecoder().decode(event.data);
-            } else if (event.data && typeof event.data.text === "function") {
-              rawData = await event.data.text();
-            } else if (event.data) {
-              rawData = new TextDecoder().decode(event.data as ArrayBuffer);
-            } else {
-              return;
-            }
-            const data = JSON.parse(rawData);
-
-            if (data.error) {
-              if (!resolved) {
-                resolved = true;
-                cleanup();
-                try { ws.close(); } catch {}
-                reject(new Error(`Deriv API error for ${symbol}: ${data.error.message || JSON.stringify(data.error)}`));
-              }
-              return;
-            }
-
-            if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
-              if (!resolved) {
-                resolved = true;
-                cleanup();
-                const rawCandles = data.candles as Array<{
-                  epoch: number | string;
-                  open: number | string;
-                  high: number | string;
-                  low: number | string;
-                  close: number | string;
-                }>;
-                const mapped: Candle[] = rawCandles.map((c) => ({
-                  t: Number(c.epoch) * 1000,
-                  o: Number(c.open),
-                  h: Number(c.high),
-                  l: Number(c.low),
-                  c: Number(c.close),
-                }));
-                mapped.sort((a, b) => a.t - b.t);
-                try { ws.close(); } catch {}
-                resolve(mapped);
-              }
-            }
-          } catch (err) {
-            if (!resolved) {
-              resolved = true;
-              cleanup();
-              try { ws.close(); } catch {}
-              reject(err);
-            }
-          }
-        };
-
-        const onError = (err: unknown) => {
-          if (!resolved) {
-            resolved = true;
-            cleanup();
-            reject(new Error(`Deriv WebSocket error for ${symbol}: ${err instanceof Error ? err.message : String(err)}`));
-          }
-        };
-
-        const onClose = () => {
-          if (!resolved) {
-            resolved = true;
-            cleanup();
-            reject(new Error(`Deriv WebSocket closed before candles were received for ${symbol}`));
-          }
-        };
-
-        if (typeof ws.addEventListener === "function") {
-          ws.addEventListener("message", onMessage);
-          ws.addEventListener("error", onError);
-          ws.addEventListener("close", onClose);
-        } else {
-          ws.onmessage = onMessage;
-          ws.onerror = onError;
-          ws.onclose = onClose;
-        }
-
-        const sendPayload = () => {
-          if (sent) return;
-          try {
-            const reqPayload = {
-              ticks_history: symbol,
-              style: "candles",
-              granularity,
-              count: Math.min(limit, 1000),
-              end: "latest",
-              req_id: 1,
-            };
-            ws.send(JSON.stringify(reqPayload));
-            sent = true;
-          } catch (sendErr) {
-            lastSendError = sendErr instanceof Error ? sendErr.message : String(sendErr);
-          }
-        };
-
-        // Try sending immediately if already open or if socket was accepted from fetch
-        if (ws.readyState === 1 || ws.readyState === undefined || isAcceptedFromFetch) {
-          sendPayload();
-        }
-
-        // Always register open handler as well if not sent yet
-        if (!sent) {
-          if (typeof ws.addEventListener === "function") {
-            ws.addEventListener("open", () => sendPayload(), { once: true });
-          } else if ("onopen" in ws) {
-            ws.onopen = () => sendPayload();
-          }
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(new Error(`Deriv connection failed for ${symbol}: ${lastError || "all endpoints exhausted"}`));
         }
       } catch (err) {
         if (!resolved) {
