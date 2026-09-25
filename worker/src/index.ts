@@ -1662,7 +1662,7 @@ export default {
       });
     }
 
-    if ((url.pathname === "/api/test-deriv" || url.pathname === "/admin/test-deriv") && request.method === "GET") {
+    if ((url.pathname === "/api/probe-deriv" || url.pathname === "/admin/probe-deriv") && request.method === "GET") {
       try {
         const symbol = url.searchParams.get("symbol") || url.searchParams.get("pair") || "R_75";
         const { testDerivEndpoints } = await import("./provider");

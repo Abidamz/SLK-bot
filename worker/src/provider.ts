@@ -369,12 +369,13 @@ export async function fetchDeriv(
     let wsRef: any = null;
     let sent = false;
     let lastSendError = "";
+    let lastError = "";
 
     const timer = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         const extra = lastSendError ? ` [send err: ${lastSendError}]` : ` [sent=${sent}, rs=${wsRef?.readyState}]`;
-        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}${extra}`));
+        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}${extra} (attempts: ${lastError})`));
       }
     }, timeoutMs);
 
@@ -384,7 +385,6 @@ export async function fetchDeriv(
 
     (async () => {
       try {
-        let lastError = "";
 
         const candidates: { type: "fetch" | "ws"; url: string; label: string }[] = [
           // 1. Fetch Upgrade with explicit browser Origin headers (bypasses Deriv Cloudflare WAF block)
