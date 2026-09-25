@@ -499,6 +499,53 @@ describe("fetchDeriv", () => {
     expect(res.candles[1].c).toBe(450310.5);
     expect(mockWs.closed).toBe(true);
   });
+
+  it("handles accept() throwing gracefully without crashing WebSocket message flow", async () => {
+    class MockWebSocket {
+      listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      closed = false;
+      addEventListener(type: string, cb: (...args: any[]) => void) {
+        (this.listeners[type] ??= []).push(cb);
+      }
+      send(data: string) {
+        const req = JSON.parse(data);
+        if (req.ticks_history === "R_75") {
+          setTimeout(() => {
+            const msg = {
+              msg_type: "candles",
+              candles: [
+                { epoch: 1709510400, open: 450100.5, high: 450250.0, low: 450050.2, close: 450200.0 },
+                { epoch: 1709512200, open: 450200.0, high: 450350.0, low: 450180.0, close: 450310.5 },
+              ],
+            };
+            this.listeners["message"]?.forEach((cb) => cb({ data: JSON.stringify(msg) }));
+          }, 10);
+        }
+      }
+      accept() {
+        throw new Error("Websockets obtained from the 'new WebSocket()' constructor cannot call accept");
+      }
+      close() { this.closed = true; }
+    }
+
+    const mockWs = new MockWebSocket();
+    const fakeFetch = async (): Promise<Response> => {
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const res = await fetchMarketData({
+      pair: "V75",
+      tf: "30m",
+      limit: 10,
+      fetchFn: fakeFetch,
+    });
+
+    expect(res.provider).toBe("deriv");
+    expect(res.candles.length).toBe(2);
+    expect(mockWs.closed).toBe(true);
+  });
 });
 
 describe("Deriv alert routing", () => {

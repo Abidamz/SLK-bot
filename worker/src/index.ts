@@ -175,7 +175,23 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       };
     }
 
-    pairsToScan = pending.slice(0, cfg.pairBatchSize);
+    // Interleave institutional and Deriv synthetic pairs so neither group starves the other.
+    // In each cron tick, pairs are chosen round-robin between pending institutional and pending synthetic pairs.
+    const pendingInst = pending.filter((p) => !isDerivPair(p));
+    const pendingDeriv = pending.filter((p) => isDerivPair(p));
+    const selected: string[] = [];
+    let instIdx = 0;
+    let derivIdx = 0;
+    while (selected.length < cfg.pairBatchSize && (instIdx < pendingInst.length || derivIdx < pendingDeriv.length)) {
+      if (instIdx < pendingInst.length && (selected.length % 2 === 0 || derivIdx >= pendingDeriv.length)) {
+        selected.push(pendingInst[instIdx++]);
+      } else if (derivIdx < pendingDeriv.length) {
+        selected.push(pendingDeriv[derivIdx++]);
+      } else if (instIdx < pendingInst.length) {
+        selected.push(pendingInst[instIdx++]);
+      }
+    }
+    pairsToScan = selected;
   }
 
   for (const pair of pairsToScan) {
@@ -390,9 +406,11 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   // advance TF boundaries only after every pair got a shot (self-healing on
   // partial failure: the next tick re-runs and dedupe keeps it idempotent)
   if (!opts.force) {
+    const isWeekend = isTraditionalMarketWeekend(now);
     for (const { tf, boundary } of due) {
       let allDone = true;
       for (const pair of cfg.pairs) {
+        if (isWeekend && !isDerivPair(pair)) continue;
         const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
         const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
         if (boundary > lastScan) {

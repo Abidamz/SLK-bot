@@ -1,9 +1,9 @@
 # SLK Radar — Complete Continuation Handoff & Architecture Summary
 
-**Updated:** 2026-09-24 (UTC)  
+**Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `283146b` (`feat(monetization): route 24/7 Synthetics to Whop VIP paywall and remove public invite links`)
+**Latest Synced Commit:** `fix(synthetics): resolve Deriv WebSocket client accept error and interleave pair batch scheduling`
 
 ---
 
@@ -31,7 +31,7 @@
 MODE=paper
 WATCH_NOTIFY=true
 PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=2             (Staggered scanning: scans 2 pairs/minute, completing all 20 pairs in 10 minutes)
+PAIR_BATCH_SIZE=2             (Interleaved round-robin: scans 1 institutional + 1 synthetic pair per minute)
 MIN_RISK_ATR=0.8
 MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
@@ -47,6 +47,16 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
   - 1-Second Continuous Series: `V75_1S` (`1HZ75V`), `V100_1S` (`1HZ100V`), `V50_1S` (`1HZ50V`), `V25_1S` (`1HZ25V`), `V10_1S` (`1HZ10V`)
 - **Timeframes:** `15m` (resampled), `30m`, `1h`
 - **Weekend Mode:** Automatically bypasses closed traditional forex/index markets on weekends (Saturday 00:00 UTC through Sunday 21:00 UTC) so 100% of cron capacity scans the 10 continuous synthetics.
+
+### 2.1 Deriv Synthetics & Batch Scheduling Fix (September 2026)
+1. **Deriv WebSocket Client Handshake**:
+   - In Cloudflare Workers runtime, connecting to an external WebSocket server requires using `fetch(url, { headers: { Upgrade: "websocket" } })` and calling `resp.webSocket.accept()`.
+   - Attempting `new WebSocket(...)` in Workers runtime causes a fatal catch-22 (`accept()` throws `"Websockets obtained from the 'new WebSocket()' constructor cannot call accept"`, while omitting it causes `"You must call accept() before sending messages"`).
+   - Fixed `fetchDeriv` in `worker/src/provider.ts` to use `fetch(url, { headers: { Upgrade: "websocket" } })` with try/catch wrapped `accept()`, and only fall back to `new WebSocket(...)` in non-Workers environments (Node.js/browser).
+2. **Interleaved Round-Robin Batch Scheduling**:
+   - Slicing `cfg.pairs` sequentially with `PAIR_BATCH_SIZE=2` previously caused early institutional pairs (1–10) to always scan first, delaying synthetics (11–20) by 5–10 minutes.
+   - Updated `worker/src/index.ts` to split pending pairs into institutional and synthetic queues and interleave them round-robin: 1 institutional pair + 1 synthetic pair per cron tick.
+   - Fixed boundary advance on weekends to only check open pairs (`if (isWeekend && !isDerivPair(pair)) continue;`).
 
 ---
 

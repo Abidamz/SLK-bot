@@ -389,3 +389,40 @@ describe("scheduled scan cycle", () => {
     // DM should NOT receive transient watch cards
     expect(dmWatch).toBeUndefined();
   });
+
+  it("interleaves institutional and synthetic pairs in round-robin batches so neither starves", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({
+      PAIRS: "EURUSD,GBPUSD,USDJPY,V75,V100,V50",
+      PAIR_BATCH_SIZE: "2",
+      ENTRY_TFS: "30m",
+    });
+
+    const baseTime = NOW + 30_000;
+
+    // Tick 1: Should select 1 institutional (EURUSD) and 1 synthetic (V75)
+    const tick1 = await scanAll(env, {
+      now: baseTime, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick1.pairs).toEqual(["EURUSD", "V75"]);
+
+    // Tick 2: Should select next institutional (GBPUSD) and next synthetic (V100)
+    const tick2 = await scanAll(env, {
+      now: baseTime + 60_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick2.pairs).toEqual(["GBPUSD", "V100"]);
+
+    // Tick 3: Should select USDJPY and V50
+    const tick3 = await scanAll(env, {
+      now: baseTime + 120_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick3.pairs).toEqual(["USDJPY", "V50"]);
+
+    // Tick 4: All pairs done for this boundary -> idle (no candle close)
+    const tick4 = await scanAll(env, {
+      now: baseTime + 180_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick4.pairs).toEqual([]);
+    expect(store.scanLog[store.scanLog.length - 1].note).toBe("idle (no candle close)");
+  });

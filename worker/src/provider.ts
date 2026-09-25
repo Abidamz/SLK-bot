@@ -382,8 +382,42 @@ export async function fetchDeriv(
         let ws: any = null;
         let lastError = "";
 
-        // In standard Cloudflare Workers runtime, native new WebSocket("wss://...") is supported
-        if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
+        // In Cloudflare Workers runtime, outbound client WebSocket connections are established
+        // using fetch(url, { headers: { Upgrade: "websocket" } }) followed by candidateWs.accept().
+        // (Using new WebSocket() directly in Workers runtime causes an accept() error).
+        const httpsUrls = [
+          `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+        ];
+        for (const targetUrl of httpsUrls) {
+          try {
+            const resp = await fetchFn(targetUrl, {
+              headers: {
+                Upgrade: "websocket",
+              },
+            });
+
+            const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+            if (candidateWs) {
+              ws = candidateWs;
+              if (typeof ws.accept === "function") {
+                try {
+                  ws.accept();
+                } catch {}
+              }
+              break;
+            } else {
+              const status = (resp as any)?.status ?? "unknown";
+              const statusText = (resp as any)?.statusText ?? "";
+              lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+            }
+          } catch (connErr) {
+            lastError = connErr instanceof Error ? connErr.message : String(connErr);
+          }
+        }
+
+        // Fallback for non-Workers environments (e.g. Node.js or browser) where fetch does not support Upgrade: websocket
+        if (!ws && typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
           const endpoints = [
             `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
             `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
@@ -398,40 +432,8 @@ export async function fetchDeriv(
           }
         }
 
-        // Fallback or test-injected fetchFn (fetch with Upgrade: websocket)
-        if (!ws) {
-          const httpsUrls = [
-            `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-            `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-          ];
-          for (const targetUrl of httpsUrls) {
-            try {
-              const resp = await fetchFn(targetUrl, {
-                headers: {
-                  Upgrade: "websocket",
-                },
-              });
-
-              const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
-              if (candidateWs) {
-                ws = candidateWs;
-                break;
-              } else {
-                const status = (resp as any)?.status ?? "unknown";
-                const statusText = (resp as any)?.statusText ?? "";
-                lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
-              }
-            } catch (connErr) {
-              lastError = connErr instanceof Error ? connErr.message : String(connErr);
-            }
-          }
-        }
-
         if (!ws) {
           throw new Error(`Deriv server did not accept WebSocket connection: ${lastError || "no gateway responded with 101"}`);
-        }
-        if (typeof ws.accept === "function") {
-          ws.accept();
         }
 
         const onMessage = (event: any) => {
@@ -510,7 +512,10 @@ export async function fetchDeriv(
           ws.onclose = onClose;
         }
 
+        let sent = false;
         const sendPayload = () => {
+          if (sent) return;
+          sent = true;
           try {
             const reqPayload = {
               ticks_history: symbol,
