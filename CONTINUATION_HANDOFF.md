@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `a847e79` (`feat(deriv): add multi-cluster candidate failover and probe route to Vercel relay`)
+**Latest Synced Commit:** `0bf4762` (`fix(relay): define appId default in candles handler`)
 
 ---
 
@@ -12,6 +12,7 @@
 - **Public Proof Journal & Dashboard:** `https://slk-radar.pages.dev`
 - **Subscriber Terms & Risk Disclaimer:** `https://slk-radar.pages.dev/terms`
 - **Whop Storefront (VIP Membership):** `https://whop.com/slk-radar/slk-radar-vip-signals`
+- **Deriv Candle Relay (Vercel Serverless):** `https://slk-bot.vercel.app`
 - **Cloudflare Worker API (Backend):** `https://slk-alert-worker.abidogundamilola.workers.dev`
   - Health: `GET /health`
   - Stats: `GET /stats`
