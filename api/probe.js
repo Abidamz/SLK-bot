@@ -7,32 +7,25 @@ try {
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
-  }
+  res.setHeader("Content-Type", "application/json");
 
   const symbol = req.query.symbol || "R_75";
-  const granularity = Number(req.query.granularity) || 1800;
-  const limit = Math.min(Number(req.query.limit) || 300, 1000);
-
-  const start = Date.now();
 
   const candidates = [
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "derivws_16929" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "frontend_16929" },
-    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929" },
-    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089" },
-    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "frontend_1089" },
-    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089" },
+    { url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "derivws_16929_origin" },
+    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "frontend_16929_origin" },
+    { url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "green_16929_origin" },
+    { url: "wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", origin: "https://deriv.com", label: "blue_16929_origin" },
+    { url: "wss://ws.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "binaryws_1089_plain" },
+    { url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089", origin: "", label: "frontend_1089_plain" },
+    { url: "wss://ws.derivws.com/websockets/v3?app_id=1089", origin: "", label: "derivws_1089_plain" },
+    { url: "wss://api.derivws.com/trading/v1/options/ws/public", origin: "https://deriv.com", label: "options_public" },
   ];
 
-  let lastError = "";
+  const results = [];
 
   for (const cand of candidates) {
+    const start = Date.now();
     try {
       const opts = {
         headers: {
@@ -43,7 +36,7 @@ module.exports = async (req, res) => {
         opts.headers.Origin = cand.origin;
       }
 
-      const candles = await new Promise((resolve, reject) => {
+      const candleData = await new Promise((resolve, reject) => {
         let settled = false;
         const ws = new WebSocketClient(cand.url, opts);
 
@@ -51,26 +44,26 @@ module.exports = async (req, res) => {
           if (!settled) {
             settled = true;
             try { ws.close(); } catch {}
-            reject(new Error(`Timeout after 2500ms on ${cand.label}`));
+            reject(new Error("Timeout after 3000ms"));
           }
-        }, 2500);
+        }, 3000);
 
         ws.onopen = () => {
           try {
             ws.send(JSON.stringify({
               ticks_history: symbol,
               style: "candles",
-              granularity,
-              count: limit,
+              granularity: 1800,
+              count: 3,
               end: "latest",
               req_id: 1,
             }));
-          } catch (sendErr) {
+          } catch (e) {
             if (!settled) {
               settled = true;
               clearTimeout(timer);
               try { ws.close(); } catch {}
-              reject(sendErr);
+              reject(e);
             }
           }
         };
@@ -90,21 +83,14 @@ module.exports = async (req, res) => {
             if (data.candles && Array.isArray(data.candles)) {
               settled = true;
               clearTimeout(timer);
-              const mapped = data.candles.map((c) => ({
-                t: Number(c.epoch) * 1000,
-                o: Number(c.open),
-                h: Number(c.high),
-                l: Number(c.low),
-                c: Number(c.close),
-              })).sort((a, b) => a.t - b.t);
               try { ws.close(); } catch {}
-              resolve(mapped);
+              resolve(data.candles);
             }
-          } catch (parseErr) {
+          } catch (e) {
             settled = true;
             clearTimeout(timer);
             try { ws.close(); } catch {}
-            reject(parseErr);
+            reject(e);
           }
         };
 
@@ -113,29 +99,31 @@ module.exports = async (req, res) => {
             settled = true;
             clearTimeout(timer);
             try { ws.close(); } catch {}
-            reject(new Error(`${cand.label} error: ${err.message || "WS error"}`));
+            reject(new Error(err.message || "WS error"));
           }
         };
       });
 
-      return res.status(200).json({
-        ok: true,
-        symbol,
-        granularity,
-        count: candles.length,
-        source: cand.label,
+      results.push({
+        label: cand.label,
+        url: cand.url,
+        success: true,
+        count: candleData.length,
         durationMs: Date.now() - start,
-        candles,
+        sample: candleData[0],
       });
+      // Break on first success
+      break;
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      results.push({
+        label: cand.label,
+        url: cand.url,
+        success: false,
+        durationMs: Date.now() - start,
+        error: err.message,
+      });
     }
   }
 
-  res.status(502).json({
-    ok: false,
-    symbol,
-    durationMs: Date.now() - start,
-    error: `All candidate endpoints failed: ${lastError}`,
-  });
+  res.status(200).json({ ok: true, symbol, results });
 };
