@@ -394,6 +394,7 @@ export async function fetchDeriv(
             const resp = await fetchFn(targetUrl, {
               headers: {
                 Upgrade: "websocket",
+                Connection: "Upgrade",
               },
             });
 
@@ -515,7 +516,6 @@ export async function fetchDeriv(
         let sent = false;
         const sendPayload = () => {
           if (sent) return;
-          sent = true;
           try {
             const reqPayload = {
               ticks_history: symbol,
@@ -525,26 +525,26 @@ export async function fetchDeriv(
               end: "latest",
             };
             ws.send(JSON.stringify(reqPayload));
+            sent = true;
           } catch (sendErr) {
-            if (!resolved) {
-              resolved = true;
-              cleanup();
-              reject(sendErr);
-            }
+            // In runtimes where ws is not yet open (e.g. Node new WebSocket()),
+            // ws.send may throw. If so, wait for the open event below.
           }
         };
 
-        // If WebSocket is already open or in a mock test environment (readyState undefined/1), send now; else wait for open event
-        if (ws.readyState === 1 || ws.readyState === undefined) {
-          sendPayload();
-        } else if (ws.readyState === 0) {
+        // In Cloudflare Workers, outbound client WebSockets from fetch Upgrade do NOT fire
+        // an 'open' event because the handshake is already established upon return and accept().
+        // We therefore attempt to send the payload immediately.
+        sendPayload();
+
+        // If not sent yet (e.g. constructor WebSocket in Node/browser environments where readyState === 0),
+        // wait for the open event to trigger sendPayload.
+        if (!sent) {
           if (typeof ws.addEventListener === "function") {
-            ws.addEventListener("open", sendPayload, { once: true });
-          } else {
-            ws.onopen = sendPayload;
+            ws.addEventListener("open", () => sendPayload(), { once: true });
+          } else if ("onopen" in ws) {
+            ws.onopen = () => sendPayload();
           }
-        } else {
-          sendPayload();
         }
       } catch (err) {
         if (!resolved) {

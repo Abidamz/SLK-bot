@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { decodeJetta, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, resetProviderCircuitBreakers, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
+import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, resetProviderCircuitBreakers, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
 import { dukaJson, yahooFlatFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
@@ -623,5 +623,46 @@ describe("Deriv alert routing", () => {
     expect(derivCalls[0]).toContain("V75");
     expect(vipCalls.length).toBe(1);
     expect(vipCalls[0]).toContain("XAUUSD");
+  });
+
+  it("fetchDeriv sends payload immediately when readyState is 0 without waiting for open event", async () => {
+    let payloadSent = false;
+    const mockFetcher: any = async () => {
+      const listeners: Record<string, Function[]> = {};
+      const mockWs = {
+        readyState: 0, // In Cloudflare Workers, readyState can be 0 even though socket is accepted
+        listeners,
+        addEventListener(event: string, cb: Function) {
+          listeners[event] = listeners[event] || [];
+          listeners[event].push(cb);
+        },
+        send(data: string) {
+          payloadSent = true;
+          const req = JSON.parse(data);
+          setTimeout(() => {
+            listeners["message"]?.forEach((cb) =>
+              cb({
+                data: JSON.stringify({
+                  msg_type: "candles",
+                  candles: [
+                    { epoch: 1710000000, open: 100, high: 105, low: 99, close: 104 },
+                  ],
+                }),
+              })
+            );
+          }, 5);
+        },
+        accept() {},
+        close() {},
+      };
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const candles = await fetchDeriv("V75", "1d", 10, {}, "1089", mockFetcher);
+    expect(payloadSent).toBe(true);
+    expect(candles.length).toBe(1);
+    expect(candles[0].c).toBe(104);
   });
 });
