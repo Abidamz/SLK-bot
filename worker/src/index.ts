@@ -1667,9 +1667,9 @@ export default {
         const symbol = url.searchParams.get("symbol") || url.searchParams.get("pair") || "R_75";
         const { testDerivEndpoints } = await import("./provider");
         const results = await testDerivEndpoints(symbol);
-        return json({ ok: true, symbol, results });
+        return json({ ok: true, symbol, results }, 200);
       } catch (err) {
-        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
       }
     }
 

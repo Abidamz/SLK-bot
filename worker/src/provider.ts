@@ -681,20 +681,18 @@ export async function fetchDeriv(
   });
 }
 
-/** Diagnostic probe: tests candidate Deriv endpoints and connection modes in parallel, returning individual latency and outcome. */
+/** Diagnostic probe: tests candidate Deriv endpoints sequentially within subrequest limits. */
 export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
   const targets = [
-    { type: "fetch", url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:ws.derivws.com" },
     { type: "fetch", url: "https://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:frontend.binaryws.com" },
+    { type: "fetch", url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:ws.derivws.com" },
     { type: "fetch", url: "https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "fetch:green.derivws.com" },
     { type: "ws", url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "ws:frontend.binaryws.com" },
-    { type: "ws", url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:green.derivws.com" },
     { type: "ws", url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:ws.derivws.com:16929" },
-    { type: "ws", url: "wss://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "ws:ws.derivws.com:1089" },
-    { type: "ws", url: "wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:blue.derivws.com" },
   ];
 
-  return await Promise.all(targets.map(async (t) => {
+  const results: any[] = [];
+  for (const t of targets) {
     const start = Date.now();
     try {
       let ws: any;
@@ -706,18 +704,20 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
             Origin: "https://deriv.com",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           },
-          signal: AbortSignal.timeout(2500),
+          signal: AbortSignal.timeout(1800),
         });
         ws = (resp as any).webSocket;
         if (!ws) {
-          return { ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: "no webSocket on response" };
+          results.push({ ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: `HTTP ${resp.status}: no webSocket` });
+          continue;
         }
         if (typeof ws.accept === "function") {
           try { ws.accept(); } catch {}
         }
       } else {
         if (typeof (globalThis as any).WebSocket !== "function") {
-          return { ...t, success: false, error: "WebSocket constructor not available" };
+          results.push({ ...t, success: false, error: "WebSocket constructor not available" });
+          continue;
         }
         ws = new (globalThis as any).WebSocket(t.url);
       }
@@ -725,8 +725,8 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
       const res = await new Promise<{ count: number; sample?: any }>((resolve, reject) => {
         const timer = setTimeout(() => {
           try { ws.close(); } catch {}
-          reject(new Error("timeout after 2500ms"));
-        }, 2500);
+          reject(new Error("timeout after 1800ms"));
+        }, 1800);
 
         ws.onmessage = (event: any) => {
           try {
@@ -776,11 +776,12 @@ export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
         sendMsg();
       });
 
-      return { ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start };
+      results.push({ ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start });
     } catch (err: any) {
-      return { ...t, success: false, error: err.message, durationMs: Date.now() - start };
+      results.push({ ...t, success: false, error: err instanceof Error ? err.message : String(err), durationMs: Date.now() - start });
     }
-  }));
+  }
+  return results;
 }
 
 export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
