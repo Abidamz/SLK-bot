@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `1a21c33` (`fix(relay): optimize candidate window and add comprehensive diagnostic probe`)
+**Latest Synced Commit:** `0a9ef8b` (`feat(deriv): switch to modern public options market data endpoint`)
 
 ---
 
@@ -12,7 +12,10 @@
 - **Public Proof Journal & Dashboard:** `https://slk-radar.pages.dev`
 - **Subscriber Terms & Risk Disclaimer:** `https://slk-radar.pages.dev/terms`
 - **Whop Storefront (VIP Membership):** `https://whop.com/slk-radar/slk-radar-vip-signals`
-- **Deriv Candle Relay (Vercel Serverless):** `https://slk-bot.vercel.app`
+- **Deriv Candle Relay (Vercel Production - Verified 90ms latency):** `https://slk-bot.vercel.app`
+  - Candle feed: `GET https://slk-bot.vercel.app/candles?symbol=R_75&granularity=1800&limit=5`
+  - Health probe: `GET https://slk-bot.vercel.app/health`
+  - Latency probe: `GET https://slk-bot.vercel.app/probe`
 - **Cloudflare Worker API (Backend):** `https://slk-alert-worker.abidogundamilola.workers.dev`
   - Health: `GET /health`
   - Stats: `GET /stats`
