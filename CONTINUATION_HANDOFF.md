@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `d47e820` (`fix(deriv): sequential endpoint fallback with detailed error event diagnostics`)
+**Latest Synced Commit:** `4ee1ade` (`fix(synthetics): send Deriv payload immediately with open fallback and accumulate endpoint errors`)
 
 ---
 
@@ -49,10 +49,11 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 - **Weekend Mode:** Automatically bypasses closed traditional forex/index markets on weekends (Saturday 00:00 UTC through Sunday 21:00 UTC) so 100% of cron capacity scans the 10 continuous synthetics.
 
 ### 2.1 Deriv Synthetics & Batch Scheduling Fix (September 2026)
-1. **Deriv WebSocket Client Handshake**:
-   - In Cloudflare Workers runtime, connecting to an external WebSocket server requires using `fetch(url, { headers: { Upgrade: "websocket" } })` and calling `resp.webSocket.accept()`.
-   - Attempting `new WebSocket(...)` in Workers runtime causes a fatal catch-22 (`accept()` throws `"Websockets obtained from the 'new WebSocket()' constructor cannot call accept"`, while omitting it causes `"You must call accept() before sending messages"`).
-   - Fixed `fetchDeriv` in `worker/src/provider.ts` to use `fetch(url, { headers: { Upgrade: "websocket" } })` with try/catch wrapped `accept()`, and only fall back to `new WebSocket(...)` in non-Workers environments (Node.js/browser).
+1. **Deriv WebSocket Client Handshake & Immediate Send**:
+   - In Cloudflare Workers runtime, connecting to an external WebSocket client uses `new WebSocket(url)` (which is auto-accepted by the Workers runtime without calling `.accept()`).
+   - However, waiting for an `"open"` event on `new WebSocket(...)` before dispatching messages causes timeouts because in serverless worker environments the socket handshake completes without necessarily triggering an `"open"` event listener.
+   - Fixed `fetchDeriv` in `worker/src/provider.ts` to dispatch `doSend()` immediately upon socket construction, while keeping the `"open"` event listener as a fallback with a guarded `sent` flag.
+   - Configured sequential failover: primary `wss://ws.derivws.com/websockets/v3?app_id=1089` and backup `wss://ws.binaryws.com/websockets/v3?app_id=1089`, with individual 5.8s timers and a 12s overall timeout, accumulating error strings across both endpoints for precise diagnostics in `/scan-log`.
 2. **Interleaved Round-Robin Batch Scheduling**:
    - Slicing `cfg.pairs` sequentially with `PAIR_BATCH_SIZE=2` previously caused early institutional pairs (1–10) to always scan first, delaying synthetics (11–20) by 5–10 minutes.
    - Updated `worker/src/index.ts` to split pending pairs into institutional and synthetic queues and interleave them round-robin: 1 institutional pair + 1 synthetic pair per cron tick.
