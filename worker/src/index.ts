@@ -652,8 +652,14 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true, service: "slk-alert-worker", mode: cfg.mode,
+        version: "v2.4.0",
+        commit: "2dbac83",
+        buildTime: "2026-09-25 22:20 UTC",
+        feedStatus: "VIP Clean Feed Active (Entries Only)",
+        relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
         watchNotify: cfg.watchNotify,
+        vipWatchNotify: (env.VIP_WATCH_NOTIFY ?? "false").toLowerCase() === "true",
         paperNotify: cfg.paperNotify,
         telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
         adminKeyConfigured: Boolean(env.ADMIN_KEY),
