@@ -847,6 +847,9 @@ export default {
         phase: r.phase, htfAlignment: r.htf_alignment, keyLevel: r.key_level_type,
         originLevel: r.origin_key_level, status: r.status,
         alertStatus: r.alert_status, candleCloseTime: r.candle_close_time,
+        exitTime: (r.exit_time as string) ?? null,
+        exitPrice: (r.exit_price as number) ?? null,
+        createdUtc: (r.created_utc as string) ?? null,
         rMultiple: r.r_multiple,
       })), page, pageSize, total: result.total, sort: query.sort, order: query.order });
     }

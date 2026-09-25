@@ -1089,11 +1089,18 @@ function renderAlerts() {
     const marketTag = isSynth
       ? '<span class="market-tag synth-tag">⚡ 24/7 SYNTHETICS</span>'
       : '<span class="market-tag inst-tag">INSTITUTIONAL</span>';
+    let timeLogHtml = 'Opened ' + fmtDate(a.candleCloseTime);
+    if (a.exitTime && (a.status === 'TP_HIT' || a.status === 'SL_HIT' || a.status === 'EXPIRED')) {
+      const diffMs = Math.max(0, new Date(a.exitTime).getTime() - new Date(a.candleCloseTime).getTime());
+      const diffMins = Math.round(diffMs / 60000);
+      const durationStr = diffMins >= 60 ? (Math.floor(diffMins / 60) + 'h ' + (diffMins % 60) + 'm') : (diffMins + 'm');
+      timeLogHtml += ' · Closed ' + fmtDate(a.exitTime) + ' (' + durationStr + ')';
+    }
     return \`
       <button class="alert-row" data-setup="\${esc(a.setupId)}" data-tf="\${esc(a.tf)}">
         <div>
           <strong class="alert-pair">\${esc(a.pair)} · \${esc(a.tf)} · <span class="\${dirClass}">\${esc(a.direction)}</span> \${marketTag}</strong>
-          <small class="alert-meta">\${esc(a.keyLevel || 'Key Level')} · \${fmtDate(a.candleCloseTime)}</small>
+          <small class="alert-meta">\${esc(a.keyLevel || 'Key Level')} · \${timeLogHtml}</small>
         </div>
         <div>
           <span>Entry Price</span>
