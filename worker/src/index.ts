@@ -385,18 +385,16 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               entryQuality: alert.directionalBias.entryQuality,
             }));
           }
+          // Historical replay can discover a confirmation long after its
+          // candle closed. Never record stale historical replay into the live trade ledger.
+          if (!alertEventFresh(alert, tf, now)) {
+            console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId }));
+            continue;
+          }
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) continue; // duplicate setup — already alerted/logged
           alertCount++;
           diagnostics.recorded.confirmedAlerts++;
-          // Historical replay can discover a confirmation long after its
-          // candle closed. Record it for audit, but never deliver a stale
-          // entry or immediately resolve its old price path.
-          if (!alertEventFresh(alert, tf, now)) {
-            await store.updateAlertStatus(alert.setupId, "SUPPRESSED", "stale confirmation — record-only");
-            console.info(JSON.stringify({ level: "info", msg: "stale confirmation recorded without delivery", setupId: alert.setupId }));
-            continue;
-          }
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
         }
 
@@ -1836,6 +1834,17 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/clear-synthetics" || url.pathname === "/api/clear-synthetics") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const cleared = await store.clearSyntheticsAlerts();
+      return json({
+        ok: true,
+        action: "clear_synthetics",
+        cleared,
+        message: `Successfully cleared ${cleared} synthetics trade(s) from the journal.`,
+      });
+    }
+
     if ((url.pathname === "/admin/reset-journal" || url.pathname === "/api/reset-journal") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
       await store.resetAllAlerts();
@@ -1855,11 +1864,15 @@ export default {
         const closed = await store.expireOpenAlerts();
         return json({ ok: true, action: "expire_open", closed, message: `Closed ${closed} open trade(s) as EXPIRED.` });
       }
+      if (action === "clear_synthetics") {
+        const cleared = await store.clearSyntheticsAlerts();
+        return json({ ok: true, action: "clear_synthetics", cleared, message: `Successfully cleared ${cleared} synthetics trade(s).` });
+      }
       if (action === "reset_all") {
         await store.resetAllAlerts();
         return json({ ok: true, action: "reset_all", message: "Successfully reset all signals, events, and logs." });
       }
-      return json({ error: "invalid action, must be expire_open or reset_all" }, 400);
+      return json({ error: "invalid action, must be expire_open, clear_synthetics, or reset_all" }, 400);
     }
 
     if (url.pathname === "/provider-webhook") {

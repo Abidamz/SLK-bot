@@ -59,6 +59,7 @@ export interface Store {
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
   expireOpenAlerts(): Promise<number>;
   resetAllAlerts(): Promise<void>;
+  clearSyntheticsAlerts(): Promise<number>;
 }
 
 
@@ -306,6 +307,22 @@ export class D1Store implements Store {
     await this.db.prepare("DELETE FROM slk_events").bind().run();
     await this.db.prepare("DELETE FROM slk_scan_log").bind().run();
   }
+
+  async clearSyntheticsAlerts(): Promise<number> {
+    const res = await this.db
+      .prepare(
+        "DELETE FROM slk_alerts WHERE canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%' OR canonical_symbol LIKE '1HZ%'"
+      )
+      .bind()
+      .run();
+    await this.db
+      .prepare(
+        "DELETE FROM slk_events WHERE pair LIKE 'V%' OR pair LIKE 'R_%' OR pair LIKE '1HZ%'"
+      )
+      .bind()
+      .run();
+    return Number(res.meta?.changes ?? 0);
+  }
 }
 
 // ---------------------------------------------------------- in-memory impl
@@ -440,6 +457,18 @@ export class MemStore implements Store {
     this.events = [];
     this.eventKeys.clear();
     this.scanLog = [];
+  }
+
+  async clearSyntheticsAlerts(): Promise<number> {
+    let count = 0;
+    for (const [id, row] of this.alerts.entries()) {
+      if (isDerivPair(row.canonical_symbol)) {
+        this.alerts.delete(id);
+        count++;
+      }
+    }
+    this.events = this.events.filter((e) => !isDerivPair(String(e.pair ?? "")));
+    return count;
   }
 }
 
