@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `2fce812` (`fix(deriv): add origin header, binaryType arraybuffer, and diagnostic logging`)
+**Latest Synced Commit:** `d5407f9` (`fix(deriv): use native client WebSocket without accept call and fallback to fetch upgrade`)
 
 ---
 
