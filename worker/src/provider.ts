@@ -385,55 +385,23 @@ export async function fetchDeriv(
     (async () => {
       try {
         let ws: any = null;
+        let isAcceptedFromFetch = false;
         let lastError = "";
 
-        // In Cloudflare Workers runtime, outbound client WebSocket connections are established
-        // using fetch(url, { headers: { Upgrade: "websocket" } }) followed by candidateWs.accept().
-        const httpsUrls = [
-          `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-          `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+        // Strategy: In Cloudflare Workers runtime and Node/browser, new WebSocket(wss://...)
+        // is the standard client connection.
+        // CRITICAL NOTE: In Cloudflare Workers, WebSockets created via `new WebSocket(url)`
+        // are ALREADY automatically accepted by the runtime. Calling .accept() on them throws:
+        // "Websockets obtained from the 'new WebSocket()' constructor cannot call accept".
+        // Therefore, we NEVER call ws.accept() on sockets created via new WebSocket().
+        // Only if mock fetchFn is passed (tests) or new WebSocket is unavailable do we use fetch Upgrade.
+
+        const endpoints = [
+          `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
         ];
-        for (const targetUrl of httpsUrls) {
-          try {
-            const resp = await fetchFn(targetUrl, {
-              headers: {
-                Upgrade: "websocket",
-                Connection: "Upgrade",
-                Origin: "https://deriv.com",
-              },
-            });
 
-            const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
-            if (candidateWs) {
-              ws = candidateWs;
-              wsRef = ws;
-              try {
-                if ("binaryType" in ws) ws.binaryType = "arraybuffer";
-              } catch {}
-              if (typeof ws.accept === "function") {
-                try {
-                  ws.accept();
-                } catch (acceptErr) {
-                  lastError = `accept() failed: ${acceptErr instanceof Error ? acceptErr.message : String(acceptErr)}`;
-                }
-              }
-              break;
-            } else {
-              const status = (resp as any)?.status ?? "unknown";
-              const statusText = (resp as any)?.statusText ?? "";
-              lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
-            }
-          } catch (connErr) {
-            lastError = connErr instanceof Error ? connErr.message : String(connErr);
-          }
-        }
-
-        // Fallback for non-Workers environments (e.g. Node.js or browser) where fetch does not support Upgrade: websocket
-        if (!ws && typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
-          const endpoints = [
-            `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-            `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-          ];
+        if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
           for (const ep of endpoints) {
             try {
               ws = new (globalThis as any).WebSocket(ep);
@@ -441,6 +409,45 @@ export async function fetchDeriv(
               if (ws) break;
             } catch (e) {
               lastError = e instanceof Error ? e.message : String(e);
+            }
+          }
+        }
+
+        // Fallback or when a custom fetchFn is provided (e.g. test fixtures)
+        if (!ws) {
+          for (const targetUrl of endpoints) {
+            try {
+              const resp = await fetchFn(targetUrl, {
+                headers: {
+                  Upgrade: "websocket",
+                  Connection: "Upgrade",
+                  Origin: "https://deriv.com",
+                },
+              });
+
+              const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+              if (candidateWs) {
+                ws = candidateWs;
+                wsRef = ws;
+                isAcceptedFromFetch = true;
+                try {
+                  if ("binaryType" in ws) ws.binaryType = "arraybuffer";
+                } catch {}
+                if (typeof ws.accept === "function") {
+                  try {
+                    ws.accept();
+                  } catch (acceptErr) {
+                    lastError = `accept() failed: ${acceptErr instanceof Error ? acceptErr.message : String(acceptErr)}`;
+                  }
+                }
+                break;
+              } else {
+                const status = (resp as any)?.status ?? "unknown";
+                const statusText = (resp as any)?.statusText ?? "";
+                lastError = `HTTP ${status} ${statusText} from ${targetUrl}`;
+              }
+            } catch (connErr) {
+              lastError = connErr instanceof Error ? connErr.message : String(connErr);
             }
           }
         }
@@ -552,13 +559,12 @@ export async function fetchDeriv(
           }
         };
 
-        // In Cloudflare Workers, outbound client WebSockets from fetch Upgrade do NOT fire
-        // an 'open' event because the handshake is already established upon return and accept().
-        // We therefore attempt to send the payload immediately.
-        sendPayload();
+        // Try sending immediately if already open or if socket was accepted from fetch
+        if (ws.readyState === 1 || ws.readyState === undefined || isAcceptedFromFetch) {
+          sendPayload();
+        }
 
-        // If not sent yet (e.g. constructor WebSocket in Node/browser environments where readyState === 0),
-        // wait for the open event to trigger sendPayload.
+        // Always register open handler as well if not sent yet
         if (!sent) {
           if (typeof ws.addEventListener === "function") {
             ws.addEventListener("open", () => sendPayload(), { once: true });
