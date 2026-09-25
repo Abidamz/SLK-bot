@@ -1662,6 +1662,17 @@ export default {
       });
     }
 
+    if ((url.pathname === "/api/test-deriv" || url.pathname === "/admin/test-deriv") && request.method === "GET") {
+      try {
+        const symbol = url.searchParams.get("symbol") || url.searchParams.get("pair") || "R_75";
+        const { testDerivEndpoints } = await import("./provider");
+        const results = await testDerivEndpoints(symbol);
+        return json({ ok: true, symbol, results });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/trigger-scan" || url.pathname === "/api/trigger-scan") && (request.method === "GET" || request.method === "POST")) {
       try {
         const force = url.searchParams.get("force") === "true";

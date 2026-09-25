@@ -386,25 +386,55 @@ export async function fetchDeriv(
       try {
         let lastError = "";
 
-        const endpoints = [
-          `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
-          `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+        const candidates: { type: "fetch" | "ws"; url: string; label: string }[] = [
+          // 1. Fetch Upgrade with explicit browser Origin headers (bypasses Deriv Cloudflare WAF block)
+          { type: "fetch", url: `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:ws.derivws.com" },
+          { type: "fetch", url: `https://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:frontend.binaryws.com" },
+          { type: "fetch", url: `https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "fetch:green.derivws.com" },
+          // 2. Direct native WebSocket client across Deriv edge clusters
+          { type: "ws", url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:frontend.binaryws.com" },
+          { type: "ws", url: `wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:green.derivws.com" },
+          { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:ws.derivws.com:16929" },
+          { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:ws.derivws.com:1089" },
+          { type: "ws", url: `wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:blue.derivws.com" },
         ];
 
-        // 1. Production runtime: native WebSocket client connection (auto-accepted by Workers runtime)
-        if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
-          for (const ep of endpoints) {
+        // 1. Production runtime: native WebSocket or Fetch Upgrade
+        if (fetchFn === fetch) {
+          for (const cand of candidates) {
             if (resolved) break;
             sent = false;
             try {
-              const ws = new (globalThis as any).WebSocket(ep);
+              let ws: any;
+              if (cand.type === "fetch") {
+                const resp = await fetch(cand.url, {
+                  headers: {
+                    Upgrade: "websocket",
+                    Connection: "Upgrade",
+                    Origin: "https://deriv.com",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  },
+                  signal: AbortSignal.timeout(2500),
+                });
+                const candidateWs = (resp as any).webSocket;
+                if (!candidateWs) {
+                  throw new Error(`HTTP ${resp.status}: no webSocket`);
+                }
+                ws = candidateWs;
+                if (typeof ws.accept === "function") {
+                  try { ws.accept(); } catch {}
+                }
+              } else {
+                if (typeof (globalThis as any).WebSocket !== "function") continue;
+                ws = new (globalThis as any).WebSocket(cand.url);
+              }
               wsRef = ws;
 
               const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
                 const wsTimer = setTimeout(() => {
                   try { ws.close(); } catch {}
-                  rejectWs(new Error(`timeout on ${ep} (sent=${sent}, rs=${ws?.readyState})`));
-                }, 5800);
+                  rejectWs(new Error(`timeout on ${cand.label} (sent=${sent}, rs=${ws?.readyState})`));
+                }, 2800);
 
                 const onWsMessage = async (event: any) => {
                   try {
@@ -459,12 +489,12 @@ export async function fetchDeriv(
                   try { ws.close(); } catch {}
                   const errObj = err?.error;
                   const errMsg = errObj?.message || err?.message || (typeof errObj === "string" ? errObj : "") || (err?.type ? `event:${err.type}` : "ws error");
-                  rejectWs(new Error(`${ep} error (${errMsg})`));
+                  rejectWs(new Error(`${cand.label} error (${errMsg})`));
                 };
 
                 const onWsClose = (evt: any) => {
                   clearTimeout(wsTimer);
-                  rejectWs(new Error(`${ep} closed (${evt?.code || "unknown"}: ${evt?.reason || "clean"})`));
+                  rejectWs(new Error(`${cand.label} closed (${evt?.code || "unknown"}: ${evt?.reason || "clean"})`));
                 };
 
                 if (typeof ws.addEventListener === "function") {
@@ -525,6 +555,10 @@ export async function fetchDeriv(
 
         // 2. Custom fetchFn path (used by mock test suites)
         if (!resolved && fetchFn !== fetch) {
+          const endpoints = [
+            `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+            `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          ];
           for (const targetUrl of endpoints) {
             try {
               const resp = await fetchFn(targetUrl, {
@@ -645,6 +679,112 @@ export async function fetchDeriv(
       }
     })();
   });
+}
+
+/** Diagnostic probe: tests candidate Deriv endpoints and connection modes, returning individual latency and outcome. */
+export async function testDerivEndpoints(symbol = "R_75"): Promise<any[]> {
+  const targets = [
+    { type: "fetch", url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:ws.derivws.com" },
+    { type: "fetch", url: "https://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "fetch:frontend.binaryws.com" },
+    { type: "fetch", url: "https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "fetch:green.derivws.com" },
+    { type: "ws", url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "ws:frontend.binaryws.com" },
+    { type: "ws", url: "wss://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:green.derivws.com" },
+    { type: "ws", url: "wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:ws.derivws.com:16929" },
+    { type: "ws", url: "wss://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en", label: "ws:ws.derivws.com:1089" },
+    { type: "ws", url: "wss://blue.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en", label: "ws:blue.derivws.com" },
+  ];
+
+  const results: any[] = [];
+  for (const t of targets) {
+    const start = Date.now();
+    try {
+      let ws: any;
+      if (t.type === "fetch") {
+        const resp = await fetch(t.url, {
+          headers: {
+            Upgrade: "websocket",
+            Connection: "Upgrade",
+            Origin: "https://deriv.com",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(2500),
+        });
+        ws = (resp as any).webSocket;
+        if (!ws) {
+          results.push({ ...t, success: false, status: resp.status, statusText: resp.statusText, durationMs: Date.now() - start, error: "no webSocket on response" });
+          continue;
+        }
+        if (typeof ws.accept === "function") {
+          try { ws.accept(); } catch {}
+        }
+      } else {
+        if (typeof (globalThis as any).WebSocket !== "function") {
+          results.push({ ...t, success: false, error: "WebSocket constructor not available" });
+          continue;
+        }
+        ws = new (globalThis as any).WebSocket(t.url);
+      }
+
+      const res = await new Promise<{ count: number; sample?: any }>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          try { ws.close(); } catch {}
+          reject(new Error("timeout after 2500ms"));
+        }, 2500);
+
+        ws.onmessage = (event: any) => {
+          try {
+            const raw = typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data);
+            const data = JSON.parse(raw);
+            if (data.error) {
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              reject(new Error(data.error.message || JSON.stringify(data.error)));
+              return;
+            }
+            if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              resolve({ count: data.candles.length, sample: data.candles[0] });
+            }
+          } catch (e: any) {
+            clearTimeout(timer);
+            try { ws.close(); } catch {}
+            reject(e);
+          }
+        };
+
+        ws.onerror = (err: any) => {
+          clearTimeout(timer);
+          try { ws.close(); } catch {}
+          const msg = err?.error?.message || err?.message || (err?.type ? `event:${err.type}` : "ws error");
+          reject(new Error(msg));
+        };
+
+        const sendMsg = () => {
+          try {
+            ws.send(JSON.stringify({
+              ticks_history: symbol,
+              style: "candles",
+              granularity: 1800,
+              count: 5,
+              end: "latest",
+              req_id: 1,
+            }));
+          } catch (e) {}
+        };
+
+        if (typeof ws.addEventListener === "function") {
+          ws.addEventListener("open", sendMsg, { once: true });
+        }
+        sendMsg();
+      });
+
+      results.push({ ...t, success: true, count: res.count, sample: res.sample, durationMs: Date.now() - start });
+    } catch (err: any) {
+      results.push({ ...t, success: false, error: err.message, durationMs: Date.now() - start });
+    }
+  }
+  return results;
 }
 
 export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
