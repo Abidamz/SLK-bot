@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `0a9ef8b` (`feat(deriv): switch to modern public options market data endpoint`)
+**Latest Synced Commit:** `fe50b31` (`chore(worker): bind DERIV_PROXY_URL to live verified Vercel relay`)
 
 ---
 
@@ -16,7 +16,7 @@
   - Candle feed: `GET https://slk-bot.vercel.app/candles?symbol=R_75&granularity=1800&limit=5`
   - Health probe: `GET https://slk-bot.vercel.app/health`
   - Latency probe: `GET https://slk-bot.vercel.app/probe`
-- **Cloudflare Worker API (Backend):** `https://slk-alert-worker.abidogundamilola.workers.dev`
+- **Cloudflare Worker API (Backend - 100% Automated Git Deployments Active):** `https://slk-alert-worker.abidogundamilola.workers.dev`
   - Health: `GET /health`
   - Stats: `GET /stats`
   - Public Ledger: `GET /alerts`
