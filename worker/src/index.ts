@@ -651,9 +651,11 @@ export default {
     if (url.pathname === "/health") {
       const cfg = loadConfig(env);
       return json({
-        ok: true, service: "slk-alert-worker", mode: cfg.mode,
+        ok: true,
+        service: "slk-alert-worker · Build 42f8e5e (VIP Clean Feed Active)",
+        mode: cfg.mode,
         version: "v2.4.0",
-        commit: "2dbac83",
+        commit: "42f8e5e",
         buildTime: "2026-09-25 22:20 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
