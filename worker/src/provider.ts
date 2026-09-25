@@ -362,7 +362,7 @@ export async function fetchDeriv(
   const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
   const granularity = TF_SECONDS[tf] ?? 1800;
 
-  const timeoutMs = 8_000;
+  const timeoutMs = 12_000;
 
   return new Promise<Candle[]>((resolve, reject) => {
     let resolved = false;
@@ -395,6 +395,7 @@ export async function fetchDeriv(
         if (typeof (globalThis as any).WebSocket === "function" && fetchFn === fetch) {
           for (const ep of endpoints) {
             if (resolved) break;
+            sent = false;
             try {
               const ws = new (globalThis as any).WebSocket(ep);
               wsRef = ws;
@@ -402,8 +403,8 @@ export async function fetchDeriv(
               const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
                 const wsTimer = setTimeout(() => {
                   try { ws.close(); } catch {}
-                  rejectWs(new Error(`timeout on ${ep}`));
-                }, 3800);
+                  rejectWs(new Error(`timeout on ${ep} (sent=${sent}, rs=${ws?.readyState})`));
+                }, 5800);
 
                 const onWsMessage = async (event: any) => {
                   try {
@@ -477,6 +478,7 @@ export async function fetchDeriv(
                 }
 
                 const doSend = () => {
+                  if (sent) return;
                   try {
                     ws.send(JSON.stringify({
                       ticks_history: symbol,
@@ -489,20 +491,23 @@ export async function fetchDeriv(
                     sent = true;
                   } catch (sErr) {
                     lastSendError = sErr instanceof Error ? sErr.message : String(sErr);
-                    clearTimeout(wsTimer);
-                    rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                    // Do not reject immediately if socket is still connecting
+                    if (ws.readyState !== 0) {
+                      clearTimeout(wsTimer);
+                      rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                    }
                   }
                 };
 
-                if (ws.readyState === 1) {
-                  doSend();
-                } else {
-                  if (typeof ws.addEventListener === "function") {
-                    ws.addEventListener("open", doSend, { once: true });
-                  } else if ("onopen" in ws) {
-                    ws.onopen = doSend;
-                  }
+                // Register open listener
+                if (typeof ws.addEventListener === "function") {
+                  ws.addEventListener("open", doSend, { once: true });
+                } else if ("onopen" in ws) {
+                  ws.onopen = doSend;
                 }
+
+                // Also try sending immediately in case connection is already ready or auto-accepted
+                doSend();
               });
 
               if (!resolved) {
@@ -512,7 +517,8 @@ export async function fetchDeriv(
                 return;
               }
             } catch (endpointErr) {
-              lastError = endpointErr instanceof Error ? endpointErr.message : String(endpointErr);
+              const msg = endpointErr instanceof Error ? endpointErr.message : String(endpointErr);
+              lastError += (lastError ? " | " : "") + msg;
             }
           }
         }
