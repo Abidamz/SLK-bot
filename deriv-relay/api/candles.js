@@ -18,13 +18,14 @@ module.exports = async (req, res) => {
   const symbol = req.query.symbol || "R_75";
   const granularity = Number(req.query.granularity) || 1800;
   const limit = Math.min(Number(req.query.limit) || 300, 1000);
+  const appId = process.env.DERIV_APP_ID || "1089";
 
   const start = Date.now();
 
   const candidates = [
-    { url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "binaryws_1089_plain" },
-    { url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "frontend_1089_plain" },
-    { url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(DERIV_APP_ID)}`, origin: "", label: "derivws_1089_plain" },
+    { url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "binaryws_1089_plain" },
+    { url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "frontend_1089_plain" },
+    { url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`, origin: "", label: "derivws_1089_plain" },
   ];
 
   let lastError = "";
