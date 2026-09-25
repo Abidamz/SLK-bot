@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `e14179e` (`fix(deriv): increase handshake and message timeouts to 4.5s-6s for reliable Deriv edge negotiation`)
+**Latest Synced Commit:** `b987d60` (`feat(deriv): add ultra-lightweight Deriv relay service and Cloudflare Worker HTTP proxy client`)
 
 ---
 
