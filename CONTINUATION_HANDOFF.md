@@ -3,7 +3,7 @@
 **Updated:** 2026-09-25 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `d32d8e7` (`perf(deriv): run probe targets in parallel for sub-3s response`)
+**Latest Synced Commit:** `aea4514` (`fix(deriv): sequential subrequest-safe probes returning HTTP 200 with diagnostics`)
 
 ---
 
