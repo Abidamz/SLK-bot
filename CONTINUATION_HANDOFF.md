@@ -38,7 +38,7 @@ MODE=paper
 WATCH_NOTIFY=true             (Active radar for heads-up detection)
 VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics channels receive ONLY confirmed entries and outcomes)
 PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=1             (Free tier CPU optimized: 1 pair scanned per minute, ~3.2ms CPU execution, eliminates 10ms CPU limits)
+PAIR_BATCH_SIZE=2             (Optimized throughput: 2 pairs per minute, interleaved oldest-first scanning)
 MIN_RISK_ATR=0.8
 MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
@@ -48,7 +48,7 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 ### Channel Routing Protocol (Strict Separation)
 - **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero watch radar, zero synthetics.
 - **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs. Zero watch radar, zero forex.
-- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. **Zero synthetics**.
+- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups (TOUCH, SWEEP, SHIFT), `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. **Zero synthetics**.
 - **Dedicated Free Synthetics Channel (`TELEGRAM_DERIV_FREE_CHAT_ID`):** 24/7 unverified synthetic watch radar, bias confirmation cards, and V75 win teasers with Whop VIP upgrade links.
 - **Personal DM (`TELEGRAM_DM_CHAT_ID`):** Simultaneous personal push for confirmed entries.
 
@@ -71,23 +71,31 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 
 ## 2.1 Major Architectural Milestones (September 2026)
 
-1. **Cloudflare Free Tier CPU Optimization (`PAIR_BATCH_SIZE: 1`)**:
-   - Cloudflare Workers Free Tier enforces a strict **10ms CPU time limit per invocation**.
-   - Running multi-pair batches previously caused CPU limit exhaustion (12ms–16ms), prompting Cloudflare warning emails and risking dropped alerts.
-   - Setting `PAIR_BATCH_SIZE: 1` schedules 1 pair per minute in an interleaved round-robin sequence.
-   - CPU execution time dropped to **~3.2ms–4.5ms**, safely below the 10ms cap with zero killed isolates.
-   - For 30m and 1h entries, checking each pair every 4 minutes is 7.5x to 15x faster than a candle close.
+1. **Video-Aligned Directional Bias Shadow Classification**:
+   - Evaluates multi-timeframe structural continuity across Weekly, Daily, 4H, and 1H contexts.
+   - Diagnostic components include:
+     - **Weekly Liquidity**: Weekly high/low sweeps and opposing liquidity targets.
+     - **Daily Structure**: Body-to-body candle breakouts and daily liquidity sweep + structure shifts.
+     - **4H Vantage Point**: Structural breakout status and primary trend direction.
+     - **1H Execution Alignment**: Agreement between execution context and higher-timeframe vantage.
+     - **Entry Quality**: Fair Value Gap (FVG) detection, displacement rebalance, lower-timeframe sweep, and structure break.
+     - **Classification Grades**: `A_GRADE` (full multi-timeframe alignment + FVG rebalance), `B_GRADE` (aligned without FVG rebalance), `HTF_CONFLICT` (opposing higher-timeframe momentum), `OBSERVATION_ONLY` (neutral or unconfirmed).
+   - Behavior-neutral: runs alongside standard confirmation entries without mutating entry triggers, targets, or risk limits. Fully validated across 9 deterministic test suites in `worker/test/shadow.test.ts`.
 
-2. **Dukascopy Swiss Bank Interbank Feed Fallback**:
-   - For index CFDs (`US30`, `GER40`, `JAPAN225`, `NAS100`), Dukascopy Swiss interbank feed is prioritized over Yahoo Finance when OANDA tokens are absent.
-   - Hourly and daily candle files are cached in D1/KV to respect rate limits.
+2. **Historical Runway Expansion (120 H4 Bars)**:
+   - In `worker/src/config.ts`, `baseCandlesLimit` was updated from 40 to 120 bars of H4 history.
+   - Ensures multi-day institutional origin key levels (such as Gold's 4303–4313 zone) remain active in the storyline engine across pullbacks.
 
-3. **Deriv WebSocket & Vercel Relay Architecture**:
+3. **Pre-Entry Watch Radar Enhancement**:
+   - `WATCH_STATES` expanded to include `TOUCH` alongside `SWEEP` and `SHIFT`.
+   - Free conversion channels receive heads-up notifications when price enters an armed origin zone, alerting subscribers before liquidity sweeps and structural shifts occur.
+
+4. **Deriv WebSocket & Vercel Relay Architecture**:
    - Deriv retired legacy endpoints (`ws.derivws.com` and `ws.binaryws.com` returning HTTP 520).
    - Market data now connects via `wss://api.derivws.com/trading/v1/options/ws/public` requiring no demo token.
    - Dedicated low-latency micro-service deployed to Vercel (`https://slk-bot.vercel.app/candles`) with persistent WebSocket connection and 15s candle caching.
 
-4. **Dedicated 4-Channel Routing & Signal Isolation**:
+5. **Dedicated 4-Channel Routing & Signal Isolation**:
    - `getFreeChatIds()` strictly separates routing by `isDerivPair()`:
      - Synthetic watch radar, bias confirmation cards, and win teasers route **only** to `TELEGRAM_DERIV_FREE_CHAT_ID`.
      - Synthetics are **completely excluded** from the Forex Free channel (`TELEGRAM_FREE_CHAT_ID`).
@@ -100,13 +108,13 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 
 ## 3. Real Live Track Record & Verified Ledger
 
-- **Total Recorded Trades:** 26 setups
-- **Resolved Trades (Win/Loss):** 20 trades
+- **Total Recorded Trades:** 27 setups
+- **Resolved Trades (Win/Loss):** 21 trades
   - **Take Profit Hits:** 15 trades (yielding between +0.95R and +4.53R each, targeted at internal swing points / min 2.5R)
-  - **Stop Loss Hits:** 5 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
+  - **Stop Loss Hits:** 6 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
   - **Expired Trades:** 6 trades (0.00R after exceeding the 120-bar resolution window)
-- **Decided Win Rate:** **75.0%** (15 / 20)
-- **Cumulative Net Return:** **+30.78R** (exact sum: `30.779R`)
+- **Decided Win Rate:** **71.4%** (15 / 21)
+- **Cumulative Net Return:** **+29.78R** (exact sum: `29.779R`)
 - **Top Performer:** Gold (`XAUUSD`) and US30 with multi-target internal liquidity resolutions.
 - **Synthetics Clean Slate:** Production database purged of legacy stale test records; 0-trade clean slate ready for live streaming.
 
