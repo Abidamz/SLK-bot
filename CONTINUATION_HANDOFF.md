@@ -1,9 +1,9 @@
 # SLK Radar — Complete Continuation Handoff & Architecture Summary
 
-**Updated:** 2026-09-25 (UTC)  
+**Updated:** 2026-09-28 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `fe50b31` (`chore(worker): bind DERIV_PROXY_URL to live verified Vercel relay`)
+**Latest Synced Commit:** `07d1a5c` (`fix(notify): isolate synthetic signals strictly to synthetics channels and remove from forex free channel`)
 
 ---
 
@@ -22,9 +22,10 @@
   - Public Ledger: `GET /alerts`
   - Scan Logs: `GET /scan-log`
 - **Telegram Channels:**
-  - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID`
-  - **24/7 Synthetics Channel:** `SLK HUB | 24/7 SYNTHETICS` (ID: `-1004426439958`, private VIP channel managed via Whop `@whop_bot`)
-  - **Free Community Hub:** Managed via `TELEGRAM_FREE_CHAT_ID`
+  - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
+  - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
+  - **Free Institutional Hub:** Managed via `TELEGRAM_FREE_CHAT_ID` (`SLK TRADING HUB (FREE)`)
+  - **Dedicated Free Synthetics Hub:** Managed via `TELEGRAM_DERIV_FREE_CHAT_ID` (`/admin/connect-deriv-free-channel`)
   - **Personal VIP Push DM:** Managed via `TELEGRAM_DM_CHAT_ID`
 
 ---
@@ -36,7 +37,7 @@ MODE=paper
 WATCH_NOTIFY=true             (Active radar for heads-up detection)
 VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics channels receive ONLY confirmed entries and outcomes)
 PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=2             (Interleaved round-robin: scans 1 institutional + 1 synthetic pair per minute)
+PAIR_BATCH_SIZE=1             (Free tier CPU optimized: 1 pair scanned per minute, ~3.2ms CPU execution, eliminates 10ms CPU limits)
 MIN_RISK_ATR=0.8
 MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
@@ -44,9 +45,10 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 
 ### Channel Routing Protocol
-- **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero noise, zero watch spam.
-- **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs.
-- **Free Signal Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards (with armed retracement zones), and automated win teasers when VIP trades hit Take Profit.
+- **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero watch radar, zero synthetics.
+- **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs. Zero watch radar, zero forex.
+- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. Zero synthetics.
+- **Dedicated Free Synthetics Channel (`TELEGRAM_DERIV_FREE_CHAT_ID`):** 24/7 unverified synthetic watch radar, bias confirmation cards, and V75 win teasers with Whop VIP upgrade links.
 - **Personal DM (`TELEGRAM_DM_CHAT_ID`):** Simultaneous personal push for confirmed entries.
 
 ### Freshness & Anti-Spam Safety Gates
