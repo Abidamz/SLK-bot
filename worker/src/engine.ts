@@ -331,9 +331,9 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const buf = cfg.slBufferAtr * atrE;
   let sl = isShort ? s.invLevel + buf : s.invLevel - buf;
   let risk = isShort ? sl - entry : entry - sl;
-  if (risk <= 0 || risk < cfg.minRiskAtr * atrE) {
+  if (risk <= 0) {
     a.diagnostics.riskRejects++;
-    a.diagnostics.riskRejectReasons[risk <= 0 ? "nonPositiveRisk" : "belowMinRiskAtr"]++;
+    a.diagnostics.riskRejectReasons.nonPositiveRisk++;
     return null;
   }
   // Enforce Option A: Minimum Stop Floor in Pips/Points (e.g. 10 pips forex, 25-30 pts indices)
@@ -344,6 +344,11 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
       sl = isShort ? entry + minDistance : entry - minDistance;
       risk = minDistance;
     }
+  }
+  if (risk < cfg.minRiskAtr * atrE) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons.belowMinRiskAtr++;
+    return null;
   }
   // stop-width ceiling: beyond 2× ATR the entry is structurally too far from
   // its invalidation — re-enter later rather than alert with a fat stop

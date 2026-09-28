@@ -238,6 +238,25 @@ export function isDerivPair(pair?: string | null): boolean {
   return DERIV_SYNTHETIC_PAIRS.has(p) || p.startsWith("R_") || p.startsWith("V1") || p.startsWith("V2") || p.startsWith("V5") || p.startsWith("V7") || p.startsWith("1HZ");
 }
 
+export function isForexPair(pair?: string | null): boolean {
+  if (!pair) return false;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p) || INDEX_POINT_PAIRS.has(p) || p.startsWith("XAU") || p.startsWith("XAG")) return false;
+  return p.length === 6 || p.includes("USD") || p.includes("EUR") || p.includes("GBP") || p.includes("JPY") || p.includes("AUD") || p.includes("NZD") || p.includes("CAD") || p.includes("CHF");
+}
+
+export function strategyForPair(pair: string, base: StrategyConfig): StrategyConfig {
+  if (isDerivPair(pair)) {
+    return {
+      ...base,
+      retestToleranceAtr: 0.50, // accommodate synthetic tick volatility
+      retestWindow: 28,         // allow synthetic pullbacks extra bars to form
+      minTpR: 2.0,              // 2:1 asymmetric target floor for synthetics
+    };
+  }
+  return base;
+}
+
 export function pipSize(pair: string): number {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
   if (isDerivPair(p)) return 0.01; // synthetic indices calculate in points/cents

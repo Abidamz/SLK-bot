@@ -13,7 +13,7 @@
  *
  *  The browser dashboard never touches this Worker with secrets — all
  *  provider keys and channel credentials live as Worker secrets only. */
-import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair } from "./config";
+import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair } from "./config";
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
@@ -329,9 +329,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
+        const pairStrategy = strategyForPair(pair, cfg.strategy);
         const { alerts, events, diagnostics: replay } = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
-          cfg: cfg.strategy, mode: cfg.mode, provider: providerName,
+          cfg: pairStrategy, mode: cfg.mode, provider: providerName,
           d1Candles: d1 ?? undefined,
           h1Candles: feeds["1h"],
           h4Candles: h4,

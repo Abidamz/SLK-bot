@@ -1013,7 +1013,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
             pair: req.pair,
             tf: req.tf,
             from: "twelvedata",
-            to: yahooUnavailable ? "dukascopy" : "yahoo",
+            to: "dukascopy",
             reason: msg,
           }));
         } else {
@@ -1022,30 +1022,34 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
       }
     }
 
+    // Primary institutional fallback: Dukascopy Swiss Bank (keyless, tick-level precision)
+    try {
+      const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+      if (candles.length > 0) {
+        return { provider: "dukascopy", candles };
+      }
+    } catch (dukaErr) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "slk.provider.fallback",
+        pair: req.pair,
+        tf: req.tf,
+        from: "dukascopy",
+        to: yahooUnavailable ? "failed" : "yahoo",
+        reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+      }));
+    }
+
     if (!yahooUnavailable) {
       try {
         const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
         return { provider: "yahoo", candles };
       } catch (yahooErr) {
         yahooUnavailable = true;
-        console.warn(JSON.stringify({
-          level: "warn",
-          msg: "slk.provider.fallback",
-          pair: req.pair,
-          tf: req.tf,
-          from: "yahoo",
-          to: "dukascopy",
-          reason: yahooErr instanceof Error ? yahooErr.message : String(yahooErr),
-        }));
       }
     }
 
-    try {
-      const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
-      return { provider: "dukascopy", candles };
-    } catch (dukaErr) {
-      throw dukaErr;
-    }
+    throw new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
   }
 
   const candles = provider === "oanda"
