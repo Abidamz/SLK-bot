@@ -1,0 +1,67 @@
+name: Deploy SLK Radar
+
+on:
+  push:
+    branches:
+      - arena/01a0b153-slk-bot
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Test Suite & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests
+        run: npm test -- --run
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate Dashboard JS
+        run: node --check dashboard/app.js
+
+  deploy:
+    name: Deploy Worker & Pages to Cloudflare
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/arena/01a0b153-slk-bot' || github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Deploy Cloudflare Worker (slk-alert-worker)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'worker'
+          command: deploy
+
+      - name: Deploy Cloudflare Pages (slk-radar)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dashboard --project-name=slk-radar --branch=main
