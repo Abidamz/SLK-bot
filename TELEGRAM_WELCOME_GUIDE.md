@@ -26,11 +26,11 @@ Every signal we issue enforces a strict minimum 1:2.5R to 1:4.0R reward asymmetr
 • Never revenge trade or manually alter the pre-calculated Stop Loss.
 
 ──────────────────────────────────────────────
-🚨 2. HOW TO READ TRADE ALERTS
+🚨 2. HOW TO READ TRADE ALERTS (VIP CLEAN FEED)
 ──────────────────────────────────────────────
-When a confirmed setup fires, you will receive an alert formatted like this:
+Your VIP channel is a zero-noise, high-conviction execution feed. You will ONLY receive alerts when a confirmed entry candle closes:
 
-🚨 [ACTION REQUIRED] ENTRY SIGNAL
+🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY
 PAIR: XAUUSD (Gold)
 TIMEFRAME: 30m
 DIRECTION: SHORT 🔴
@@ -41,7 +41,7 @@ TP2 (RUNNER): 4260.000 (External Liquidity)
 BIAS GRADE: A_GRADE (Aligned 4H/1H Vantage)
 
 How to execute:
-1. Open your MT4/MT5/cTrader or Broker App immediately.
+1. Open your MT4/MT5/cTrader or Broker App immediately upon alert.
 2. Calculate your lot size based on the Stop Loss distance (never guess).
 3. Place your entry (Market execution if within 3-5 pips of Entry, or Limit Order at Entry Price).
 4. Set your Stop Loss and TP1 exactly as stated.
@@ -51,33 +51,25 @@ How to execute:
 ──────────────────────────────────────────────
 To protect capital and maximize high-RR trend days, follow our 3-step exit model:
 
-1. When Price Hits TP1 (+2.5R to +3.0R):
+1. When Price Hits TP1 (+2.5R to +3.5R):
    ✅ Secure 70% to 80% of your position size.
    ✅ Move Stop Loss to Entry Price (BREAKEVEN). The trade is now 100% risk-free!
 
 2. Managing the Runner (TP2):
    🚀 Let the remaining 20% to 30% position run toward TP2.
-   🚀 Trail your stop behind subsequent 15m/1H swing highs/lows.
+   🚀 Trail your stop behind subsequent swing highs/lows.
 
-3. If Invalidation Occurs Before Entry:
-   ⚠️ If price breaks the invalidation level before tapping entry, DO NOT ENTER. The setup is expired.
-
-──────────────────────────────────────────────
-🧭 4. WATCH & DIRECTIONAL BIAS ALERTS
-──────────────────────────────────────────────
-Throughout the day, you will also see background WATCH cards:
-• These are heads-up notifications showing that higher-timeframe liquidity has been swept and an origin zone is armed.
-• WATCH alerts are NOT triggers to enter market orders yet.
-• They prepare you for the confirmed entry signal that follows!
+3. Invalidation Before Retest:
+   ⚠️ If a candle closes beyond the stated invalidation level before reaching entry, the setup is expired. Do not enter.
 
 ──────────────────────────────────────────────
-📊 5. TRANSPARENCY & VERIFIED TRACK RECORD
+📊 4. TRANSPARENCY & VERIFIED TRACK RECORD
 ──────────────────────────────────────────────
-Unlike retail signal channels that hide losses, every alert, stop loss, and target hit is permanently logged in real time on our public ledger:
+Unlike retail signal channels that hide losses, every single alert, stop loss, and target hit is permanently logged in real time on our public ledger:
 
-🌐 Live Performance Journal: https://slk-radar.pages.dev
+🌐 Live Audited Performance Journal: https://slk-radar.pages.dev
 📜 Terms of Service & Disclaimer: https://slk-radar.pages.dev/terms
-👑 Manage Subscription / Whop: https://whop.com/hub
+👑 Manage Subscription via Whop: https://whop.com/hub
 
 Turn on notifications for this channel and PIN this chat to the top of your Telegram.
 
