@@ -34,6 +34,7 @@ export interface Env {
   TELEGRAM_DM_CHAT_ID?: string;
   TELEGRAM_FREE_CHAT_ID?: string;
   TELEGRAM_DERIV_CHAT_ID?: string;
+  TELEGRAM_DERIV_FREE_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
   fetchFn?: typeof fetch;
   ADMIN_KEY?: string;
@@ -300,6 +301,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                   const origin = findRetracementOrigin(feeds, dir, currentPrice, cfg.strategy) ?? latestStory?.origin ?? null;
                   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
                   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+                  const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
                   const { notifyBias } = await import("./notify");
                   await notifyBias({
                     ...env,
@@ -310,6 +312,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                     VIP_WATCH_TELEGRAM: env.VIP_WATCH_NOTIFY,
                     TELEGRAM_FREE_CHAT_ID: freeChatId,
                     TELEGRAM_DERIV_CHAT_ID: derivChatId,
+                    TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId,
                   }, pair, dir, diag, origin, currentPrice);
                 }
                 await store.setKv(biasKey, String(lastCandle.t));
@@ -356,6 +359,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             const tgAllowed = notificationPrefs.telegramWatch !== false;
             const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
             const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+            const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
             await notifyWatch({
               ...env,
               fetchFn,
@@ -366,6 +370,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               WATCH_DISCORD: notificationPrefs.discordWatch ? "true" : "false",
               TELEGRAM_FREE_CHAT_ID: freeChatId,
               TELEGRAM_DERIV_CHAT_ID: derivChatId,
+              TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId,
             }, ev, tf);
           }
         }
@@ -566,7 +571,8 @@ async function resolveOutcomes(
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
-      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, rec, oc);
+      const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
+      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId }, rec, oc);
     }
   }
 }
@@ -651,11 +657,11 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true,
-        service: "slk-alert-worker · Build ca76a84 (Calibrated Strategy & Swiss Interbank)",
+        service: "slk-alert-worker · Free Tier CPU Optimized & Dedicated Free Synthetics Channel",
         mode: cfg.mode,
-        version: "v2.5.0",
-        commit: "ca76a84",
-        buildTime: "2026-09-28 09:30 UTC",
+        version: "v2.5.1",
+        commit: "arena/01a0b153-slk-bot",
+        buildTime: "2026-09-28 09:45 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
@@ -1334,6 +1340,154 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/connect-deriv-free-channel" || url.pathname === "/api/connect-deriv-free-channel") && request.method === "GET") {
+      if (!env.TELEGRAM_BOT_TOKEN) {
+        return json({ ok: false, error: "Telegram bot token missing (TELEGRAM_BOT_TOKEN)" }, 400);
+      }
+      const doFetch = env.fetchFn ?? fetch;
+      const getUpdatesUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates`;
+      try {
+        const resp = await doFetch(getUpdatesUrl);
+        const data = await resp.json() as {
+          ok: boolean;
+          result?: Array<{
+            channel_post?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            my_chat_member?: { chat?: { id: number; title?: string; username?: string; type: string } };
+            message?: { chat?: { id: number; title?: string; username?: string; type: string } };
+          }>;
+        };
+        if (!data.ok || !Array.isArray(data.result)) {
+          return json({ ok: false, error: "Failed to fetch updates from Telegram API" }, 502);
+        }
+
+        const store = makeStore(env.DB);
+        const vipChannelId = env.TELEGRAM_CHAT_ID ? env.TELEGRAM_CHAT_ID.trim() : "";
+        const freeChannelId = (env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || "").trim();
+        const derivVipChannelId = (env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || "").trim();
+
+        const channelChats = data.result
+          .map((u) => u.channel_post?.chat || u.my_chat_member?.chat || (u.message?.chat?.type === "channel" ? u.message.chat : null))
+          .filter((c): c is { id: number; title?: string; username?: string; type: string } => Boolean(c && (c.type === "channel" || c.type === "supergroup")));
+
+        const candidates = channelChats.filter((c) =>
+          String(c.id) !== vipChannelId &&
+          String(c.id) !== freeChannelId &&
+          String(c.id) !== derivVipChannelId
+        );
+
+        if (candidates.length === 0) {
+          return json({
+            ok: false,
+            error: "No new channel detected. Please ensure: 1) You added your bot as Administrator with 'Post Messages' permission to your Free Synthetics Channel, 2) Post any message (e.g. 'hello') in the channel, then refresh /admin/connect-deriv-free-channel.",
+            allUpdatesCount: data.result.length,
+          }, 404);
+        }
+
+        const chosen = candidates[candidates.length - 1];
+        const derivFreeChatId = String(chosen.id);
+        await store.setKv("telegram_deriv_free_chat_id", derivFreeChatId);
+
+        const { sendTelegram, toBold } = await import("./notify");
+        const boldV75 = toBold("V75");
+        const welcome = [
+          `⚡ SLK Free Synthetics Radar Connected! ⚡`,
+          "",
+          `📍 Active Instrument: 🌟【 ${boldV75} 】🌟 (Volatility 75 Index)`,
+          "• Status     : Connected & Active ✅",
+          "• Operational: 24 Hours / 7 Days a Week",
+          "• Purpose    : Unverified Watch Radar & Bias Teasers",
+          "",
+          "Automated V75 watch radar, bias confirmation cards, and verified win teasers will be delivered here automatically.",
+        ].join("\n");
+
+        await sendTelegram(env, welcome, { silent: false, pin: false, chatId: derivFreeChatId });
+
+        return json({
+          ok: true,
+          status: "connected",
+          derivFreeChatId,
+          channelTitle: chosen.title || chosen.username || "Free Synthetics Channel",
+          message: `Successfully linked Free Synthetics Channel "${chosen.title || chosen.username}" (ID: ${derivFreeChatId})! Verification greeting sent.`,
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
+    if ((url.pathname === "/admin/set-deriv-free-channel" || url.pathname === "/api/set-deriv-free-channel") && (request.method === "GET" || request.method === "POST")) {
+      const chatIdParam = url.searchParams.get("chat_id") || url.searchParams.get("id");
+      if (!chatIdParam) {
+        return json({ ok: false, error: "Missing ?chat_id=<channel_id> query parameter" }, 400);
+      }
+      const store = makeStore(env.DB);
+      let derivFreeChatId = chatIdParam.trim();
+      while (derivFreeChatId.startsWith("@@")) {
+        derivFreeChatId = derivFreeChatId.slice(1);
+      }
+      await store.setKv("telegram_deriv_free_chat_id", derivFreeChatId);
+      const { sendTelegram } = await import("./notify");
+      try {
+        await sendTelegram(env, `🔔 SLK Free Synthetics Radar linked to ${derivFreeChatId}!\nAutomated 24/7 Deriv synthetic watch radar, bias cards, and win teasers will be delivered here automatically.`, { silent: false, pin: false, chatId: derivFreeChatId });
+      } catch (testErr) {
+        return json({
+          ok: true,
+          status: "saved_with_warning",
+          derivFreeChatId,
+          warning: `Saved channel ID, but test message failed: ${testErr instanceof Error ? testErr.message : String(testErr)}. Ensure you have added your bot as an Administrator in the channel with permission to Post Messages!`,
+        });
+      }
+      return json({
+        ok: true,
+        status: "connected",
+        derivFreeChatId,
+        message: `Successfully linked Free Synthetics Channel ${derivFreeChatId}! Verification message sent to channel.`,
+      });
+    }
+
+    if ((url.pathname === "/admin/test-deriv-free-teaser" || url.pathname === "/api/test-deriv-free-teaser") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
+      if (!derivFreeChatId) {
+        return json({ ok: false, error: "No Free Synthetics or Free Channel configured. Visit /admin/set-deriv-free-channel?chat_id=@your_free_synthetics_channel" }, 400);
+      }
+      if (await checkTestCooldown(store, "test-deriv-free-teaser")) {
+        return json({
+          ok: true,
+          status: "debounced",
+          message: "A test teaser was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+        });
+      }
+      const { sendTelegram, toBold } = await import("./notify");
+      const boldV75 = toBold("Volatility 75 Index");
+      const teaser = [
+        `🎯 TP1 HIT — 🌟【 ${boldV75} 】🌟 LONG (+3.12R)`,
+        "",
+        `📍 Pair      : 🌟【 ${boldV75} 】🌟 (V75)`,
+        "• Timeframe : 30m",
+        "• Direction : LONG 🟢",
+        "• Entry     : 450,320.00",
+        "• Target 1  : 451,550.00 (+3.12R) ✅",
+        "• Target 2  : Running risk-free toward external liquidity",
+        "",
+        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "",
+        "Stop missing the moves.",
+        "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+        "👉 Live Verified Journal: https://slk-radar.pages.dev",
+      ].join("\n");
+      try {
+        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: derivFreeChatId });
+        return json({
+          ok: true,
+          targetChatId: derivFreeChatId,
+          status: "delivered",
+          message: "Automated Synthetics Win Teaser was successfully delivered to your Free Synthetics Channel!",
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     if ((url.pathname === "/admin/test-deriv" || url.pathname === "/api/test-deriv") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id"));
@@ -1617,6 +1771,7 @@ export default {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id"));
+      const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id"));
       return json({
         ok: true,
         botConfigured: Boolean(env.TELEGRAM_BOT_TOKEN),
@@ -1628,12 +1783,17 @@ export default {
         freeChannelChatId: freeChatId ? `${freeChatId.slice(0, 4)}...${freeChatId.slice(-4)}` : null,
         derivChannelConfigured: Boolean(derivChatId),
         derivChannelChatId: derivChatId ? `${derivChatId.slice(0, 4)}...${derivChatId.slice(-4)}` : null,
+        derivFreeChannelConfigured: Boolean(derivFreeChatId),
+        derivFreeChannelChatId: derivFreeChatId ? `${derivFreeChatId.slice(0, 4)}...${derivFreeChatId.slice(-4)}` : null,
         instructions: {
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
-          connectDerivChannel: "1. Add bot as Admin to Synthetics channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",
+          connectDerivChannel: "1. Add bot as Admin to Synthetics VIP channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",
           setDerivManually: "Visit /admin/set-deriv-channel?chat_id=<channel_id>",
-          testDeriv: "Visit /admin/test-deriv to dispatch a sample V75 setup card.",
+          connectDerivFreeChannel: "1. Add bot as Admin to Free Synthetics channel. 2. Post a message. 3. Visit /admin/connect-deriv-free-channel.",
+          setDerivFreeManually: "Visit /admin/set-deriv-free-channel?chat_id=<channel_id_or_username>",
+          testDeriv: "Visit /admin/test-deriv to dispatch a sample V75 setup card to VIP.",
+          testDerivFreeTeaser: "Visit /admin/test-deriv-free-teaser to preview an automated V75 Win Teaser in the Free Synthetics channel.",
           setFreeChannel: "Visit /admin/set-free-channel?chat_id=@your_free_channel_username",
           testFreeTeaser: "Visit /admin/test-free-teaser to preview the automated TP1 Win Teaser in the free channel.",
           testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",

@@ -435,6 +435,14 @@ export function formatBiasCard(
   return lines.join("\n");
 }
 
+export function getFreeChatIds(env: NotifyEnv, pair?: string): string[] {
+  const isDeriv = pair ? isDerivPair(pair) : false;
+  if (isDeriv && env.TELEGRAM_DERIV_FREE_CHAT_ID) {
+    return parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID);
+  }
+  return parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+}
+
 export async function notifyBias(
   env: NotifyEnv,
   pair: string,
@@ -448,8 +456,8 @@ export async function notifyBias(
   const results = await broadcast({ ...env, watchOnly: true }, card, color, { silent: true, pin: false, sendToDm: false, pair });
 
   // Broadcast bias card to Free Telegram Channel as educational market context
-  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
-    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+  const freeChatIds = getFreeChatIds(env, pair);
+  if (env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
     const freeCard = formatBiasCard(pair, direction, diag, origin, currentPrice, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {
@@ -471,8 +479,8 @@ export async function notifyWatch(
   const results = await broadcast({ ...env, watchOnly: true }, text, AMBER, { silent: true, pin: false, sendToDm: false, pair: ev.pair });
 
   // Broadcast watch heads-up to Free Telegram Channel
-  if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
-    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+  const freeChatIds = getFreeChatIds(env, ev.pair);
+  if (env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
     const freeText = formatWatch(ev, entryTf, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {
@@ -495,8 +503,8 @@ export async function notifyOutcome(
   const results = await broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true, pair });
 
   // When a VIP trade hits Take Profit (TP_HIT), automatically send the high-converting Win Teaser to the Free Channel!
-  if (oc.status === "TP_HIT" && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_FREE_CHAT_ID) {
-    const freeChatIds = parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+  const freeChatIds = getFreeChatIds(env, pair);
+  if (oc.status === "TP_HIT" && env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
     const teaser = formatFreeTpTeaser(rec, oc);
     for (const freeId of freeChatIds) {
       try {

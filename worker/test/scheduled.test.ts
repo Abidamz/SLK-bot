@@ -478,6 +478,41 @@ describe("scheduled scan cycle", () => {
     // Free channel does NOT receive the confirmed alert (VIP exclusive)
     const freeAlert = rawBodies.find((b) => b.body.chat_id === "-100_FREE_RADAR" && b.url.includes("/sendMessage"));
     expect(freeAlert).toBeUndefined();
+
+    // 4. Dedicated Synthetics Free Channel routing when TELEGRAM_DERIV_FREE_CHAT_ID is configured
+    rawBodies.length = 0;
+    const splitFreeEnv = {
+      ...notifyEnv,
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_INSTITUTIONAL",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100_FREE_SYNTHETICS",
+    };
+
+    // Watch for EURUSD (institutional) -> routes to -100_FREE_INSTITUTIONAL
+    await notifyWatch(splitFreeEnv, {
+      setupId: "test:EURUSD:15m:SHORT:V:1.0850:2026-09-25",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 1.0850,
+    }, "15m");
+
+    // Watch for V75 (synthetics) -> routes to -100_FREE_SYNTHETICS
+    await notifyWatch(splitFreeEnv, {
+      setupId: "test:V75:15m:LONG:V:45000:2026-09-25",
+      pair: "V75",
+      candleTime: Date.now(),
+      state: "SWEEP",
+      reason: "internal sweep",
+      price: 45000,
+    }, "15m");
+
+    const instFreeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_INSTITUTIONAL");
+    const derivFreeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_SYNTHETICS");
+    expect(instFreeWatches).toHaveLength(1);
+    expect(instFreeWatches[0].body.text).toContain("EURUSD");
+    expect(derivFreeWatches).toHaveLength(1);
+    expect(derivFreeWatches[0].body.text).toContain("V75");
   });
 
   it("interleaves institutional and synthetic pairs in round-robin batches so neither starves", async () => {
