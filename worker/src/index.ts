@@ -651,11 +651,11 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true,
-        service: "slk-alert-worker · Build 42f8e5e (VIP Clean Feed Active)",
+        service: "slk-alert-worker · Build ca76a84 (Calibrated Strategy & Swiss Interbank)",
         mode: cfg.mode,
-        version: "v2.4.0",
-        commit: "42f8e5e",
-        buildTime: "2026-09-25 22:20 UTC",
+        version: "v2.5.0",
+        commit: "ca76a84",
+        buildTime: "2026-09-28 09:30 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
