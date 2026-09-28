@@ -434,9 +434,10 @@ describe("scheduled scan cycle", () => {
     expect(vipInstWatch).toHaveLength(0);
     expect(vipDerivWatch).toHaveLength(0);
 
-    // Free Channel SHOULD receive the watch alerts with the upgrade teaser
+    // Forex Free Channel SHOULD receive ONLY institutional watch alerts (synthetics strictly excluded)
     const freeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_RADAR");
-    expect(freeWatches).toHaveLength(2);
+    expect(freeWatches).toHaveLength(1);
+    expect(freeWatches[0].body.text).toContain("EURUSD");
     expect(freeWatches[0].body.text).toContain("Join VIP");
 
     // 3. Notify Confirmed Alert for Institutional pair

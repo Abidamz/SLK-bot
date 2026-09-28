@@ -273,7 +273,7 @@ export async function broadcast(
   const targetChannelIds = options.chatId
     ? [options.chatId]
     : isDeriv
-    ? parseChatIds(env.TELEGRAM_DERIV_CHAT_ID || env.TELEGRAM_CHAT_ID)
+    ? parseChatIds(env.TELEGRAM_DERIV_CHAT_ID)
     : parseChatIds(env.TELEGRAM_CHAT_ID);
 
   if (telegramAllowed && env.TELEGRAM_BOT_TOKEN && targetChannelIds.length > 0) {
@@ -437,9 +437,12 @@ export function formatBiasCard(
 
 export function getFreeChatIds(env: NotifyEnv, pair?: string): string[] {
   const isDeriv = pair ? isDerivPair(pair) : false;
-  if (isDeriv && env.TELEGRAM_DERIV_FREE_CHAT_ID) {
+  if (isDeriv) {
+    // Synthetic watch radar, bias confirmation cards, and win teasers route strictly
+    // to the dedicated Synthetics Free channel (TELEGRAM_DERIV_FREE_CHAT_ID) and never leak into the Forex Free channel
     return parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID);
   }
+  // Institutional (forex/indices) teasers route strictly to the Forex Free channel
   return parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
 }
 

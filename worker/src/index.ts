@@ -1446,9 +1446,9 @@ export default {
 
     if ((url.pathname === "/admin/test-deriv-free-teaser" || url.pathname === "/api/test-deriv-free-teaser") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
-      const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id"));
+      const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id"));
       if (!derivFreeChatId) {
-        return json({ ok: false, error: "No Free Synthetics or Free Channel configured. Visit /admin/set-deriv-free-channel?chat_id=@your_free_synthetics_channel" }, 400);
+        return json({ ok: false, error: "No Free Synthetics Channel configured. Visit /admin/connect-deriv-free-channel or set ?chat_id= via /admin/set-deriv-free-channel" }, 400);
       }
       if (await checkTestCooldown(store, "test-deriv-free-teaser")) {
         return json({
