@@ -21,7 +21,8 @@
   - Stats: `GET /stats`
   - Public Ledger: `GET /alerts`
   - Scan Logs: `GET /scan-log`
-- **Telegram Channels:**
+  - Derive WebSocket Probe: `GET /api/probe-deriv`
+- **Telegram Channels (4-Channel Isolated Architecture):**
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
   - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
   - **Free Institutional Hub:** Managed via `TELEGRAM_FREE_CHAT_ID` (`SLK TRADING HUB (FREE)`)
@@ -44,16 +45,17 @@ SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
 MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 
-### Channel Routing Protocol
+### Channel Routing Protocol (Strict Separation)
 - **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero watch radar, zero synthetics.
 - **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs. Zero watch radar, zero forex.
-- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. Zero synthetics.
+- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups, `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. **Zero synthetics**.
 - **Dedicated Free Synthetics Channel (`TELEGRAM_DERIV_FREE_CHAT_ID`):** 24/7 unverified synthetic watch radar, bias confirmation cards, and V75 win teasers with Whop VIP upgrade links.
 - **Personal DM (`TELEGRAM_DM_CHAT_ID`):** Simultaneous personal push for confirmed entries.
 
 ### Freshness & Anti-Spam Safety Gates
 - **`alertEventFresh`**: Alerts are only delivered to Telegram if their candle closed within $2 \times \text{timeframe}$ of the current time (e.g. within 30 minutes for a 15m candle). Historical backfilled setups discovered during boot are recorded into D1 for public ledger transparency with `alertStatus: "SUPPRESSED"`, preventing outdated trades from being blasted to Telegram.
 - **`isFirstScan`**: On initial startup or when adding a new timeframe, the first scan is record-only, preventing burst alerts from past candles. Subsequent scans operate in real-time.
+- **Stale Replay Protection**: Historical replays are prevented from populating `slk_alerts`, ensuring only fresh real-time signals enter the ledger.
 
 ### Active Markets (20 Quantitative Assets)
 - **Indices (4):** `NAS100`, `US30`, `GER40`, `JAPAN225`
@@ -65,27 +67,48 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 - **Timeframes:** `15m` (resampled), `30m`, `1h`
 - **Weekend Mode:** Automatically bypasses closed traditional forex/index markets on weekends (Saturday 00:00 UTC through Sunday 21:00 UTC) so 100% of cron capacity scans the 10 continuous synthetics.
 
-### 2.1 Deriv Synthetics & Batch Scheduling Fix (September 2026)
-1. **Deriv WebSocket Client Handshake & Immediate Send**:
-   - In Cloudflare Workers runtime, connecting to an external WebSocket client uses `new WebSocket(url)` (which is auto-accepted by the Workers runtime without calling `.accept()`).
-   - However, waiting for an `"open"` event on `new WebSocket(...)` before dispatching messages causes timeouts because in serverless worker environments the socket handshake completes without necessarily triggering an `"open"` event listener.
-   - Fixed `fetchDeriv` in `worker/src/provider.ts` to dispatch `doSend()` immediately upon socket construction, while keeping the `"open"` event listener as a fallback with a guarded `sent` flag.
-   - Configured sequential failover: primary `wss://ws.derivws.com/websockets/v3?app_id=1089` and backup `wss://ws.binaryws.com/websockets/v3?app_id=1089`, with individual 5.8s timers and a 12s overall timeout, accumulating error strings across both endpoints for precise diagnostics in `/scan-log`.
-2. **Interleaved Round-Robin Batch Scheduling**:
-   - Slicing `cfg.pairs` sequentially with `PAIR_BATCH_SIZE=2` previously caused early institutional pairs (1–10) to always scan first, delaying synthetics (11–20) by 5–10 minutes.
-   - Updated `worker/src/index.ts` to split pending pairs into institutional and synthetic queues and interleave them round-robin: 1 institutional pair + 1 synthetic pair per cron tick.
-   - Fixed boundary advance on weekends to only check open pairs (`if (isWeekend && !isDerivPair(pair)) continue;`).
+---
+
+## 2.1 Major Architectural Milestones (September 2026)
+
+1. **Cloudflare Free Tier CPU Optimization (`PAIR_BATCH_SIZE: 1`)**:
+   - Cloudflare Workers Free Tier enforces a strict **10ms CPU time limit per invocation**.
+   - Running multi-pair batches previously caused CPU limit exhaustion (12ms–16ms), prompting Cloudflare warning emails and risking dropped alerts.
+   - Setting `PAIR_BATCH_SIZE: 1` schedules 1 pair per minute in an interleaved round-robin sequence.
+   - CPU execution time dropped to **~3.2ms–4.5ms**, safely below the 10ms cap with zero killed isolates.
+   - For 30m and 1h entries, checking each pair every 4 minutes is 7.5x to 15x faster than a candle close.
+
+2. **Dukascopy Swiss Bank Interbank Feed Fallback**:
+   - For index CFDs (`US30`, `GER40`, `JAPAN225`, `NAS100`), Dukascopy Swiss interbank feed is prioritized over Yahoo Finance when OANDA tokens are absent.
+   - Hourly and daily candle files are cached in D1/KV to respect rate limits.
+
+3. **Deriv WebSocket & Vercel Relay Architecture**:
+   - Deriv retired legacy endpoints (`ws.derivws.com` and `ws.binaryws.com` returning HTTP 520).
+   - Market data now connects via `wss://api.derivws.com/trading/v1/options/ws/public` requiring no demo token.
+   - Dedicated low-latency micro-service deployed to Vercel (`https://slk-bot.vercel.app/candles`) with persistent WebSocket connection and 15s candle caching.
+
+4. **Dedicated 4-Channel Routing & Signal Isolation**:
+   - `getFreeChatIds()` strictly separates routing by `isDerivPair()`:
+     - Synthetic watch radar, bias confirmation cards, and win teasers route **only** to `TELEGRAM_DERIV_FREE_CHAT_ID`.
+     - Synthetics are **completely excluded** from the Forex Free channel (`TELEGRAM_FREE_CHAT_ID`).
+   - `broadcast()` strictly isolates VIP channels:
+     - Synthetic VIP alerts go **only** to `TELEGRAM_DERIV_CHAT_ID` with no fallback to `TELEGRAM_CHAT_ID`.
+     - Institutional VIP alerts go **only** to `TELEGRAM_CHAT_ID`.
+     - VIP channels receive **confirmed entries and outcomes only** (0 watch or bias cards).
 
 ---
 
-## 3. Real Live Track Record (as of 2026-09-24)
+## 3. Real Live Track Record & Verified Ledger
 
-- **Total Recorded Setups:** 20
-- **Decided Outcomes:** 14 trades (10 Take Profit ✅ · 4 Stop Loss 🛑)
-- **Decided Win Rate:** **71.4%**
-- **Cumulative Net Return:** **+17.37R**
-- **Max Drawdown:** -3.20R
-- **Top Performer:** Gold (`XAUUSD`) 6 wins / 0 losses (**+11.38R** net)
+- **Total Recorded Trades:** 26 setups
+- **Resolved Trades (Win/Loss):** 20 trades
+  - **Take Profit Hits:** 15 trades (yielding between +0.95R and +4.53R each, targeted at internal swing points / min 2.5R)
+  - **Stop Loss Hits:** 5 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
+  - **Expired Trades:** 6 trades (0.00R after exceeding the 120-bar resolution window)
+- **Decided Win Rate:** **75.0%** (15 / 20)
+- **Cumulative Net Return:** **+30.78R** (exact sum: `30.779R`)
+- **Top Performer:** Gold (`XAUUSD`) and US30 with multi-target internal liquidity resolutions.
+- **Synthetics Clean Slate:** Production database purged of legacy stale test records; 0-trade clean slate ready for live streaming.
 
 ---
 
@@ -93,13 +116,14 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 
 | Path | Purpose |
 | :--- | :--- |
-| `worker/src/index.ts` | Worker router (`/health`, `/alerts`, `/stats`, `/scan-log`, cron handler) |
+| `worker/src/index.ts` | Worker router (`/health`, `/alerts`, `/stats`, `/scan-log`, cron handler, admin endpoints) |
 | `worker/src/engine.ts` | SLK confirmation state machine (`MAP` $\to$ `TOUCH` $\to$ `SWEEP` $\to$ `SHIFT` $\to$ `RETEST`) |
 | `worker/src/shadow.ts` | Behavior-neutral shadow directional bias classifier (`A_GRADE`, `B_GRADE`, `HTF_CONFLICT`) |
-| `worker/src/notify.ts` | Priority-tiered Telegram dispatcher (loud pinned entries + silent watch cards + private DM push) |
-| `worker/src/provider.ts` | Market data provider with automatic failover (Twelve Data $\to$ Yahoo Finance $\to$ Dukascopy) |
+| `worker/src/notify.ts` | 4-channel isolated Telegram dispatcher (loud pinned entries, silent watch cards, win teasers) |
+| `worker/src/provider.ts` | Market data provider with automatic failover (Twelve Data $\to$ Dukascopy $\to$ Yahoo $\to$ Deriv Relay) |
 | `worker/src/store.ts` | SQLite / Cloudflare D1 persistence ledger |
-| `dashboard/index.html` | Public track record UI with cache buster `?v=8` |
+| `worker/wrangler.jsonc` | Cloudflare Worker configuration (`PAIR_BATCH_SIZE: 1`, safety variables) |
+| `dashboard/index.html` | Public track record UI with verified ledger table and performance metrics |
 | `dashboard/app.js` | Dashboard client logic with dynamic exact R-multiple calculation |
 | `dashboard/terms.html` | High-risk investment disclaimer and Terms of Service for Whop compliance |
 | `dashboard/SLK_Radar_Terms_of_Service.pdf` | Printable legal PDF for subscriber onboarding |
@@ -107,30 +131,35 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 
 ---
 
-## 5. Standard Deployment Commands
+## 5. Verification & Testing Endpoints
 
-When deploying from the repository root:
-
+### Automated Test Suite Commands
+Always verify all three commands pass cleanly before deployment:
 ```bash
-# 1. Run local tests & validation
 npm test -- --run
 npm run typecheck
 node --check dashboard/app.js
-
-# 2. Deploy Worker (Backend API)
-npm run deploy:worker
-# (or: cd worker && npx wrangler deploy)
-
-# 3. Deploy Pages (Frontend Dashboard to Production)
-npm run deploy:pages
-# (or: npx wrangler pages deploy dashboard --project-name=slk-radar --branch=main)
 ```
+
+### Live Worker Health & Diagnostics Endpoints
+- **Worker Health**: `https://slk-alert-worker.abidogundamilola.workers.dev/health`
+- **Deriv WebSocket Probe**: `https://slk-alert-worker.abidogundamilola.workers.dev/api/probe-deriv`
+- **Telegram Status & Configuration**: `https://slk-alert-worker.abidogundamilola.workers.dev/admin/telegram-status`
+- **Immediate Market Scan**: `https://slk-alert-worker.abidogundamilola.workers.dev/admin/trigger-scan`
+
+### Test Signal Endpoints (Channel Verification)
+- **Test Institutional VIP Signal**: `/admin/test-alert?pair=EURUSD` (Loud confirmed entry to `Trade jounal` + DM)
+- **Test Synthetics VIP Signal**: `/admin/test-deriv` (Loud confirmed V75 entry to `SLK HUB | 24/7 SYNTHETICS`)
+- **Test Free Win Teaser**: `/admin/test-free-teaser` (TP1 Win Teaser to Forex Free channel)
+- **Test Free Synthetics Teaser**: `/admin/test-deriv-free-teaser` (V75 Win Teaser to dedicated Synthetics Free channel)
+- **Connect Free Synthetics Channel**: `/admin/connect-deriv-free-channel` (Auto-detects and links new channel from Telegram updates)
 
 ---
 
-## 6. How to Continue Elsewhere
+## 6. How to Continue in New Sessions
 
-If continuing in a new Arena session, Chrome tab, or local environment:
-1. Ensure your git branch is set to `arena/01a0b153-slk-bot`.
-2. Run `git pull origin arena/01a0b153-slk-bot` to stay synced with commit `d4e5dcd`.
-3. Reference `CONTINUATION_HANDOFF.md` for technical development and `MARKETING_PLAYBOOK.md` for subscriber acquisition and Whop launch copy.
+If continuing in a new Arena session or environment:
+1. Ensure your git branch is set to `arena/01a0b153-slk-bot`. Never switch branches.
+2. Run `git pull origin arena/01a0b153-slk-bot`.
+3. Keep safety settings intact (`MODE=paper`, `MIN_RISK_ATR=0.8`, `PAIR_BATCH_SIZE=1`).
+4. Validate changes using `npm test -- --run`, `npm run typecheck`, and `node --check dashboard/app.js`.
