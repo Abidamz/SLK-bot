@@ -157,6 +157,11 @@ node --check dashboard/app.js
 ### Real-Time Intrabar Outcome Resolution (v2.5.3)
 - Open trades are evaluated every single minute across all pairs via `resolveAllOpenAlerts()`.
 - Intrabar touch evaluation (`validateCandlesForOutcome`) includes the forming active candle when `slOnClose` is false, eliminating the previous 15–45 minute wait for candle closes and queue rotations.
+
+### Automated Continuous Deployment (Cloudflare Workers Builds Active)
+- **Deployment is 100% automated via Cloudflare Workers Builds**: Cloudflare is directly connected to GitHub (`Abidamz/SLK-bot`) watching branch `arena/01a0b153-slk-bot` with root directory `worker`.
+- **Every `git push origin arena/01a0b153-slk-bot` automatically triggers Cloudflare to build and deploy live within 30 seconds.**
+- **GitHub Actions is bypassed**: The account-level disabled status on GitHub Actions does not affect production because Cloudflare uses its own native GitHub webhook and build runners.
 ---
 
 ## 6. How to Continue in New Sessions
