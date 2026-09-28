@@ -552,3 +552,35 @@ describe("scheduled scan cycle", () => {
     expect(tick4.pairs).toEqual([]);
     expect(store.scanLog[store.scanLog.length - 1].note).toBe("idle (no candle close)");
   });
+
+  it("strictly alternates between institutional and synthetic pairs when PAIR_BATCH_SIZE is 1", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({
+      PAIRS: "EURUSD,GBPUSD,V75,V100",
+      PAIR_BATCH_SIZE: "1",
+      ENTRY_TFS: "30m",
+    });
+
+    const baseTime = NOW + 30_000;
+
+    // Tick 1: Inst (EURUSD)
+    const tick1 = await scanAll(env, { now: baseTime, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick1.pairs).toEqual(["EURUSD"]);
+
+    // Tick 2: Deriv (V75)
+    const tick2 = await scanAll(env, { now: baseTime + 60_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick2.pairs).toEqual(["V75"]);
+
+    // Tick 3: Inst (GBPUSD)
+    const tick3 = await scanAll(env, { now: baseTime + 120_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick3.pairs).toEqual(["GBPUSD"]);
+
+    // Tick 4: Deriv (V100)
+    const tick4 = await scanAll(env, { now: baseTime + 180_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick4.pairs).toEqual(["V100"]);
+
+    // Tick 5: Boundary complete
+    const tick5 = await scanAll(env, { now: baseTime + 240_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick5.pairs).toEqual([]);
+  });

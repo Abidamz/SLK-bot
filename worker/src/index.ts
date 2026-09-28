@@ -180,21 +180,57 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
     // Interleave institutional and Deriv synthetic pairs so neither group starves the other.
     // In each cron tick, pairs are chosen round-robin between pending institutional and pending synthetic pairs.
-    const pendingInst = pending.filter((p) => !isDerivPair(p));
-    const pendingDeriv = pending.filter((p) => isDerivPair(p));
+    // For single-pair batches (PAIR_BATCH_SIZE: 1), we track the last scanned group in KV so invocations
+    // alternate strictly between institutional and Deriv pairs.
+    const lastGroup = await store.getKv("last_scanned_group");
+
+    // Sort pending pairs within each group by oldest scan time first so no single pair is starved by newer boundaries
+    const pairLastScans = new Map<string, number>();
+    for (const p of pending) {
+      let minScan = Infinity;
+      for (const { tf } of due) {
+        const raw = await store.getKv(`last_scan:${p}:${tf}`);
+        const val = raw ? Number(raw) : 0;
+        if (val < minScan) minScan = val;
+      }
+      pairLastScans.set(p, minScan === Infinity ? 0 : minScan);
+    }
+
+    const sortOldest = (a: string, b: string) => {
+      const sa = pairLastScans.get(a) ?? 0;
+      const sb = pairLastScans.get(b) ?? 0;
+      if (sa !== sb) return sa - sb;
+      return cfg.pairs.indexOf(a) - cfg.pairs.indexOf(b);
+    };
+
+    const pendingInst = pending.filter((p) => !isDerivPair(p)).sort(sortOldest);
+    const pendingDeriv = pending.filter((p) => isDerivPair(p)).sort(sortOldest);
     const selected: string[] = [];
     let instIdx = 0;
     let derivIdx = 0;
+
+    // Start with the opposite group of what was scanned last if both are pending
+    const startWithDeriv = lastGroup === "inst" && pendingDeriv.length > 0;
+
     while (selected.length < cfg.pairBatchSize && (instIdx < pendingInst.length || derivIdx < pendingDeriv.length)) {
-      if (instIdx < pendingInst.length && (selected.length % 2 === 0 || derivIdx >= pendingDeriv.length)) {
-        selected.push(pendingInst[instIdx++]);
-      } else if (derivIdx < pendingDeriv.length) {
+      const wantDeriv = startWithDeriv
+        ? (selected.length % 2 === 0 ? derivIdx < pendingDeriv.length : instIdx >= pendingInst.length)
+        : (selected.length % 2 === 1 ? derivIdx < pendingDeriv.length : instIdx >= pendingInst.length);
+
+      if (wantDeriv && derivIdx < pendingDeriv.length) {
         selected.push(pendingDeriv[derivIdx++]);
       } else if (instIdx < pendingInst.length) {
         selected.push(pendingInst[instIdx++]);
+      } else if (derivIdx < pendingDeriv.length) {
+        selected.push(pendingDeriv[derivIdx++]);
       }
     }
     pairsToScan = selected;
+
+    if (selected.length > 0) {
+      const lastPicked = selected[selected.length - 1];
+      await store.setKv("last_scanned_group", isDerivPair(lastPicked) ? "deriv" : "inst");
+    }
   }
 
   for (const pair of pairsToScan) {
@@ -497,7 +533,7 @@ export function alertEventFresh(alert: { candleCloseTime: number }, tf: string, 
   const secs = TF_SECONDS[tf];
   if (!secs) return false;
   const age = now - alert.candleCloseTime;
-  return age >= 0 && age <= 2 * secs * 1000;
+  return age >= 0 && age <= 2.5 * secs * 1000;
 }
 
 function lastRawIsEmpty(v: string | null): boolean {
