@@ -154,6 +154,9 @@ node --check dashboard/app.js
 - **Test Free Synthetics Teaser**: `/admin/test-deriv-free-teaser` (V75 Win Teaser to dedicated Synthetics Free channel)
 - **Connect Free Synthetics Channel**: `/admin/connect-deriv-free-channel` (Auto-detects and links new channel from Telegram updates)
 
+### Real-Time Intrabar Outcome Resolution (v2.5.3)
+- Open trades are evaluated every single minute across all pairs via `resolveAllOpenAlerts()`.
+- Intrabar touch evaluation (`validateCandlesForOutcome`) includes the forming active candle when `slOnClose` is false, eliminating the previous 15–45 minute wait for candle closes and queue rotations.
 ---
 
 ## 6. How to Continue in New Sessions

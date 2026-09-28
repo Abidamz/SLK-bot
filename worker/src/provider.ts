@@ -1112,3 +1112,34 @@ export function validateAndClose(
     throw new DataQualityError("stale feed (newest closed candle is too old)");
   return closed;
 }
+
+/** Reliability gate for open trade outcome resolution.
+ *  Unlike validateAndClose (which strictly drops in-progress candles so setup entries
+ *  only confirm on finalized closes), outcome tracking allows real-time touch evaluation
+ *  on the currently forming candle when slOnClose is false (wick-based SL/TP). */
+export function validateCandlesForOutcome(
+  candles: Candle[], tfSeconds: number, now: number, slOnClose = false, minLen = 1,
+): Candle[] {
+  if (!Array.isArray(candles) || candles.length === 0) return [];
+  const valid: Candle[] = [];
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    const ok =
+      Number.isFinite(c.t) && Number.isFinite(c.o) && Number.isFinite(c.h)
+      && Number.isFinite(c.l) && Number.isFinite(c.c)
+      && c.h >= Math.max(c.o, c.c) - 1e-12 && c.l <= Math.min(c.o, c.c) + 1e-12;
+    if (!ok) continue;
+    if (valid.length > 0 && c.t <= valid[valid.length - 1].t) continue;
+
+    const isClosed = c.t + tfSeconds * 1000 <= now;
+    if (isClosed) {
+      valid.push(c);
+    } else if (!slOnClose) {
+      // In-progress active candle: include for real-time intrabar touch evaluation
+      valid.push(c);
+    }
+  }
+  if (valid.length < minLen) return [];
+  return valid;
+}
+

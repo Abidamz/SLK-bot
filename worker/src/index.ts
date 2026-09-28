@@ -18,7 +18,7 @@ import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
-import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, DataQualityError } from "./provider";
+import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete } from "./features";
 import { storylineSeries } from "./storyline";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
@@ -109,6 +109,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const pairsScanned: string[] = [];
 
   // which entry TFs closed a candle since the previous successful scan?
+  // 1. Real-time intrabar outcome resolution: check all open trades every minute
+  // so SL/TP hits are resolved immediately without waiting for candle closes or round-robin rotation.
+  const resolvedOutcomes = await resolveAllOpenAlerts(env, store, cfg, now, fetchFn);
+
   const due: { tf: string; secs: number; boundary: number }[] = [];
   for (const [tf, secs] of Object.entries(cfg.entryTfs)) {
     const boundary = Math.floor((now - cfg.scanDelayMs) / 1000 / secs) * secs * 1000;
@@ -125,7 +129,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     await store.insertScanLog({
       ts: new Date(now).toISOString(), timeframes: "", pairs: "",
       alerts: 0, events: 0, errors: "", durationMs: Date.now() - startedAt,
-      note: "idle (no candle close)", diagnostics,
+      note: resolvedOutcomes > 0 ? `resolved ${resolvedOutcomes} open alert(s) (realtime)` : "idle (no candle close)", diagnostics,
     });
     return { diagnostics, ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
   }
@@ -588,8 +592,9 @@ async function resolveOutcomes(
   env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
   pair: string, tf: string, candles: Candle[],
   fetchFn: typeof fetch = fetch,
-): Promise<void> {
+): Promise<number> {
   const open = await store.openAlerts(pair, tf);
+  let resolvedCount = 0;
   for (const rec of open) {
     const isSuppressed = rec.alert_status === "SUPPRESSED";
     const entryTime = Date.parse(rec.candle_close_time as string);
@@ -602,6 +607,7 @@ async function resolveOutcomes(
     );
     if (!oc) continue;
     await store.recordOutcome(String(rec.setup_id), oc);
+    resolvedCount++;
     console.info(JSON.stringify({ level: "info", msg: "outcome", setupId: rec.setup_id, status: oc.status, r: oc.rMultiple }));
     if (cfg.notifyOutcomes && !isSuppressed) {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
@@ -611,6 +617,57 @@ async function resolveOutcomes(
       await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId }, rec, oc);
     }
   }
+  return resolvedCount;
+}
+
+/** Instant outcome resolution for all currently open trades across any pair.
+ *  Runs every minute so TP/SL touches resolve immediately without waiting for
+ *  the next boundary candle close or the pair's turn in the round-robin queue. */
+export async function resolveAllOpenAlerts(
+  env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
+  now = Date.now(), fetchFn: typeof fetch = fetch,
+): Promise<number> {
+  const open = await store.openAlerts();
+  if (!open || !open.length) return 0;
+
+  // Group open alerts by canonical_symbol and entry_timeframe
+  const groups = new Map<string, { pair: string; tf: string }>();
+  for (const rec of open) {
+    const pair = String(rec.canonical_symbol);
+    const tf = String(rec.entry_timeframe);
+    const key = `${pair}:${tf}`;
+    if (!groups.has(key)) groups.set(key, { pair, tf });
+  }
+
+  let totalResolved = 0;
+  const apiKey = env.TWELVEDATA_API_KEY ?? "";
+  const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
+  const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
+  const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
+  const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
+
+  for (const { pair, tf } of groups.values()) {
+    const tfSec = TF_SECONDS[tf] ?? 1800;
+    try {
+      const res = await fetchMarketData({
+        pair, tf, limit: 30,
+        tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl,
+        symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
+      });
+      const outcomeCandles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
+      if (outcomeCandles.length) {
+        const count = await resolveOutcomes(env, store, cfg, pair, tf, outcomeCandles, fetchFn);
+        totalResolved += count;
+      }
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn", msg: "realtime outcome resolution check failed",
+        pair, tf, error: err instanceof Error ? err.message : String(err),
+      }));
+    }
+  }
+
+  return totalResolved;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -693,11 +750,11 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true,
-        service: "slk-alert-worker · Free Tier CPU Optimized & Dedicated Free Synthetics Channel",
+        service: "slk-alert-worker · Free Tier CPU Optimized & Real-Time Intrabar Outcome Resolution",
         mode: cfg.mode,
-        version: "v2.5.2",
+        version: "v2.5.3",
         commit: "arena/01a0b153-slk-bot",
-        buildTime: "2026-09-28 14:10 UTC · Auto-Interleaved Scheduler Active",
+        buildTime: "2026-09-28 20:30 UTC · Real-Time Intrabar Resolution Active",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
