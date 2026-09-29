@@ -116,4 +116,26 @@ describe("MemStore", () => {
     expect(await s.recentEvents(10)).toHaveLength(0);
     expect(s.scanLog).toHaveLength(0);
   });
+
+  it("handles waitlist registration, deduplication, and retrieval", async () => {
+    const s = new MemStore();
+    const res1 = await s.insertWaitlist({ email: "trader1@example.com", telegram: "@trader1", segmentInterest: "all" });
+    expect(res1.ok).toBe(true);
+    expect(res1.duplicate).toBe(false);
+
+    // Duplicate email registration
+    const res2 = await s.insertWaitlist({ email: "trader1@example.com", telegram: "@trader1_new", segmentInterest: "synthetics" });
+    expect(res2.ok).toBe(true);
+    expect(res2.duplicate).toBe(true);
+
+    const res3 = await s.insertWaitlist({ email: "trader2@example.com", segmentInterest: "institutional" });
+    expect(res3.ok).toBe(true);
+    expect(res3.duplicate).toBe(false);
+
+    expect(await s.getWaitlistCount()).toBe(2);
+    const list = await s.listWaitlist(10);
+    expect(list).toHaveLength(2);
+    expect(list.map((r) => r.email)).toContain("trader1@example.com");
+    expect(list.map((r) => r.email)).toContain("trader2@example.com");
+  });
 });

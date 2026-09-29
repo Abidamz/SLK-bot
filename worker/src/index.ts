@@ -805,6 +805,64 @@ export default {
       });
     }
 
+    if ((url.pathname === "/api/waitlist" || url.pathname === "/waitlist") && request.method === "POST") {
+      let body: Record<string, unknown> = {};
+      try {
+        body = (await request.json()) as Record<string, unknown>;
+      } catch {
+        return json({ error: "invalid JSON body" }, 400);
+      }
+      const email = typeof body.email === "string" ? body.email.trim() : "";
+      if (!email || !email.includes("@") || !email.includes(".")) {
+        return json({ error: "A valid email address is required" }, 400);
+      }
+      const telegram = typeof body.telegram === "string" ? body.telegram.trim() : undefined;
+      const segmentInterest = typeof body.marketInterest === "string"
+        ? body.marketInterest.trim()
+        : (typeof body.segmentInterest === "string" ? body.segmentInterest.trim() : "all");
+      const source = typeof body.source === "string" ? body.source.trim() : "dashboard";
+
+      const store = makeStore(env.DB);
+      const res = await store.insertWaitlist({ email, telegram, segmentInterest, source });
+
+      // Forward admin notification if bot token and target chat ID configured
+      try {
+        const { sendTelegram } = await import("./notify");
+        const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
+        const targetChatId = dmChatId || env.TELEGRAM_CHAT_ID;
+        if (env.TELEGRAM_BOT_TOKEN && targetChatId) {
+          const alertMsg = [
+            "🎟️ NEW VIP WAITLIST RESERVATION 🎟️",
+            "",
+            `• Email   : ${email}`,
+            `• Telegram: ${telegram || "Not provided"}`,
+            `• Market  : ${segmentInterest}`,
+            `• Source  : ${source}`,
+            `• Time    : ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
+            "",
+            "Cohort 2 priority queue reservation recorded.",
+          ].join("\n");
+          await sendTelegram(env, alertMsg, { silent: true, pin: false, chatId: targetChatId }).catch(() => {});
+        }
+      } catch {
+        // Notification failure should never fail the user waitlist response
+      }
+
+      return json({
+        ok: true,
+        message: "Successfully reserved your priority spot on the Cohort 2 waitlist!",
+        duplicate: res.duplicate ?? false,
+      });
+    }
+
+    if ((url.pathname === "/api/waitlist" || url.pathname === "/admin/waitlist") && request.method === "GET") {
+      if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
+      const store = makeStore(env.DB);
+      const total = await store.getWaitlistCount();
+      const items = await store.listWaitlist(100);
+      return json({ ok: true, total, items });
+    }
+
     if (url.pathname === "/scan-log" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);

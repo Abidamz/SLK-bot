@@ -79,5 +79,19 @@
 @media(max-width:700px){.seg-card-stats{grid-template-columns:1fr 1fr}}
 .seg-badge-pill{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--muted)}
 
+/* Institutional Cohort Waitlist Card */
+.waitlist-card{margin-top:24px;border:1px solid rgba(246,198,109,0.38)!important;background:radial-gradient(circle at 92% 12%,rgba(246,198,109,0.09) 0,transparent 45%),linear-gradient(145deg,#131b27,#0f151f)!important;position:relative;overflow:hidden}
+.waitlist-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:18px}
+.waitlist-header h2{font-size:20px;letter-spacing:-.02em;margin:0 0 6px;color:#fff}
+.waitlist-perks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+.waitlist-perk{background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+.waitlist-perk-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.waitlist-form-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:10px;align-items:center}
+.waitlist-submit-btn{padding:11px 22px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#f59e0b,#eab308);color:#120c02;border:none;border-radius:10px;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(245,158,11,0.35);transition:transform .15s ease,box-shadow .15s ease}
+.waitlist-submit-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(245,158,11,0.52);filter:brightness(1.08)}
+.waitlist-submit-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+@media(max-width:850px){.waitlist-form-grid{grid-template-columns:1fr}.waitlist-submit-btn{width:100%}}
+
+
 
 

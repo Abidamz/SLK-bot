@@ -83,6 +83,18 @@ export const DASHBOARD_HTML = `<!doctype html>
 @media(max-width:700px){.seg-card-stats{grid-template-columns:1fr 1fr}}
 .seg-badge-pill{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:5px;background:rgba(255,255,255,.07);color:var(--muted)}
 
+/* Institutional Cohort Waitlist Card */
+.waitlist-card{margin-top:24px;border:1px solid rgba(246,198,109,0.38)!important;background:radial-gradient(circle at 92% 12%,rgba(246,198,109,0.09) 0,transparent 45%),linear-gradient(145deg,#131b27,#0f151f)!important;position:relative;overflow:hidden}
+.waitlist-header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:18px}
+.waitlist-header h2{font-size:20px;letter-spacing:-.02em;margin:0 0 6px;color:#fff}
+.waitlist-perks{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+.waitlist-perk{background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+.waitlist-perk-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.waitlist-form-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:10px;align-items:center}
+.waitlist-submit-btn{padding:11px 22px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#f59e0b,#eab308);color:#120c02;border:none;border-radius:10px;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(245,158,11,0.35);transition:transform .15s ease,box-shadow .15s ease}
+.waitlist-submit-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(245,158,11,0.52);filter:brightness(1.08)}
+.waitlist-submit-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+@media(max-width:850px){.waitlist-form-grid{grid-template-columns:1fr}.waitlist-submit-btn{width:100%}}
 
 </style>
 </head>
@@ -312,6 +324,87 @@ export const DASHBOARD_HTML = `<!doctype html>
           </dl>
         </article>
       </div>
+
+      <!-- Institutional Cohort Waitlist Card -->
+      <article class="panel waitlist-card" id="waitlistCard">
+        <div class="waitlist-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+              <span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #f6c66d; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">🔒 COHORT WAITLIST · STRICT DESK CAPACITY</span>
+              <span class="pill" style="background: rgba(140, 240, 198, 0.15); color: var(--accent); border: 1px solid rgba(140, 240, 198, 0.3);">Next Cohort: Batch 2</span>
+            </div>
+            <h2>Reserve Priority Access for Cohort Drop</h2>
+            <p style="color: var(--muted); font-size: 13.5px; max-width: 680px; margin: 0; line-height: 1.5;">
+              To protect market liquidity execution, eliminate slippage, and maintain direct trader onboarding, VIP desk seats are released in strictly capped cohorts of 25 desks. Lock your priority position 2 hours before the public drop.
+            </p>
+          </div>
+          <div style="text-align: right; min-width: 160px;">
+            <span style="font-size: 11px; color: var(--muted); display: block; text-transform: uppercase; letter-spacing: 0.06em;">Cohort 1 Status</span>
+            <strong style="color: #f6c66d; font-size: 15px; display: block; margin: 2px 0;">90% Filled (18/20)</strong>
+            <small style="color: #8793a7; font-size: 11px;">Queue position assigned on signup</small>
+          </div>
+        </div>
+
+        <div class="waitlist-perks">
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">⚡</span>
+              <strong style="font-size: 13px; color: var(--text);">2-Hour Early Access</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Direct checkout link dispatched to your inbox 2 hours before the next public drop.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">🏷️</span>
+              <strong style="font-size: 13px; color: #f6c66d;">$49/mo Lifetime Lock</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Lock in founding pricing (code FOUNDING20) permanently before the $100/mo jump.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">📊</span>
+              <strong style="font-size: 13px; color: var(--accent);">Live Market Briefs</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Instant invite to the Free Telegram Hub for weekly HTF liquidity levels and win teasers.</p>
+          </div>
+        </div>
+
+        <form id="waitlistForm" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="waitlist-form-grid">
+            <input type="email" id="waitlistEmail" placeholder="Enter your email address *" required style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <input type="text" id="waitlistTelegram" placeholder="Telegram @handle (optional)" style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <select id="waitlistInterest" style="padding: 11px 12px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+              <option value="all">🌐 All Markets (Full Suite)</option>
+              <option value="institutional">🏛️ Institutional FX & Indices</option>
+              <option value="synthetics">⚡ 24/7 Algorithmic Synthetics</option>
+            </select>
+            <button type="submit" id="waitlistSubmitBtn" class="waitlist-submit-btn">
+              Reserve Priority Spot →
+            </button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
+            <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
+            <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
+              ⚡ Can't wait? 2 Founding Member spots currently open on Whop ($49/mo) →
+            </a>
+          </div>
+          <div id="waitlistFeedback" style="display: none; font-size: 13px; padding: 10px 14px; border-radius: 8px;"></div>
+        </form>
+
+        <div id="waitlistSuccess" style="display: none; padding: 22px; border-radius: 12px; background: rgba(140, 240, 198, 0.08); border: 1px solid rgba(140, 240, 198, 0.35); text-align: center;">
+          <div style="font-size: 30px; margin-bottom: 8px;">🎉</div>
+          <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
+          <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join Free Telegram Hub (@SLK_radar)
+            </a>
+            <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join Free Synthetics Radar
+            </a>
+          </div>
+        </div>
+      </article>
     </section>
 
     <section id="performance" class="tab-panel">
@@ -1258,10 +1351,70 @@ document.querySelectorAll('[data-close-chart]').forEach(x => x.addEventListener(
   if ($('chartModal')) $('chartModal').hidden = true;
 }));
 
+function setupWaitlist() {
+  const form = $('waitlistForm');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('waitlistEmail')?.value?.trim();
+    const telegram = $('waitlistTelegram')?.value?.trim();
+    const marketInterest = $('waitlistInterest')?.value || 'all';
+    const feedback = $('waitlistFeedback');
+    const btn = $('waitlistSubmitBtn');
+    const successCard = $('waitlistSuccess');
+
+    if (!email || !email.includes('@')) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedback.style.color = '#ff8f9b';
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        feedback.textContent = 'Please enter a valid email address.';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Reserving Spot…';
+    }
+
+    try {
+      const res = await api('/api/waitlist', {
+        method: 'POST',
+        body: JSON.stringify({ email, telegram, marketInterest, source: 'dashboard' })
+      });
+
+      if (res && res.ok) {
+        form.style.display = 'none';
+        if (successCard) successCard.style.display = 'block';
+      } else {
+        throw new Error(res?.error || 'Failed to join waitlist');
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedback.style.color = '#ff8f9b';
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        feedback.textContent = \`Unable to reserve spot: \${err.message || 'Please try again later'}\`;
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Reserve Priority Spot →';
+      }
+    }
+  });
+}
+
 // Automatically load live data on open
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', loadAll);
+  document.addEventListener('DOMContentLoaded', () => {
+    setupWaitlist();
+    loadAll();
+  });
 } else {
+  setupWaitlist();
   loadAll();
 }
 

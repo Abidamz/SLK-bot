@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <header class="topbar">
@@ -232,6 +232,87 @@
           </dl>
         </article>
       </div>
+
+      <!-- Institutional Cohort Waitlist Card -->
+      <article class="panel waitlist-card" id="waitlistCard">
+        <div class="waitlist-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+              <span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #f6c66d; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">🔒 COHORT WAITLIST · STRICT DESK CAPACITY</span>
+              <span class="pill" style="background: rgba(140, 240, 198, 0.15); color: var(--accent); border: 1px solid rgba(140, 240, 198, 0.3);">Next Cohort: Batch 2</span>
+            </div>
+            <h2>Reserve Priority Access for Cohort Drop</h2>
+            <p style="color: var(--muted); font-size: 13.5px; max-width: 680px; margin: 0; line-height: 1.5;">
+              To protect market liquidity execution, eliminate slippage, and maintain direct trader onboarding, VIP desk seats are released in strictly capped cohorts of 25 desks. Lock your priority position 2 hours before the public drop.
+            </p>
+          </div>
+          <div style="text-align: right; min-width: 160px;">
+            <span style="font-size: 11px; color: var(--muted); display: block; text-transform: uppercase; letter-spacing: 0.06em;">Cohort 1 Status</span>
+            <strong style="color: #f6c66d; font-size: 15px; display: block; margin: 2px 0;">90% Filled (18/20)</strong>
+            <small style="color: #8793a7; font-size: 11px;">Queue position assigned on signup</small>
+          </div>
+        </div>
+
+        <div class="waitlist-perks">
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">⚡</span>
+              <strong style="font-size: 13px; color: var(--text);">2-Hour Early Access</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Direct checkout link dispatched to your inbox 2 hours before the next public drop.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">🏷️</span>
+              <strong style="font-size: 13px; color: #f6c66d;">$49/mo Lifetime Lock</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Lock in founding pricing (code FOUNDING20) permanently before the $100/mo jump.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">📊</span>
+              <strong style="font-size: 13px; color: var(--accent);">Live Market Briefs</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Instant invite to the Free Telegram Hub for weekly HTF liquidity levels and win teasers.</p>
+          </div>
+        </div>
+
+        <form id="waitlistForm" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="waitlist-form-grid">
+            <input type="email" id="waitlistEmail" placeholder="Enter your email address *" required style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <input type="text" id="waitlistTelegram" placeholder="Telegram @handle (optional)" style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <select id="waitlistInterest" style="padding: 11px 12px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+              <option value="all">🌐 All Markets (Full Suite)</option>
+              <option value="institutional">🏛️ Institutional FX & Indices</option>
+              <option value="synthetics">⚡ 24/7 Algorithmic Synthetics</option>
+            </select>
+            <button type="submit" id="waitlistSubmitBtn" class="waitlist-submit-btn">
+              Reserve Priority Spot →
+            </button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
+            <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
+            <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
+              ⚡ Can't wait? 2 Founding Member spots currently open on Whop ($49/mo) →
+            </a>
+          </div>
+          <div id="waitlistFeedback" style="display: none; font-size: 13px; padding: 10px 14px; border-radius: 8px;"></div>
+        </form>
+
+        <div id="waitlistSuccess" style="display: none; padding: 22px; border-radius: 12px; background: rgba(140, 240, 198, 0.08); border: 1px solid rgba(140, 240, 198, 0.35); text-align: center;">
+          <div style="font-size: 30px; margin-bottom: 8px;">🎉</div>
+          <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
+          <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join Free Telegram Hub (@SLK_radar)
+            </a>
+            <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join Free Synthetics Radar
+            </a>
+          </div>
+        </div>
+      </article>
     </section>
 
     <section id="performance" class="tab-panel">
@@ -508,6 +589,6 @@
       </div>
     </div>
   </footer>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

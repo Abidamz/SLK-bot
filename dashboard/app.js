@@ -666,9 +666,69 @@ document.querySelectorAll('[data-close-chart]').forEach(x => x.addEventListener(
   if ($('chartModal')) $('chartModal').hidden = true;
 }));
 
+function setupWaitlist() {
+  const form = $('waitlistForm');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('waitlistEmail')?.value?.trim();
+    const telegram = $('waitlistTelegram')?.value?.trim();
+    const marketInterest = $('waitlistInterest')?.value || 'all';
+    const feedback = $('waitlistFeedback');
+    const btn = $('waitlistSubmitBtn');
+    const successCard = $('waitlistSuccess');
+
+    if (!email || !email.includes('@')) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedback.style.color = '#ff8f9b';
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        feedback.textContent = 'Please enter a valid email address.';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Reserving Spot…';
+    }
+
+    try {
+      const res = await api('/api/waitlist', {
+        method: 'POST',
+        body: JSON.stringify({ email, telegram, marketInterest, source: 'dashboard' })
+      });
+
+      if (res && res.ok) {
+        form.style.display = 'none';
+        if (successCard) successCard.style.display = 'block';
+      } else {
+        throw new Error(res?.error || 'Failed to join waitlist');
+      }
+    } catch (err) {
+      if (feedback) {
+        feedback.style.display = 'block';
+        feedback.style.background = 'rgba(239, 68, 68, 0.15)';
+        feedback.style.color = '#ff8f9b';
+        feedback.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        feedback.textContent = `Unable to reserve spot: ${err.message || 'Please try again later'}`;
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Reserve Priority Spot →';
+      }
+    }
+  });
+}
+
 // Automatically load live data on open
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', loadAll);
+  document.addEventListener('DOMContentLoaded', () => {
+    setupWaitlist();
+    loadAll();
+  });
 } else {
+  setupWaitlist();
   loadAll();
 }

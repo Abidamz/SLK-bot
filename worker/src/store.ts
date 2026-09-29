@@ -60,6 +60,25 @@ export interface Store {
   expireOpenAlerts(): Promise<number>;
   resetAllAlerts(): Promise<void>;
   clearSyntheticsAlerts(): Promise<number>;
+  insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }>;
+  getWaitlistCount(): Promise<number>;
+  listWaitlist(limit?: number): Promise<WaitlistRow[]>;
+}
+
+export interface WaitlistEntry {
+  email: string;
+  telegram?: string;
+  segmentInterest?: string;
+  createdUtc?: string;
+  source?: string;
+}
+
+export interface WaitlistRow extends Record<string, unknown> {
+  email: string;
+  telegram: string | null;
+  segment_interest: string | null;
+  created_utc: string;
+  source: string | null;
 }
 
 
@@ -323,6 +342,47 @@ export class D1Store implements Store {
       .run();
     return Number(res.meta?.changes ?? 0);
   }
+
+  async insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }> {
+    const createdUtc = entry.createdUtc || new Date().toISOString();
+    const email = entry.email.toLowerCase().trim();
+    try {
+      const res = await this.db
+        .prepare(
+          `INSERT OR IGNORE INTO slk_waitlist (email, telegram, segment_interest, created_utc, source)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .bind(email, entry.telegram?.trim() || null, entry.segmentInterest || "all", createdUtc, entry.source || "dashboard")
+        .run();
+      const duplicate = (res.meta?.changes ?? 0) === 0;
+      return { ok: true, duplicate };
+    } catch {
+      // Fallback: If table is not yet migrated, safely persist to slk_kv so signups are never dropped
+      await this.setKv(`waitlist:${email}`, JSON.stringify({ ...entry, email, createdUtc }));
+      return { ok: true, duplicate: false };
+    }
+  }
+
+  async getWaitlistCount(): Promise<number> {
+    try {
+      const row = await this.db.prepare("SELECT count(*) as c FROM slk_waitlist").bind().first();
+      return Number(row?.c ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  async listWaitlist(limit = 100): Promise<WaitlistRow[]> {
+    try {
+      const res = await this.db
+        .prepare("SELECT email, telegram, segment_interest, created_utc, source FROM slk_waitlist ORDER BY created_utc DESC LIMIT ?")
+        .bind(limit)
+        .all();
+      return (res.results ?? []) as WaitlistRow[];
+    } catch {
+      return [];
+    }
+  }
 }
 
 // ---------------------------------------------------------- in-memory impl
@@ -335,6 +395,7 @@ export class MemStore implements Store {
   private eventKeys = new Set<string>();
   preferences: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
   preferenceAudit: Record<string, unknown>[] = [];
+  waitlist = new Map<string, WaitlistEntry>();
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
     if (this.alerts.has(a.setupId)) return false;
@@ -469,6 +530,33 @@ export class MemStore implements Store {
     }
     this.events = this.events.filter((e) => !isDerivPair(String(e.pair ?? "")));
     return count;
+  }
+
+  async insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }> {
+    const email = entry.email.toLowerCase().trim();
+    const duplicate = this.waitlist.has(email);
+    this.waitlist.set(email, {
+      ...entry,
+      email,
+      createdUtc: entry.createdUtc || new Date().toISOString(),
+    });
+    return { ok: true, duplicate };
+  }
+
+  async getWaitlistCount(): Promise<number> {
+    return this.waitlist.size;
+  }
+
+  async listWaitlist(limit = 100): Promise<WaitlistRow[]> {
+    return Array.from(this.waitlist.values())
+      .slice(0, limit)
+      .map((e) => ({
+        email: e.email,
+        telegram: e.telegram ?? null,
+        segment_interest: e.segmentInterest ?? null,
+        created_utc: e.createdUtc || new Date().toISOString(),
+        source: e.source ?? null,
+      }));
   }
 }
 
