@@ -73,6 +73,8 @@ export interface WorkerConfig {
   providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
   derivAppId: string;
   derivProxyUrl?: string;
+  filterHtfConflict: boolean;
+  filterHtfConflictDerivOnly: boolean;
   strategy: StrategyConfig;
 }
 
@@ -123,6 +125,8 @@ interface EnvVars {
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
   DERIV_APP_ID?: string;
   DERIV_PROXY_URL?: string;
+  FILTER_HTF_CONFLICT?: string;
+  FILTER_HTF_CONFLICT_DERIV_ONLY?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -207,6 +211,8 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     providerMap,
     derivAppId: env.DERIV_APP_ID ?? "1089",
     derivProxyUrl: env.DERIV_PROXY_URL?.trim() || undefined,
+    filterHtfConflict: (env.FILTER_HTF_CONFLICT ?? "true").toLowerCase() === "true",
+    filterHtfConflictDerivOnly: (env.FILTER_HTF_CONFLICT_DERIV_ONLY ?? "true").toLowerCase() === "true",
     strategy,
   };
 }
@@ -251,7 +257,7 @@ export function strategyForPair(pair: string, base: StrategyConfig): StrategyCon
       ...base,
       retestToleranceAtr: 0.50, // accommodate synthetic tick volatility
       retestWindow: 28,         // allow synthetic pullbacks extra bars to form
-      minTpR: 2.0,              // 2:1 asymmetric target floor for synthetics
+      minTpR: Math.max(2.5, base.minTpR), // strictly enforce minimum 2.5RR target floor
     };
   }
   return base;

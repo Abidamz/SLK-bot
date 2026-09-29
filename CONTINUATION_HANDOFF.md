@@ -40,8 +40,10 @@ VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics 
 PAPER_NOTIFY=true
 PAIR_BATCH_SIZE=2             (Optimized throughput: 2 pairs per minute, interleaved oldest-first scanning)
 MIN_RISK_ATR=0.8
-MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor)
+MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor across all pairs)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
+FILTER_HTF_CONFLICT=true      (Suppresses trades where lower-timeframe entry opposes 4H/1H momentum)
+FILTER_HTF_CONFLICT_DERIV_ONLY=true (Active on 24/7 continuous synthetics; institutional pairs evaluated in shadow mode)
 MT5/live broker execution: disabled (Research & paper alert mode only)
 ```
 

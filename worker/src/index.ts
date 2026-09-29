@@ -565,6 +565,26 @@ async function deliver(
       await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
     }
   }
+
+  // HTF Conflict Gate: Filter counter-trend setups opposing higher timeframe momentum
+  if (alert.alertStatus !== "SUPPRESSED" && cfg.filterHtfConflict) {
+    const isDeriv = isDerivPair(alert.pair);
+    const applies = !cfg.filterHtfConflictDerivOnly || isDeriv;
+    if (applies && alert.shadowClassification === "HTF_CONFLICT") {
+      alert.alertStatus = "SUPPRESSED";
+      alert.suppressReason = "HTF conflict: entry opposes higher-timeframe momentum (4H/1H)";
+      await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
+      console.info(JSON.stringify({
+        level: "info",
+        msg: "alert suppressed: HTF conflict",
+        pair: alert.pair,
+        setupId: alert.setupId,
+        classification: alert.shadowClassification,
+        reason: alert.suppressReason,
+      }));
+    }
+  }
+
   if (alert.alertStatus === "SUPPRESSED") {
     console.info(JSON.stringify({ level: "info", msg: "alert suppressed", setupId: alert.setupId, reason: alert.suppressReason }));
     return;

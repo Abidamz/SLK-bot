@@ -39,7 +39,9 @@
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
     "PAIR_BATCH_SIZE": "2",
-    "DERIV_PROXY_URL": "https://slk-bot.vercel.app"
+    "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
+    "FILTER_HTF_CONFLICT": "true",
+    "FILTER_HTF_CONFLICT_DERIV_ONLY": "true"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
