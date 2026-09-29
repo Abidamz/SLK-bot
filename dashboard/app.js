@@ -136,20 +136,42 @@ if ($('nextAlerts')) $('nextAlerts').addEventListener('click', () => {
 
 if ($('savePreferences')) $('savePreferences').addEventListener('click', savePreferences);
 if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNotification('telegram'));
-if ($('expireOpenBtn')) {
-  $('expireOpenBtn').addEventListener('click', async () => {
-    if (!confirm('Close all currently open trades as Expired?')) return;
-    const btn = $('expireOpenBtn');
+
+['expireOpenBtn', 'expireOpenTradesBtn'].forEach(id => {
+  const btn = $(id);
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Close all currently open trades as Expired?')) return;
+      const oldText = btn.textContent;
+      btn.textContent = 'Closing…';
+      btn.disabled = true;
+      try {
+        const res = await api('/admin/expire-open');
+        alert(res.message || 'Open trades marked as EXPIRED.');
+        await loadAll();
+      } catch (err) {
+        alert('Failed to close open trades: ' + (err.message || String(err)));
+      } finally {
+        btn.textContent = oldText;
+        btn.disabled = false;
+      }
+    });
+  }
+});
+
+if ($('clearSyntheticsBtn')) {
+  $('clearSyntheticsBtn').addEventListener('click', async () => {
+    if (!confirm('Purge all synthetic trade records from the journal?\n\nThis will restore the public overview to Institutional-only (+30.78R, 75.0% Win Rate) and give 24/7 Synthetics a clean slate under the active HTF conflict filter.')) return;
+    const btn = $('clearSyntheticsBtn');
     const oldText = btn.textContent;
-    btn.textContent = 'Closing…';
+    btn.textContent = 'Purging…';
     btn.disabled = true;
     try {
-      const res = await api('/admin/expire-open');
-      alert(res.message || 'Open trades marked as EXPIRED.');
-      await loadStats();
-      await loadAlerts();
+      const res = await api('/admin/clear-synthetics', { method: 'POST' });
+      alert(res.message || 'Synthetic trade records cleared successfully!');
+      await loadAll();
     } catch (err) {
-      alert('Failed to close open trades: ' + (err.message || String(err)));
+      alert('Failed to clear synthetic records: ' + (err.message || String(err)));
     } finally {
       btn.textContent = oldText;
       btn.disabled = false;
