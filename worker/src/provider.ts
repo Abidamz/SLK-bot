@@ -1062,6 +1062,11 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
           try {
             return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
           } catch (dukaErr) {
+            if (req.tdKey && !tdCreditsExhausted) {
+              try {
+                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+              } catch {}
+            }
             if (!yahooUnavailable) {
               console.warn(JSON.stringify({
                 level: "warn",

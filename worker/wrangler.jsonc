@@ -41,7 +41,8 @@
     "PAIR_BATCH_SIZE": "2",
     "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
-    "FILTER_HTF_CONFLICT_DERIV_ONLY": "true"
+    "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
+    "PROVIDER_MAP": "{\"EURUSD\":\"dukascopy\",\"GBPUSD\":\"dukascopy\",\"USDJPY\":\"dukascopy\",\"AUDJPY\":\"dukascopy\",\"GBPJPY\":\"dukascopy\",\"XAUUSD\":\"dukascopy\",\"US30\":\"dukascopy\",\"GER40\":\"dukascopy\",\"JAPAN225\":\"dukascopy\",\"NAS100\":\"dukascopy\"}"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID
