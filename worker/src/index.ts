@@ -17,10 +17,11 @@ import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
-import { notifyAlert, notifyOutcome, notifyWatch } from "./notify";
+import { notifyAlert, notifyOutcome, notifyWatch, notifyBias } from "./notify";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
-import { resampleCandles, dropIncomplete } from "./features";
+import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
+import { evaluateH4VantageContext, evaluateDirectionalBias } from "./shadow";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
 import type { Alert, Candle, Direction } from "./types";
 
@@ -308,7 +309,6 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
       // 🧭 HTF directional bias confirmation: notifies when 4H and 1H structure align
       if (cfg.watchNotify && d1 && d1.length >= 10 && h4.length >= 10 && feeds["1h"] && feeds["1h"].length >= 10) {
-        const { evaluateH4VantageContext, evaluateDirectionalBias } = await import("./shadow");
         const h4Vantage = evaluateH4VantageContext(h4, cfg.strategy);
         if (h4Vantage.direction !== "neutral") {
           const dir: Direction = h4Vantage.direction === "bullish" ? "LONG" : "SHORT";
@@ -337,12 +337,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
                 if (tgAllowed && deliverAllowed(cfg, isFirstScan, opts)) {
                   const latestStory = snaps.length ? snaps[snaps.length - 1][1] : null;
                   const currentPrice = feeds["1h"] && feeds["1h"].length ? feeds["1h"][feeds["1h"].length - 1].c : lastCandle.c;
-                  const { findRetracementOrigin } = await import("./features");
                   const origin = findRetracementOrigin(feeds, dir, currentPrice, cfg.strategy) ?? latestStory?.origin ?? null;
                   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
                   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
                   const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
-                  const { notifyBias } = await import("./notify");
                   await notifyBias({
                     ...env,
                     fetchFn,

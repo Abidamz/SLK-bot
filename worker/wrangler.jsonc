@@ -38,7 +38,7 @@
     "MIN_STOP_PIPS": "10",
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
-    "PAIR_BATCH_SIZE": "2",
+    "PAIR_BATCH_SIZE": "1",
     "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
