@@ -112,6 +112,22 @@ export const DASHBOARD_HTML = `<!doctype html>
 body.operator-mode .marketing-only{display:none!important}
 body:not(.operator-mode) .operator-only{display:none!important}
 
+/* Amber Paper Execution Tag */
+.pill.amber{color:#f6c66d;background:#241a0b;border:1px solid #78531a}
+.empty-notice-pill{display:inline-block;margin-top:5px;font-size:10.5px;color:#f6c66d;background:rgba(246,198,109,0.1);border:1px dashed rgba(246,198,109,0.3);padding:2px 7px;border-radius:5px}
+
+/* Lifecycle Stages Table & Confirmation Checklist */
+.lifecycle-table-wrap{margin-top:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0c121b}
+.lifecycle-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+.lifecycle-table th{background:#141c2b;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:9px 12px}
+.lifecycle-table td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.lifecycle-table tr:last-child td{border-bottom:none}
+.confirmation-checklist{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.checklist-item{background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:9px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px}
+.checklist-item span{color:var(--accent);font-size:13px;line-height:1.2}
+.checklist-item strong{color:var(--text);font-size:12px;display:block}
+.checklist-item small{color:var(--muted);font-size:11px;display:block;margin-top:2px}
+
 </style>
 </head>
 <body>
@@ -124,13 +140,20 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </div>
     </div>
     <div class="header-actions">
-      <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
-        <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">📊 Public Overview</button>
-        <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">🖥️ Operator Terminal</button>
+      <div class="mode-switcher-wrap" style="display: flex; align-items: center; gap: 8px;">
+        <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
+          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">
+            <span class="mode-dot"></span> 📊 Public Overview
+          </button>
+          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">
+            <span class="mode-dot"></span> 🖥️ Operator Terminal
+          </button>
+        </div>
+        <span id="activeModeLabel" class="pill gray">Viewing: Public Overview</span>
       </div>
       <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
         <span id="statusDot" class="dot ok"></span>
-        <span id="statusText">Live · 24/7</span>
+        <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
       <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -212,10 +235,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </a>
         </div>
       </div>
-      <div class="execution-badge">
-        <span>EXECUTION SAFETY</span>
-        <strong style="color: #8cf0c6;">PAPER MODE</strong>
-        <small>Simulated tick feeds · No real orders</small>
+      <div class="execution-badge" style="border-color: #78531a; background: #1c150b;">
+        <span style="color: #f6c66d;">EXECUTION PIPELINE</span>
+        <strong style="color: #f6c66d;">PAPER SIMULATION</strong>
+        <small style="color: #cbd5e1;">Rule-checked · No live orders</small>
       </div>
     </section>
         <small>Automated Cloud Scanner</small>
@@ -331,9 +354,9 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <div class="panel-head">
             <div>
               <p class="eyebrow">SLK CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
-              <h2>Entry Lifecycle</h2>
+              <h2>7-Stage Execution Lifecycle & Invalidation Architecture</h2>
             </div>
-            <span class="pill green">Institutional rules</span>
+            <span class="pill amber">Deterministic rules</span>
           </div>
           <div class="steps">
             <span>MAP</span><i>→</i>
@@ -341,23 +364,104 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <span>SWEEP</span><i>→</i>
             <span>SHIFT (BOS)</span><i>→</i>
             <span>RETEST</span><i>→</i>
-            <b>CONFIRMED ENTRY</b><i>→</i>
+            <b style="background:#153126; color:var(--accent);">CONFIRMED ENTRY</b><i>→</i>
             <span>OUTCOME</span>
           </div>
-          <p class="muted-copy">Signals require liquidity draw alignment, pullback structure break, FVG rebalance, and a minimum 3.0 Risk:Reward target.</p>
+
+          <!-- Detailed 7-Stage Execution Lifecycle Table -->
+          <div class="lifecycle-table-wrap">
+            <table class="lifecycle-table">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Market Mechanism</th>
+                  <th>Deterministic Verification Rule</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong style="color: #38bdf8;">MAP</strong></td>
+                  <td>HTF Bias & Origin Level</td>
+                  <td>Weekly/Daily opposing liquidity draw established; 4H structural A/V-level armed.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #38bdf8;">TOUCH</strong></td>
+                  <td>Origin Zone Mitigation</td>
+                  <td>Price reaches and mitigates origin key level, activating lower-timeframe radar.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">SWEEP</strong></td>
+                  <td>Liquidity Pool Run</td>
+                  <td>False breakout purges internal liquidity pool beyond swing high/low extreme.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">SHIFT</strong></td>
+                  <td>Market Structure Break (BOS)</td>
+                  <td>Aggressive displacement breaks pullback structure with candle close; forms Fair Value Gap.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">RETEST</strong></td>
+                  <td>Inefficiency Rebalance</td>
+                  <td>Controlled retracement into Fair Value Gap (FVG); candidate entry prepares.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #8cf0c6;">CONFIRMED</strong></td>
+                  <td>Execution Candle Close</td>
+                  <td>Finalized candle close locks entry price, stop-loss floor, and minimum 2.5R target. Zero repainting.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #a855f7;">OUTCOME</strong></td>
+                  <td>Deterministic Resolution</td>
+                  <td>Point-in-time resolution: Target 1 (+3.0R), Stop Loss (-1.0R), or 120-Bar Stale Expiration.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Confirmation Requirements Checklist -->
+          <div class="confirmation-checklist">
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>HTF Directional Vantage Point</strong>
+                <small>4H structural direction and 1H execution context must align directionally.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Candle-Close Invalidation Floor</strong>
+                <small>Stop-loss triggers strictly on candle close beyond extreme to avoid wick-traps.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Strict Minimum 2.5R Target Floor</strong>
+                <small>Setups below 2.5R to primary opposing liquidity draw are rejected automatically.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Zero Retrospective Repainting</strong>
+                <small>Alert timestamp, entry price, and R-multiples freeze permanently on bar close.</small>
+              </div>
+            </div>
+          </div>
         </article>
 
         <article class="panel health-card">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">SYSTEM</p>
+              <p class="eyebrow">SYSTEM & DATA PROVENANCE</p>
               <h2>Engine Status</h2>
             </div>
-            <span id="healthPill" class="pill green">Live · 24/7</span>
+            <span id="healthPill" class="pill green">Worker Online</span>
           </div>
           <dl>
-            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
-            <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
+            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
+            <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
             <div><dt>Active Markets (20)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s)</dd></div>
             <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 10 Synthetics (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
@@ -481,7 +585,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div class="panel-head" style="align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
         <div>
           <p class="eyebrow">PORTFOLIO TRACK RECORD</p>
-          <h2 style="margin:0;">Verified Strategy Performance</h2>
+          <h2 style="margin:0;">Rule-Checked Strategy Performance (Paper Simulation)</h2>
         </div>
         <div class="period-filter-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span style="color: var(--muted); font-size: 12px; font-weight: 600;">Period:</span>
@@ -709,15 +813,30 @@ body:not(.operator-mode) .operator-only{display:none!important}
     </div>
   </main>
 
-  <footer>
+  <!-- Public Marketing Footer -->
+  <footer class="marketing-only">
     <div class="footer-content">
-      <span>SLK Radar · VIP Clean Feed Active · 24/7 Cloud Automated Monitoring</span>
+      <span>SLK Radar · Institutional Paper Simulation & Clean Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
         <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@SLK_Hub_synthetics_free)</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Operator Console Quiet Footer -->
+  <footer class="operator-only" style="border-top: 1px solid var(--line); background: #070b12; padding: 18px 24px; color: var(--muted); font-size: 11.5px;">
+    <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <strong style="color: var(--text);">SLK Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
+      </div>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <span>Primary Feed: Swiss Bank Dukascopy (Forex) · Deriv WebSocket Relay (Synthetics)</span>
+        <span>•</span>
+        <span>Simulated Tick Pipeline (Zero Live MT5 Connection)</span>
       </div>
     </div>
   </footer>
@@ -755,6 +874,9 @@ function setViewMode(mode) {
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
   if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
   if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  if ($('activeModeLabel')) {
+    $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
+  }
   try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
 }
 
@@ -943,7 +1065,7 @@ async function getAdminKey() {
 }
 
 async function loadAll() {
-  setStatus('Syncing live ledger…', 'muted');
+  setStatus('Syncing paper ledger…', 'muted');
   try {
     const [health, _stats, prefs] = await Promise.all([
       api('/health').catch(() => null),
@@ -953,7 +1075,7 @@ async function loadAll() {
     if (health) renderHealth(health);
     if (prefs) renderPreferences(prefs);
     await loadAlerts();
-    setStatus('Live Connected', 'ok');
+    setStatus('Worker Online · Paper Pipeline', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
@@ -989,10 +1111,11 @@ function setStatus(text, kind) {
 
 function renderHealth(h) {
   if (!h) return;
-  if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
+  const isPaper = String(h.mode || 'PAPER').toUpperCase().includes('PAPER');
+  if ($('mode')) $('mode').textContent = isPaper ? 'PAPER PIPELINE · RULE-CHECKED' : String(h.mode).toUpperCase();
   if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
-  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${esc(String(h.mode || 'PAPER').toUpperCase())})\`;
+  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${isPaper ? 'PAPER PIPELINE' : esc(String(h.mode || 'PAPER').toUpperCase())})\`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
@@ -1004,7 +1127,7 @@ function renderHealth(h) {
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'Degraded';
+    $('healthPill').textContent = h.ok ? 'Worker Online' : 'Degraded';
     $('healthPill').className = 'pill ' + (h.ok ? 'green' : 'gray');
   }
   if ($('healthDetails')) {
@@ -1051,7 +1174,7 @@ function renderStats(s) {
     const instNr = inst.netR != null ? \`\${inst.netR > 0 ? '+' : ''}\${Number(inst.netR).toFixed(2)}R\` : '—';
     const instOut = \`\${inst.tp || 0} TP · \${inst.sl || 0} SL\`;
 
-    const synthWr = synth.winRate != null ? \`\${(synth.winRate * 100).toFixed(1)}%\` : '—';
+    const synthWr = synth.winRate != null ? \`\${(synth.winRate * 100).toFixed(1)}%\` : '0.0%';
     const synthNr = synth.netR != null ? \`\${synth.netR > 0 ? '+' : ''}\${Number(synth.netR).toFixed(2)}R\` : '0.00R';
     const synthOut = \`\${synth.tp || 0} TP · \${synth.sl || 0} SL\`;
 
@@ -1061,7 +1184,15 @@ function renderStats(s) {
     ['segInstSignals', 'segInstSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(inst.total || 0); });
 
     ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
-    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => { if ($(id)) $(id).textContent = synthNr; });
+    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => {
+      if ($(id)) {
+        if (!synth.total || synth.total === 0) {
+          $(id).innerHTML = '0.00R <span class="empty-notice-pill">No completed paper outcomes yet</span>';
+        } else {
+          $(id).textContent = synthNr;
+        }
+      }
+    });
     ['segSynthOutcomes', 'segSynthOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = synthOut; });
     ['segSynthSignals', 'segSynthSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(synth.total || 0); });
   }

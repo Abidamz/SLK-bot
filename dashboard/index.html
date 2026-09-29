@@ -16,13 +16,20 @@
       </div>
     </div>
     <div class="header-actions">
-      <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
-        <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">📊 Public Overview</button>
-        <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">🖥️ Operator Terminal</button>
+      <div class="mode-switcher-wrap" style="display: flex; align-items: center; gap: 8px;">
+        <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
+          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">
+            <span class="mode-dot"></span> 📊 Public Overview
+          </button>
+          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">
+            <span class="mode-dot"></span> 🖥️ Operator Terminal
+          </button>
+        </div>
+        <span id="activeModeLabel" class="pill gray">Viewing: Public Overview</span>
       </div>
       <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
         <span id="statusDot" class="dot ok"></span>
-        <span id="statusText">Live · 24/7</span>
+        <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
       <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -104,10 +111,10 @@
           </a>
         </div>
       </div>
-      <div class="execution-badge">
-        <span>EXECUTION SAFETY</span>
-        <strong style="color: #8cf0c6;">PAPER MODE</strong>
-        <small>Simulated tick feeds · No real orders</small>
+      <div class="execution-badge" style="border-color: #78531a; background: #1c150b;">
+        <span style="color: #f6c66d;">EXECUTION PIPELINE</span>
+        <strong style="color: #f6c66d;">PAPER SIMULATION</strong>
+        <small style="color: #cbd5e1;">Rule-checked · No live orders</small>
       </div>
     </section>
 
@@ -220,9 +227,9 @@
           <div class="panel-head">
             <div>
               <p class="eyebrow">SLK CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
-              <h2>Entry Lifecycle</h2>
+              <h2>7-Stage Execution Lifecycle & Invalidation Architecture</h2>
             </div>
-            <span class="pill green">Institutional rules</span>
+            <span class="pill amber">Deterministic rules</span>
           </div>
           <div class="steps">
             <span>MAP</span><i>→</i>
@@ -230,23 +237,104 @@
             <span>SWEEP</span><i>→</i>
             <span>SHIFT (BOS)</span><i>→</i>
             <span>RETEST</span><i>→</i>
-            <b>CONFIRMED ENTRY</b><i>→</i>
+            <b style="background:#153126; color:var(--accent);">CONFIRMED ENTRY</b><i>→</i>
             <span>OUTCOME</span>
           </div>
-          <p class="muted-copy">Signals require liquidity draw alignment, pullback structure break, FVG rebalance, and a minimum 3.0 Risk:Reward target.</p>
+
+          <!-- Detailed 7-Stage Execution Lifecycle Table -->
+          <div class="lifecycle-table-wrap">
+            <table class="lifecycle-table">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Market Mechanism</th>
+                  <th>Deterministic Verification Rule</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong style="color: #38bdf8;">MAP</strong></td>
+                  <td>HTF Bias & Origin Level</td>
+                  <td>Weekly/Daily opposing liquidity draw established; 4H structural A/V-level armed.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #38bdf8;">TOUCH</strong></td>
+                  <td>Origin Zone Mitigation</td>
+                  <td>Price reaches and mitigates origin key level, activating lower-timeframe radar.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">SWEEP</strong></td>
+                  <td>Liquidity Pool Run</td>
+                  <td>False breakout purges internal liquidity pool beyond swing high/low extreme.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">SHIFT</strong></td>
+                  <td>Market Structure Break (BOS)</td>
+                  <td>Aggressive displacement breaks pullback structure with candle close; forms Fair Value Gap.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #f6c66d;">RETEST</strong></td>
+                  <td>Inefficiency Rebalance</td>
+                  <td>Controlled retracement into Fair Value Gap (FVG); candidate entry prepares.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #8cf0c6;">CONFIRMED</strong></td>
+                  <td>Execution Candle Close</td>
+                  <td>Finalized candle close locks entry price, stop-loss floor, and minimum 2.5R target. Zero repainting.</td>
+                </tr>
+                <tr>
+                  <td><strong style="color: #a855f7;">OUTCOME</strong></td>
+                  <td>Deterministic Resolution</td>
+                  <td>Point-in-time resolution: Target 1 (+3.0R), Stop Loss (-1.0R), or 120-Bar Stale Expiration.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Confirmation Requirements Checklist -->
+          <div class="confirmation-checklist">
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>HTF Directional Vantage Point</strong>
+                <small>4H structural direction and 1H execution context must align directionally.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Candle-Close Invalidation Floor</strong>
+                <small>Stop-loss triggers strictly on candle close beyond extreme to avoid wick-traps.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Strict Minimum 2.5R Target Floor</strong>
+                <small>Setups below 2.5R to primary opposing liquidity draw are rejected automatically.</small>
+              </div>
+            </div>
+            <div class="checklist-item">
+              <span>✓</span>
+              <div>
+                <strong>Zero Retrospective Repainting</strong>
+                <small>Alert timestamp, entry price, and R-multiples freeze permanently on bar close.</small>
+              </div>
+            </div>
+          </div>
         </article>
 
         <article class="panel health-card">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">SYSTEM</p>
+              <p class="eyebrow">SYSTEM & DATA PROVENANCE</p>
               <h2>Engine Status</h2>
             </div>
-            <span id="healthPill" class="pill green">Live · 24/7</span>
+            <span id="healthPill" class="pill green">Worker Online</span>
           </div>
           <dl>
-            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker</dd></div>
-            <div><dt>Mode</dt><dd id="mode">PAPER / VERIFIED</dd></div>
+            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
+            <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
             <div><dt>Active Markets (20)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s)</dd></div>
             <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 10 Synthetics (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
@@ -370,7 +458,7 @@
       <div class="panel-head" style="align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
         <div>
           <p class="eyebrow">PORTFOLIO TRACK RECORD</p>
-          <h2 style="margin:0;">Verified Strategy Performance</h2>
+          <h2 style="margin:0;">Rule-Checked Strategy Performance (Paper Simulation)</h2>
         </div>
         <div class="period-filter-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span style="color: var(--muted); font-size: 12px; font-weight: 600;">Period:</span>
@@ -599,7 +687,8 @@
   </main>
 
   <footer>
-    <div class="footer-content">
+    <!-- Public Marketing Footer -->
+    <div class="footer-content marketing-only">
       <span>SLK Radar · VIP Clean Feed Active · 24/7 Cloud Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
@@ -607,6 +696,24 @@
         <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@SLK_Hub_synthetics_free)</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
+      </div>
+    </div>
+
+    <!-- Quiet Operator Console Footer -->
+    <div class="footer-content operator-only" style="color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+        <span style="color: #fff; font-weight: 700;">SLK / LEDGER Operator Console</span>
+        <span>·</span>
+        <span>Engine: <code style="color: #8cf0c6; font-family: monospace;">slk-alert-worker v2.5.3</code></span>
+        <span>·</span>
+        <span>Feeds: Dukascopy (FX) · Deriv (24/7 Synth)</span>
+        <span>·</span>
+        <span>Policy: Confirmed Entries Only (Paper Mode)</span>
+      </div>
+      <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+        <a href="terms.html" style="color: var(--muted); text-decoration: none;">Data Policy & Disclaimer</a>
+        <span>·</span>
+        <span style="color: #f6c66d;">Simulated Paper Pipeline · Zero Live Orders</span>
       </div>
     </div>
   </footer>

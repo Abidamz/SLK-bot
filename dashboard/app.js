@@ -31,6 +31,10 @@ function setViewMode(mode) {
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
   if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
   if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  if ($('activeModeLabel')) {
+    $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
+    $('activeModeLabel').className = state.viewMode === 'operator' ? 'pill green' : 'pill gray';
+  }
   try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
 }
 
@@ -217,7 +221,7 @@ async function getAdminKey() {
 }
 
 async function loadAll() {
-  setStatus('Syncing live ledger…', 'muted');
+  setStatus('Syncing paper ledger…', 'muted');
   try {
     const [health, _stats, prefs] = await Promise.all([
       api('/health').catch(() => null),
@@ -227,7 +231,7 @@ async function loadAll() {
     if (health) renderHealth(health);
     if (prefs) renderPreferences(prefs);
     await loadAlerts();
-    setStatus('Live Connected', 'ok');
+    setStatus('Worker Online · Pipeline Healthy', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
@@ -263,7 +267,7 @@ function setStatus(text, kind) {
 
 function renderHealth(h) {
   if (!h) return;
-  if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
+  if ($('mode')) $('mode').textContent = 'PAPER PIPELINE · RULE-CHECKED';
   if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
@@ -278,7 +282,7 @@ function renderHealth(h) {
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'Degraded';
+    $('healthPill').textContent = h.ok ? 'Worker Online' : 'Degraded';
     $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
   }
   if ($('healthDetails')) {
@@ -291,7 +295,7 @@ function renderHealth(h) {
       <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://slk-bot.vercel.app')} · Connected</strong></div>
       <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
       <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
-      <div class="health-item"><span>Execution Mode</span><strong>Paper / Verified Quantitative</strong></div>
+      <div class="health-item"><span>Execution Mode</span><strong>Paper Pipeline · Rule-Checked (Simulation Only)</strong></div>
       <div class="health-item"><span>Signals Destination</span><strong>Trade journal Channel</strong></div>
     `;
   }
@@ -326,7 +330,7 @@ function renderStats(s) {
     const instNr = inst.netR != null ? `${inst.netR > 0 ? '+' : ''}${Number(inst.netR).toFixed(2)}R` : '—';
     const instOut = `${inst.tp || 0} TP · ${inst.sl || 0} SL`;
 
-    const synthWr = synth.winRate != null ? `${(synth.winRate * 100).toFixed(1)}%` : '—';
+    const synthWr = synth.winRate != null ? `${(synth.winRate * 100).toFixed(1)}%` : '0.0%';
     const synthNr = synth.netR != null ? `${synth.netR > 0 ? '+' : ''}${Number(synth.netR).toFixed(2)}R` : '0.00R';
     const synthOut = `${synth.tp || 0} TP · ${synth.sl || 0} SL`;
 
@@ -336,7 +340,15 @@ function renderStats(s) {
     ['segInstSignals', 'segInstSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(inst.total || 0); });
 
     ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
-    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => { if ($(id)) $(id).textContent = synthNr; });
+    ['segSynthNetR', 'segSynthNetROverview'].forEach(id => {
+      if ($(id)) {
+        if (!synth.total || synth.total === 0) {
+          $(id).innerHTML = '0.00R <span class="empty-notice-pill">No completed paper outcomes yet</span>';
+        } else {
+          $(id).textContent = synthNr;
+        }
+      }
+    });
     ['segSynthOutcomes', 'segSynthOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = synthOut; });
     ['segSynthSignals', 'segSynthSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(synth.total || 0); });
   }

@@ -94,8 +94,10 @@
 
 /* View Mode Switcher & Operator Terminal */
 .mode-switcher{display:inline-flex;background:#0c121b;border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
-.mode-btn{background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;transition:all .15s ease}
-.mode-btn.active{background:#1a2536;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.mode-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:12px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;transition:all .15s ease}
+.mode-btn .mode-dot{width:6px;height:6px;border-radius:50%;background:transparent}
+.mode-btn.active{background:#1e293b;color:#fff;border-color:rgba(140,240,198,0.3);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.mode-btn.active .mode-dot{background:var(--accent);box-shadow:0 0 8px var(--accent)}
 .mode-btn:hover{color:#fff}
 .operator-status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;background:#0c121b;border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin-bottom:20px}
 .operator-status-item{display:flex;align-items:center;gap:10px}
@@ -107,6 +109,23 @@
 .community-link strong{color:#e2e8f0}
 body.operator-mode .marketing-only{display:none!important}
 body:not(.operator-mode) .operator-only{display:none!important}
+
+/* Amber Paper Execution Tag */
+.pill.amber{color:#f6c66d;background:#241a0b;border:1px solid #78531a}
+.empty-notice-pill{display:inline-block;margin-top:5px;font-size:10.5px;color:#f6c66d;background:rgba(246,198,109,0.1);border:1px dashed rgba(246,198,109,0.3);padding:2px 7px;border-radius:5px}
+
+/* Lifecycle Stages Table & Confirmation Checklist */
+.lifecycle-table-wrap{margin-top:18px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0c121b}
+.lifecycle-table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+.lifecycle-table th{background:#141c2b;border-bottom:1px solid var(--line);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:9px 12px}
+.lifecycle-table td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.lifecycle-table tr:last-child td{border-bottom:none}
+.confirmation-checklist{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.checklist-item{background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:9px;padding:10px 12px;display:flex;align-items:flex-start;gap:8px}
+.checklist-item span{color:var(--accent);font-size:13px;line-height:1.2}
+.checklist-item strong{color:var(--text);font-size:12px;display:block}
+.checklist-item small{color:var(--muted);font-size:11px;display:block;margin-top:2px}
+
 
 
 
