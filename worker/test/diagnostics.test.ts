@@ -69,7 +69,10 @@ describe("scan diagnostics", () => {
     const store = new MemStore();
     const opts = options(store);
     const fetchFn: typeof fetch = async (input, init) => {
-      if (String(input).includes("GBP%2FUSD")) throw new Error("simulated outage");
+      const url = String(input);
+      if (url.includes("GBP%2FUSD") || url.includes("GBP-USD") || url.includes("GBPUSD")) {
+        throw new Error("simulated outage");
+      }
       return opts.fetchFn(input, init);
     };
     const result = await scanAll(env, { ...opts, fetchFn });

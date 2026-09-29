@@ -982,7 +982,7 @@ export interface MarketDataRequest {
 
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
-  const dukaBudget = req.budget ?? (req.tf === "30m" ? 2 : 4);
+  const dukaBudget = req.budget ?? (req.tf === "30m" ? 4 : 8);
   if (provider === "deriv") {
     const candles = await fetchDeriv(
       req.pair,
@@ -996,29 +996,30 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
     return { provider: "deriv", candles };
   }
   if (provider === "twelvedata") {
+    let lastErr: Error | null = null;
     if (!tdCreditsExhausted) {
       try {
         const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
         return { provider, candles };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const msg = lastErr.message;
         const isRateOrCredit = msg.includes("run out of API credits")
           || msg.includes("API credits were used")
+          || msg.includes("limit being 800")
           || msg.includes("429");
         if (isRateOrCredit) {
           tdCreditsExhausted = true;
-          console.warn(JSON.stringify({
-            level: "warn",
-            msg: "slk.provider.fallback",
-            pair: req.pair,
-            tf: req.tf,
-            from: "twelvedata",
-            to: "dukascopy",
-            reason: msg,
-          }));
-        } else {
-          throw err;
         }
+        console.warn(JSON.stringify({
+          level: "warn",
+          msg: "slk.provider.fallback",
+          pair: req.pair,
+          tf: req.tf,
+          from: "twelvedata",
+          to: "dukascopy",
+          reason: msg,
+        }));
       }
     }
 
@@ -1029,6 +1030,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         return { provider: "dukascopy", candles };
       }
     } catch (dukaErr) {
+      lastErr = dukaErr instanceof Error ? dukaErr : new Error(String(dukaErr));
       console.warn(JSON.stringify({
         level: "warn",
         msg: "slk.provider.fallback",
@@ -1036,7 +1038,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         tf: req.tf,
         from: "dukascopy",
         to: yahooUnavailable ? "failed" : "yahoo",
-        reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+        reason: lastErr.message,
       }));
     }
 
@@ -1045,11 +1047,12 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
         return { provider: "yahoo", candles };
       } catch (yahooErr) {
+        lastErr = yahooErr instanceof Error ? yahooErr : new Error(String(yahooErr));
         yahooUnavailable = true;
       }
     }
 
-    throw new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
+    throw lastErr ?? new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
   }
 
   const candles = provider === "oanda"
