@@ -5,7 +5,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
   <style>
-:root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#8793a7;--accent:#8cf0c6;--blue:#80a9ff;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:flex;align-items:center;gap:11px;font-size:20px;letter-spacing:-.03em}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border:1px solid #4c806e;border-radius:12px;color:var(--accent);font-weight:800;font-size:12px}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+:root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:flex;align-items:center;gap:11px;font-size:20px;letter-spacing:-.03em}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border:1px solid #4c806e;border-radius:12px;color:var(--accent);font-weight:800;font-size:12px}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .alert-row:hover{border-color:#54719c;background:#142033}
 .alert-row strong,.alert-row .alert-pair,.alert-row .alert-val{display:block;font-size:14px;color:#f1f5f9!important;font-weight:700;margin-top:2px}
 .alert-row small,.alert-row .alert-meta{display:block;color:#94a3b8!important;font-size:12px;margin-top:3px}
@@ -96,6 +96,22 @@ export const DASHBOARD_HTML = `<!doctype html>
 .waitlist-submit-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
 @media(max-width:850px){.waitlist-form-grid{grid-template-columns:1fr}.waitlist-submit-btn{width:100%}}
 
+/* View Mode Switcher & Operator Terminal */
+.mode-switcher{display:inline-flex;background:#0c121b;border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+.mode-btn{background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;transition:all .15s ease}
+.mode-btn.active{background:#1a2536;color:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.mode-btn:hover{color:#fff}
+.operator-status-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;background:#0c121b;border:1px solid var(--line);border-radius:12px;padding:12px 18px;margin-bottom:20px}
+.operator-status-item{display:flex;align-items:center;gap:10px}
+.operator-status-item span{color:var(--muted);font-size:11px;display:block;text-transform:uppercase;letter-spacing:.05em}
+.operator-status-item strong{color:var(--text);font-size:12.5px;display:block;margin-top:2px}
+.community-links-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--muted)}
+.community-link{color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px;transition:color .15s ease}
+.community-link:hover{color:#fff;text-decoration:underline}
+.community-link strong{color:#e2e8f0}
+body.operator-mode .marketing-only{display:none!important}
+body:not(.operator-mode) .operator-only{display:none!important}
+
 </style>
 </head>
 <body>
@@ -104,80 +120,104 @@ export const DASHBOARD_HTML = `<!doctype html>
       <span class="brand-mark">SLK</span>
       <div>
         <strong>SLK Radar</strong>
-        <small>Quantitative Track Record</small>
+        <small>Quantitative Execution Desk</small>
       </div>
     </div>
     <div class="header-actions">
-      <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synthetics-btn" title="Join 24/7 Synthetics Channel">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-        <span>⚡ 24/7 Synthetics VIP</span>
-      </a>
-      <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" title="Join Free 24/7 Synthetics Telegram Radar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-        <span>⚡ Free Synthetics</span>
-      </a>
-      <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" title="Join Free Telegram Trading Hub">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-        <span>Free Telegram</span>
-      </a>
-      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" title="Join VIP Signals with code FOUNDING20">
+      <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
+        <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">📊 Public Overview</button>
+        <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">🖥️ Operator Terminal</button>
+      </div>
+      <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
+        <span id="statusDot" class="dot ok"></span>
+        <span id="statusText">Live · 24/7</span>
+      </div>
+      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access ($100/mo)</span>
       </a>
-      <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
-        <span id="statusDot" class="dot muted"></span>
-        <span id="statusText">Connecting…</span>
-      </div>
     </div>
   </header>
 
   <main class="shell">
-    <div class="announcement-banner">
+    <div class="announcement-banner marketing-only">
       <div class="banner-left">
-        <span class="banner-badge">FOUNDING OFFER</span>
-        <span>VIP Signals regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong></span>
+        <span class="banner-badge">FOUNDING COHORT</span>
+        <span>VIP regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong> (Batch 1: 90% full)</span>
       </div>
       <div class="banner-right">
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim $49/mo VIP →</a>
-        <span class="banner-sep">|</span>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ 24/7 Synthetics VIP →</a>
-        <span class="banner-sep">|</span>
-        <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ Free Synthetics Radar →</a>
-        <span class="banner-sep">|</span>
-        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="banner-tg">Free Telegram Hub →</a>
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
+      </div>
+    </div>
+
+    <!-- Operator Status Bar (Operator Terminal Mode) -->
+    <div class="operator-status-bar operator-only" id="operatorStatusBar">
+      <div class="operator-status-item">
+        <span class="dot ok"></span>
+        <div>
+          <span>Worker Engine</span>
+          <strong id="opWorkerHealth">v2.5.3 · Sub-millisecond CPU</strong>
+        </div>
+      </div>
+      <div class="operator-status-item">
+        <span style="font-size:16px;">📡</span>
+        <div>
+          <span>Market Feeds</span>
+          <strong>Dukascopy (FX) · Deriv 24/7 (Synth)</strong>
+        </div>
+      </div>
+      <div class="operator-status-item">
+        <span style="font-size:16px;">⏱️</span>
+        <div>
+          <span>Scan Freshness</span>
+          <strong id="opLastScan">Synchronized with bar close</strong>
+        </div>
+      </div>
+      <div class="operator-status-item">
+        <span style="font-size:16px;">🛡️</span>
+        <div>
+          <span>Execution Safety</span>
+          <strong style="color: #8cf0c6;">PAPER SIMULATION · No Real Orders</strong>
+        </div>
       </div>
     </div>
 
     <section class="hero">
       <div>
-        <p class="eyebrow">ALGORITHMIC SLK CONFIRMATION ENGINE</p>
-        <h1>Live Quantitative Performance & Trade Journal</h1>
-        <p class="lede">Real-time verified paper outcomes from institutional key-level liquidity sweeps, market structure shifts, and confirmation entries across 11 Forex, Metal, Index, and 24/7 Deriv Synthetic markets.</p>
-        <div style="margin-top: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 20px; font-size: 13px;">
+        <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
+        <h1>Algorithmic Confirmation Engine & Research Ledger</h1>
+        <p class="lede">Deterministic point-in-time paper outcomes from key-level liquidity sweeps, market structure shifts (BOS), and confirmation entries across 20 institutional & continuous synthetic markets.</p>
+        
+        <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span>Get VIP Signals ($100/mo)</span>
+            <span>Join VIP Signals ($100/mo · $49 with code FOUNDING20)</span>
           </a>
-          <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synthetics-btn" style="padding: 11px 18px; font-size: 13px;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-            <span>⚡ 24/7 Synthetics VIP</span>
+          <button type="button" class="secondary" id="heroLedgerBtn" style="padding: 11px 18px; font-size: 13px; font-weight: 600;">
+            Audit Trade Ledger ↓
+          </button>
+        </div>
+
+        <!-- Discreet, clean community text links -->
+        <div class="community-links-row marketing-only">
+          <span>Free Telegram Hubs:</span>
+          <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="community-link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
+            <span>Institutional FX & Gold (<strong>@SLK_radar</strong>)</span>
           </a>
-          <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 11px 18px; font-size: 13px;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-            <span>⚡ Free Synthetics Radar</span>
-          </a>
-          <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 11px 20px; font-size: 13px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-            <span>Join Free Telegram Hub (@SLK_radar)</span>
+          <span>·</span>
+          <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+            <span>24/7 Synthetics Radar (<strong>@SLK_Hub_synthetics_free</strong>)</span>
           </a>
         </div>
-        <p style="margin: 10px 0 0; font-size: 12px; color: var(--muted);">
-          ⚡ Founding Member Special: Enter promo code <strong style="color: #f6c66d; letter-spacing: 0.04em;">FOUNDING20</strong> on Whop for $49/mo lifetime pricing. Free channel receives daily directional bias & verified win teasers.
-        </p>
       </div>
       <div class="execution-badge">
-        <span>EXECUTION</span>
-        <strong>PAPER MODE</strong>
+        <span>EXECUTION SAFETY</span>
+        <strong style="color: #8cf0c6;">PAPER MODE</strong>
+        <small>Simulated tick feeds · No real orders</small>
+      </div>
+    </section>
         <small>Automated Cloud Scanner</small>
       </div>
     </section>
@@ -254,18 +294,18 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div class="metric-grid">
         <article class="metric">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Net Return</span>
+            <span>Paper Net Return</span>
             <span id="overviewNetRSegmentBadge" class="seg-badge-pill">All</span>
           </div>
-          <strong id="overviewNetR" class="accent-text">—</strong>
-          <small>Verified cumulative R</small>
+          <strong id="overviewNetR" class="accent-text">Syncing…</strong>
+          <small>Simulated R on broker tick feeds</small>
         </article>
         <article class="metric">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Win Rate</span>
             <span id="overviewWinRateSegmentBadge" class="seg-badge-pill">All</span>
           </div>
-          <strong id="winRate">—</strong>
+          <strong id="winRate">Syncing…</strong>
           <small>TP / (TP + SL)</small>
         </article>
         <article class="metric">
@@ -273,15 +313,15 @@ export const DASHBOARD_HTML = `<!doctype html>
             <span>Active / Open</span>
             <span id="overviewOpenSegmentBadge" class="seg-badge-pill">All</span>
           </div>
-          <strong id="open">—</strong>
-          <small>trades in market</small>
+          <strong id="open">Syncing…</strong>
+          <small>simulated trades in market</small>
         </article>
         <article class="metric">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Total Signals</span>
             <span id="overviewTotalSegmentBadge" class="seg-badge-pill">All</span>
           </div>
-          <strong id="total">—</strong>
+          <strong id="total">Syncing…</strong>
           <small>confirmed setups</small>
         </article>
       </div>
@@ -326,7 +366,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       </div>
 
       <!-- Institutional Cohort Waitlist Card -->
-      <article class="panel waitlist-card" id="waitlistCard">
+      <article class="panel waitlist-card marketing-only" id="waitlistCard">
         <div class="waitlist-header">
           <div>
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
@@ -710,6 +750,23 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+function setViewMode(mode) {
+  state.viewMode = mode === 'operator' ? 'operator' : 'public';
+  document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
+  if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+  if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
+}
+
+if ($('modePublicBtn')) $('modePublicBtn').addEventListener('click', () => setViewMode('public'));
+if ($('modeOperatorBtn')) $('modeOperatorBtn').addEventListener('click', () => setViewMode('operator'));
+if ($('heroLedgerBtn')) {
+  $('heroLedgerBtn').addEventListener('click', () => {
+    const alertsTab = document.querySelector('.tab[data-tab="alerts"]');
+    if (alertsTab) alertsTab.click();
+  });
+}
+
 function setMarketSegment(seg) {
   state.marketSegment = seg || 'all';
   document.querySelectorAll('.segment-btn').forEach(b => {
@@ -935,6 +992,8 @@ function renderHealth(h) {
   if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
   if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
+  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${esc(String(h.mode || 'PAPER').toUpperCase())})\`;
+  if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
@@ -971,17 +1030,17 @@ function fmtDateOnly(x) {
 
 function renderStats(s) {
   if (!s) return;
-  const netRText = s.netR == null ? '—' : \`\${Number(s.netR) > 0 ? '+' : ''}\${Number(s.netR).toFixed(2)}R\`;
-  if ($('total')) $('total').textContent = s.total ?? '—';
-  if ($('open')) $('open').textContent = s.open ?? '—';
-  if ($('tp')) $('tp').textContent = s.tp ?? '—';
-  if ($('sl')) $('sl').textContent = s.sl ?? '—';
-  if ($('expired')) $('expired').textContent = s.expired ?? '—';
-  if ($('completed')) $('completed').textContent = s.completed ?? '—';
+  const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : \`\${Number(s.netR) > 0 ? '+' : ''}\${Number(s.netR).toFixed(2)}R\`;
+  if ($('total')) $('total').textContent = s.total != null ? String(s.total) : '0';
+  if ($('open')) $('open').textContent = s.open != null ? String(s.open) : '0';
+  if ($('tp')) $('tp').textContent = s.tp != null ? String(s.tp) : '0';
+  if ($('sl')) $('sl').textContent = s.sl != null ? String(s.sl) : '0';
+  if ($('expired')) $('expired').textContent = s.expired != null ? String(s.expired) : '0';
+  if ($('completed')) $('completed').textContent = s.completed != null ? String(s.completed) : '0';
   if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
   if ($('netR')) $('netR').textContent = netRText;
-  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : \`\${Number(s.maxDD).toFixed(2)}R\`;
-  const winRateText = s.winRate == null ? '—' : \`\${(s.winRate * 100).toFixed(1)}%\`;
+  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '0.00R' : \`\${Number(s.maxDD).toFixed(2)}R\`;
+  const winRateText = s.winRate == null ? (s.total === 0 ? 'N/A' : 'Syncing…') : \`\${(s.winRate * 100).toFixed(1)}%\`;
   if ($('winRate')) $('winRate').textContent = winRateText;
   if ($('perfWinRate')) $('perfWinRate').textContent = winRateText;
 
@@ -1410,10 +1469,12 @@ function setupWaitlist() {
 // Automatically load live data on open
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
     setupWaitlist();
     loadAll();
   });
 } else {
+  try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
   setupWaitlist();
   loadAll();
 }

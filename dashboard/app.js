@@ -26,6 +26,23 @@ document.querySelectorAll('.tab').forEach(btn => {
   });
 });
 
+function setViewMode(mode) {
+  state.viewMode = mode === 'operator' ? 'operator' : 'public';
+  document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
+  if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+  if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
+}
+
+if ($('modePublicBtn')) $('modePublicBtn').addEventListener('click', () => setViewMode('public'));
+if ($('modeOperatorBtn')) $('modeOperatorBtn').addEventListener('click', () => setViewMode('operator'));
+if ($('heroLedgerBtn')) {
+  $('heroLedgerBtn').addEventListener('click', () => {
+    const alertsTab = document.querySelector('.tab[data-tab="alerts"]');
+    if (alertsTab) alertsTab.click();
+  });
+}
+
 function setMarketSegment(seg) {
   state.marketSegment = seg || 'all';
   document.querySelectorAll('.segment-btn').forEach(b => {
@@ -249,6 +266,8 @@ function renderHealth(h) {
   if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
   if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
+  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
+  if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
@@ -286,17 +305,17 @@ function fmtDateOnly(x) {
 
 function renderStats(s) {
   if (!s) return;
-  const netRText = s.netR == null ? '—' : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
-  if ($('total')) $('total').textContent = s.total ?? '—';
-  if ($('open')) $('open').textContent = s.open ?? '—';
-  if ($('tp')) $('tp').textContent = s.tp ?? '—';
-  if ($('sl')) $('sl').textContent = s.sl ?? '—';
-  if ($('expired')) $('expired').textContent = s.expired ?? '—';
-  if ($('completed')) $('completed').textContent = s.completed ?? '—';
+  const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
+  if ($('total')) $('total').textContent = s.total != null ? String(s.total) : '0';
+  if ($('open')) $('open').textContent = s.open != null ? String(s.open) : '0';
+  if ($('tp')) $('tp').textContent = s.tp != null ? String(s.tp) : '0';
+  if ($('sl')) $('sl').textContent = s.sl != null ? String(s.sl) : '0';
+  if ($('expired')) $('expired').textContent = s.expired != null ? String(s.expired) : '0';
+  if ($('completed')) $('completed').textContent = s.completed != null ? String(s.completed) : '0';
   if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
   if ($('netR')) $('netR').textContent = netRText;
-  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '—' : `${Number(s.maxDD).toFixed(2)}R`;
-  const winRateText = s.winRate == null ? '—' : `${(s.winRate * 100).toFixed(1)}%`;
+  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '0.00R' : `${Number(s.maxDD).toFixed(2)}R`;
+  const winRateText = s.winRate == null ? (s.total === 0 ? 'N/A' : 'Syncing…') : `${(s.winRate * 100).toFixed(1)}%`;
   if ($('winRate')) $('winRate').textContent = winRateText;
   if ($('perfWinRate')) $('perfWinRate').textContent = winRateText;
 
@@ -725,10 +744,12 @@ function setupWaitlist() {
 // Automatically load live data on open
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
+    try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
     setupWaitlist();
     loadAll();
   });
 } else {
+  try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
   setupWaitlist();
   loadAll();
 }
