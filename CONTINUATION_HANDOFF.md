@@ -108,19 +108,20 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 
 ## 3. Real Live Track Record & Verified Ledger
 
-- **Total Recorded Trades:** 28 setups
-- **Resolved Trades (Win/Loss):** 22 trades
+- **Total Recorded Trades:** 29 setups
+- **Resolved Trades (Win/Loss):** 23 trades
   - **Take Profit Hits:** 15 trades (yielding between +0.95R and +4.53R each, targeted at internal swing points / min 2.5R)
-  - **Stop Loss Hits:** 7 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
+  - **Stop Loss Hits:** 8 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
   - **Expired Trades:** 6 trades (0.00R after exceeding the 120-bar resolution window)
-- **Decided Win Rate:** **68.2%** (15 / 22)
-- **Cumulative Net Return:** **+28.78R** (exact sum: `28.779R`)
+- **Decided Win Rate:** **65.2%** (15 / 23)
+- **Cumulative Net Return:** **+27.78R** (exact sum: `27.779R`)
   - **Institutional (Forex / Indices / Gold):** 26 setups, 15 TP, 5 SL, **+30.78R** (75.0% win rate)
-  - **Synthetics (Deriv 24/7):** 2 setups, 0 TP, 2 SL (`V10_1S`: -1.00R, `V50_1S`: -1.00R), **-2.00R**
-- **Live Shadow Classification Correlation:**
-  - Both synthetic losses (`V10_1S` and `V50_1S`) were pre-flagged in real time as **`⚠️ HTF_CONFLICT`**.
+  - **Synthetics (Deriv 24/7):** 3 setups, 0 TP, 3 SL (`V10_1S`: -1.00R, `V50_1S`: -1.00R, `V75`: -1.00R), **-3.00R**
+- **Live Shadow Classification Correlation & Synthetics Insight:**
   - 100% of synthetic losses were counter-trend to higher timeframe momentum (4H or 1H).
-  - Had `HTF_CONFLICT` been gated or suppressed from VIP broadcast, **+2.00R in drawdowns would have been completely averted**.
+  - Both `V10_1S` and `V50_1S` were pre-flagged in real time as **`⚠️ HTF_CONFLICT`**.
+  - Synthetic algorithmic assets (Brownian motion / continuous random walk) produce severe lower-timeframe noise when trading against 4H/1H macro trends.
+  - Filtering or gating `HTF_CONFLICT` setups or elevating synthetic minimum entry timeframe to 1H is critical to protecting the Synthetics VIP channel reputation.
 - **Synthetics Clean Slate:** Production database purged of legacy stale test records; 0-trade clean slate ready for live streaming.
 
 ---
