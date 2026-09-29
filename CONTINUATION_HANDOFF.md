@@ -26,7 +26,7 @@
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
   - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
   - **Free Institutional Hub:** Managed via `TELEGRAM_FREE_CHAT_ID` (`SLK TRADING HUB (FREE)`)
-  - **Dedicated Free Synthetics Hub:** Managed via `TELEGRAM_DERIV_FREE_CHAT_ID` (`https://t.me/+sBrVmW1u8osyM2Q0`, `/admin/connect-deriv-free-channel`)
+  - **Dedicated Free Synthetics Hub:** Managed via `TELEGRAM_DERIV_FREE_CHAT_ID` (`https://t.me/SLK_Hub_synthetics_free`, `@SLK_Hub_synthetics_free`)
   - **Personal VIP Push DM:** Managed via `TELEGRAM_DM_CHAT_ID`
 
 ---

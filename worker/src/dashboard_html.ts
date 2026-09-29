@@ -100,7 +100,7 @@ export const DASHBOARD_HTML = `<!doctype html>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
         <span>⚡ 24/7 Synthetics VIP</span>
       </a>
-      <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-free-btn" title="Join Free 24/7 Synthetics Telegram Radar">
+      <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" title="Join Free 24/7 Synthetics Telegram Radar">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
         <span>⚡ Free Synthetics</span>
       </a>
@@ -112,10 +112,9 @@ export const DASHBOARD_HTML = `<!doctype html>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access ($100/mo)</span>
       </a>
-      <div class="status" id="systemStatusPill" title="Deployment Status: Click for System Health">
+      <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
         <span id="statusDot" class="dot muted"></span>
         <span id="statusText">Connecting…</span>
-        <span id="deployTag" style="display: inline-block; margin-left: 6px; padding: 2px 7px; font-size: 11px; font-family: monospace; background: rgba(46, 204, 113, 0.15); color: #2ecc71; border: 1px solid rgba(46, 204, 113, 0.35); border-radius: 4px; font-weight: 700;">2dbac83</span>
       </div>
     </div>
   </header>
@@ -131,7 +130,7 @@ export const DASHBOARD_HTML = `<!doctype html>
         <span class="banner-sep">|</span>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ 24/7 Synthetics VIP →</a>
         <span class="banner-sep">|</span>
-        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ Free Synthetics Radar →</a>
+        <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ Free Synthetics Radar →</a>
         <span class="banner-sep">|</span>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="banner-tg">Free Telegram Hub →</a>
       </div>
@@ -151,7 +150,7 @@ export const DASHBOARD_HTML = `<!doctype html>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
             <span>⚡ 24/7 Synthetics VIP</span>
           </a>
-          <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 11px 18px; font-size: 13px;">
+          <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 11px 18px; font-size: 13px;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
             <span>⚡ Free Synthetics Radar</span>
           </a>
@@ -339,7 +338,7 @@ export const DASHBOARD_HTML = `<!doctype html>
             <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
               <span>👉 Unlock 24/7 Synthetics VIP Signals (Instant Access)</span>
             </a>
-            <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
+            <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
               <span>💬 Join Free 24/7 Synthetics Radar Channel</span>
             </a>
           </div>
@@ -579,11 +578,11 @@ export const DASHBOARD_HTML = `<!doctype html>
 
   <footer>
     <div class="footer-content">
-      <span>SLK Radar · Build <strong style="color: #2ecc71; font-family: monospace;">2dbac83</strong> · VIP Clean Feed Active · 24/7 Cloud Automated Monitoring</span>
+      <span>SLK Radar · VIP Clean Feed Active · 24/7 Cloud Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
-        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics Radar</a>
+        <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@SLK_Hub_synthetics_free)</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
@@ -841,22 +840,8 @@ function setStatus(text, kind) {
 function renderHealth(h) {
   if (!h) return;
   if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
-  if ($('workerName')) $('workerName').textContent = h.service || 'slk-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
-  const commit = h.commit || '2dbac83';
-  if ($('deployTag')) {
-    $('deployTag').textContent = commit;
-    $('deployTag').title = 'Active Build: ' + commit + ' · Deployed: ' + (h.buildTime || '2026-09-25 UTC');
-  }
-  if ($('liveCommitText')) {
-    $('liveCommitText').textContent = commit;
-  }
-  if ($('bannerPolicy')) {
-    $('bannerPolicy').innerHTML = 'VIP Policy: <strong style="color: #2ecc71;">' + esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)') + '</strong>';
-  }
-  if ($('bannerRelay') && h.relayUrl) {
-    $('bannerRelay').innerHTML = 'Deriv Relay: <strong style="color: #2ecc71;">Connected (90ms)</strong>';
-  }
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
@@ -867,14 +852,14 @@ function renderHealth(h) {
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? ('Live · ' + commit) : 'degraded';
+    $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'Degraded';
     $('healthPill').className = 'pill ' + (h.ok ? 'green' : 'gray');
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML =
-      '<div class="health-item"><span>Cloud Service</span><strong>' + esc(h.service || '—') + '</strong></div>' +
-      '<div class="health-item"><span>Active Build / Commit</span><strong style="color: #2ecc71; font-family: monospace;">' + esc(commit) + ' (' + esc(h.version || 'v2.4.0') + ')</strong></div>' +
-      '<div class="health-item"><span>Deployed Time</span><strong>' + esc(h.buildTime || '2026-09-25 UTC') + '</strong></div>' +
+      '<div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>' +
+      '<div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">' + esc(h.version || 'v2.5.3') + ' (Production)</strong></div>' +
+      '<div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>' +
       '<div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">' + esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)') + '</strong></div>' +
       '<div class="health-item"><span>Active Timeframes</span><strong>' + esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h') + '</strong></div>' +
       '<div class="health-item"><span>Deriv Synthetics Relay</span><strong>' + esc(h.relayUrl || 'https://slk-bot.vercel.app') + ' · Connected</strong></div>' +

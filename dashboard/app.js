@@ -247,22 +247,8 @@ function setStatus(text, kind) {
 function renderHealth(h) {
   if (!h) return;
   if ($('mode')) $('mode').textContent = String(h.mode || 'PAPER').toUpperCase();
-  if ($('workerName')) $('workerName').textContent = h.service || 'slk-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
-  const commit = h.commit || '2dbac83';
-  if ($('deployTag')) {
-    $('deployTag').textContent = commit;
-    $('deployTag').title = `Active Build: ${commit} · Deployed: ${h.buildTime || '2026-09-25 UTC'}`;
-  }
-  if ($('liveCommitText')) {
-    $('liveCommitText').textContent = commit;
-  }
-  if ($('bannerPolicy')) {
-    $('bannerPolicy').innerHTML = `VIP Policy: <strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong>`;
-  }
-  if ($('bannerRelay') && h.relayUrl) {
-    $('bannerRelay').innerHTML = `Deriv Relay: <strong style="color: #2ecc71;">Connected (90ms)</strong>`;
-  }
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
@@ -273,14 +259,14 @@ function renderHealth(h) {
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? `Live · ${commit}` : 'degraded';
+    $('healthPill').textContent = h.ok ? 'Live · 24/7' : 'Degraded';
     $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML = `
-      <div class="health-item"><span>Cloud Service</span><strong>${esc(h.service || '—')}</strong></div>
-      <div class="health-item"><span>Active Build / Commit</span><strong style="color: #2ecc71; font-family: monospace;">${esc(commit)} (${esc(h.version || 'v2.4.0')})</strong></div>
-      <div class="health-item"><span>Deployed Time</span><strong>${esc(h.buildTime || '2026-09-25 UTC')}</strong></div>
+      <div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>
+      <div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">${esc(h.version || 'v2.5.3')} (Production)</strong></div>
+      <div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>
       <div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong></div>
       <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h')}</strong></div>
       <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://slk-bot.vercel.app')} · Connected</strong></div>
