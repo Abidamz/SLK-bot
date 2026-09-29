@@ -64,6 +64,10 @@ export const DASHBOARD_HTML = `<!doctype html>
 .synth-banner-content p{margin:0 0 12px;color:#c084fc;font-size:13px;line-height:1.5}
 .synth-tg-link{display:inline-flex;align-items:center;gap:8px;background:#7e22ce;color:#fff;text-decoration:none;font-weight:700;font-size:12px;padding:8px 16px;border-radius:8px;transition:all .15s ease}
 .synth-tg-link:hover{background:#9333ea;transform:translateY(-1px)}
+.synth-tg-link.free{background:rgba(147,51,234,0.2);border:1px solid rgba(168,85,247,0.5);color:#e9d5ff}
+.synth-tg-link.free:hover{background:rgba(147,51,234,0.38);color:#fff}
+.synth-free-btn{display:inline-flex;align-items:center;gap:7px;background:rgba(147,51,234,0.18);border:1px solid rgba(168,85,247,0.45);color:#d8b4fe;text-decoration:none;font-weight:700;font-size:12px;padding:8px 14px;border-radius:10px;box-shadow:0 2px 10px rgba(147,51,234,.15);transition:transform .15s ease,background .15s ease,border-color .15s ease}
+.synth-free-btn:hover{background:rgba(147,51,234,0.32);border-color:#c084fc;color:#fff;transform:translateY(-1px);box-shadow:0 4px 14px rgba(147,51,234,.3)}
 
 /* Side-by-side Segment Comparative Cards */
 .segment-comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:18px 0 22px}
@@ -96,6 +100,10 @@ export const DASHBOARD_HTML = `<!doctype html>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
         <span>⚡ 24/7 Synthetics VIP</span>
       </a>
+      <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-free-btn" title="Join Free 24/7 Synthetics Telegram Radar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
+        <span>⚡ Free Synthetics</span>
+      </a>
       <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" title="Join Free Telegram Trading Hub">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
         <span>Free Telegram</span>
@@ -122,6 +130,8 @@ export const DASHBOARD_HTML = `<!doctype html>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim $49/mo VIP →</a>
         <span class="banner-sep">|</span>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ 24/7 Synthetics VIP →</a>
+        <span class="banner-sep">|</span>
+        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-weight: 700; font-size: 12px; text-decoration: none;">⚡ Free Synthetics Radar →</a>
         <span class="banner-sep">|</span>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="banner-tg">Free Telegram Hub →</a>
       </div>
@@ -157,6 +167,10 @@ export const DASHBOARD_HTML = `<!doctype html>
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synthetics-btn" style="padding: 11px 18px; font-size: 13px;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
             <span>⚡ 24/7 Synthetics VIP</span>
+          </a>
+          <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 11px 18px; font-size: 13px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
+            <span>⚡ Free Synthetics Radar</span>
           </a>
           <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 11px 20px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
@@ -338,9 +352,14 @@ export const DASHBOARD_HTML = `<!doctype html>
           <span class="synth-badge">⚡ 24/7 Continuous Market</span>
           <h3>Deriv Algorithmic Synthetic Indices (10 Volatility Assets)</h3>
           <p>Continuous algorithmic liquidity across 10 Volatility Indices (V75, V100, V50, V25, V10 and the 1s series). While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
-          <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
-            <span>👉 Unlock 24/7 Synthetics VIP Signals (Instant Access)</span>
-          </a>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+            <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
+              <span>👉 Unlock 24/7 Synthetics VIP Signals (Instant Access)</span>
+            </a>
+            <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
+              <span>💬 Join Free 24/7 Synthetics Radar Channel</span>
+            </a>
+          </div>
         </div>
       </div>
 
@@ -581,6 +600,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
+        <a href="https://t.me/+sBrVmW1u8osyM2Q0" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics Radar</a>
         <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
