@@ -37,11 +37,11 @@ describe("provider routing", () => {
     expect(providerForPair("US30", { US30: "yahoo" })).toBe("yahoo");
   });
 
-  it("index CFDs prefer OANDA when its token exists, then Dukascopy, Yahoo last resort; metals stay on Twelve Data", () => {
+  it("index CFDs prefer OANDA when its token exists, then Dukascopy, never falling back to Yahoo", () => {
     expect(providerForPair("US30", {}, false)).toBe("dukascopy");
     expect(providerForPair("US30", {}, true)).toBe("oanda");
     expect(providerForPair("JAPAN225", {}, true)).toBe("oanda");
-    expect(providerForPair("US30", {}, false, false)).toBe("yahoo"); // dukascopy disabled → yahoo fallback
+    expect(providerForPair("US30", {}, false, false)).toBe("twelvedata"); // no automated routing to yahoo
     expect(providerForPair("XAUUSD", {}, true)).toBe("twelvedata"); // metals are NOT indices
     expect(providerForPair("XAUUSD", { XAUUSD: "oanda" }, true)).toBe("oanda"); // explicit single-source option
   });
@@ -358,51 +358,11 @@ describe("fetchMarketData rate-limit fallback", () => {
     resetProviderCircuitBreakers();
   });
 
-  it("automatically falls back from Twelve Data to Yahoo when daily credits are exhausted", async () => {
+  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted (never touches Yahoo)", async () => {
+    const urlsSeen: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
-      if (url.includes("api.twelvedata.com")) {
-        return new Response(JSON.stringify({
-          code: 429,
-          message: "You have run out of API credits for the day. 815 API credits were used, with the current limit being 800.",
-          status: "error",
-        }), { status: 200 });
-      }
-      if (url.includes("query1.finance.yahoo.com")) {
-        return new Response(JSON.stringify({
-          chart: {
-            result: [{
-              timestamp: [1709510400, 1709512200],
-              indicators: {
-                quote: [{
-                  open: [1.08, 1.082],
-                  high: [1.085, 1.086],
-                  low: [1.079, 1.081],
-                  close: [1.082, 1.084],
-                }],
-              },
-            }],
-          },
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
-    };
-
-    const res = await fetchMarketData({
-      pair: "EURUSD",
-      tf: "30m",
-      limit: 10,
-      tdKey: "test_td_key",
-      fetchFn,
-    });
-
-    expect(res.provider).toBe("yahoo");
-    expect(res.candles.length).toBe(2);
-  });
-
-  it("automatically falls back from Twelve Data to Dukascopy when Yahoo fails", async () => {
-    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
-      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
       if (url.includes("api.twelvedata.com")) {
         return new Response(JSON.stringify({
           code: 429,
@@ -426,11 +386,87 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("dukascopy");
     expect(res.candles.length).toBeGreaterThan(0);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
   });
 
-  it("automatically falls back from Dukascopy to Yahoo for indices on error", async () => {
+  it("automatically falls back from Twelve Data to OANDA when token exists and TD credits exhausted", async () => {
+    const urlsSeen: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({
+          code: 429,
+          message: "You have run out of API credits for the day.",
+          status: "error",
+        }), { status: 200 });
+      }
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({
+          instrument: "EUR_USD",
+          granularity: "M30",
+          candles: [
+            { complete: true, volume: 50, time: "2026-09-04T20:00:00.000000000Z", mid: { o: "1.0800", h: "1.0850", l: "1.0790", c: "1.0820" } },
+            { complete: true, volume: 40, time: "2026-09-04T20:30:00.000000000Z", mid: { o: "1.0820", h: "1.0860", l: "1.0810", c: "1.0840" } },
+          ],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "EURUSD",
+      tf: "30m",
+      limit: 10,
+      tdKey: "test_td_key",
+      oandaToken: "TEST_TOKEN",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("oanda");
+    expect(res.candles.length).toBe(2);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+
+  it("automatically falls back from Dukascopy to OANDA on error without falling back to Yahoo", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({
+          instrument: "US30_USD",
+          granularity: "M30",
+          candles: [
+            { complete: true, volume: 100, time: "2026-09-04T20:00:00.000000000Z", mid: { o: "38000", h: "38150", l: "37950", c: "38100" } },
+            { complete: true, volume: 80, time: "2026-09-04T20:30:00.000000000Z", mid: { o: "38100", h: "38200", l: "38050", c: "38180" } },
+          ],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "US30",
+      tf: "30m",
+      limit: 10,
+      oandaToken: "TEST_TOKEN",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("oanda");
+    expect(res.candles.length).toBe(2);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+
+  it("fails safe when both Dukascopy and fallbacks fail without ever falling back to Yahoo", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
       if (url.includes("jetta.dukascopy.com")) {
         return new Response("Service Unavailable", { status: 503 });
       }
@@ -454,15 +490,14 @@ describe("fetchMarketData rate-limit fallback", () => {
       return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
     };
 
-    const res = await fetchMarketData({
+    await expect(fetchMarketData({
       pair: "US30",
       tf: "30m",
       limit: 10,
       fetchFn,
-    });
+    })).rejects.toThrow(/Dukascopy/);
 
-    expect(res.provider).toBe("dukascopy");
-    expect(res.candles.length).toBe(2);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
   });
 });
 

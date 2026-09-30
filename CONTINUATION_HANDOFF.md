@@ -27,7 +27,7 @@
   - Token verified and securely stored in D1 KV (`slk_kv.oanda_api_token`).
   - Active coverage for 10 Institutional assets: `US30`, `NAS100`, `GER40` (`DE30_EUR`), `JAPAN225`, `XAUUSD`, `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`.
   - Latency: 240–350ms per edge request.
-  - Multi-tier institutional failover: OANDA $\leftrightarrow$ Swiss Bank Dukascopy $\leftrightarrow$ Twelve Data / Yahoo.
+  - Multi-tier institutional failover: OANDA $\leftrightarrow$ Swiss Bank Dukascopy $\leftrightarrow$ Twelve Data (Yahoo Finance completely removed from automated fallback chain).
 - **Telegram Channels (4-Channel Isolated Architecture):**
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
   - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
@@ -142,7 +142,7 @@ MT5/live broker execution: disabled (Research & paper alert mode only)
 | `worker/src/engine.ts` | SLK confirmation state machine (`MAP` $\to$ `TOUCH` $\to$ `SWEEP` $\to$ `SHIFT` $\to$ `RETEST`) |
 | `worker/src/shadow.ts` | Behavior-neutral shadow directional bias classifier (`A_GRADE`, `B_GRADE`, `HTF_CONFLICT`) |
 | `worker/src/notify.ts` | 4-channel isolated Telegram dispatcher (loud pinned entries, silent watch cards, win teasers) |
-| `worker/src/provider.ts` | Market data provider with automatic failover (Twelve Data $\to$ Dukascopy $\to$ Yahoo $\to$ Deriv Relay) |
+| `worker/src/provider.ts` | Market data provider with automatic failover (OANDA $\leftrightarrow$ Dukascopy $\leftrightarrow$ Twelve Data, Deriv Relay; Yahoo removed from fallback) |
 | `worker/src/store.ts` | SQLite / Cloudflare D1 persistence ledger |
 | `worker/wrangler.jsonc` | Cloudflare Worker configuration (`PAIR_BATCH_SIZE: 1`, safety variables) |
 | `dashboard/index.html` | Public track record UI with verified ledger table and performance metrics |

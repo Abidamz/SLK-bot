@@ -1,5 +1,6 @@
-/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus a
- *  Yahoo Finance fallback for index CFDs, plus data-quality validation.
+/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus
+ *  OANDA v3 REST + Dukascopy tick data + Deriv WebSocket.
+ *  Yahoo Finance is excluded from automated fallbacks and accessible only via explicit PROVIDER_MAP.
  *  Canonical symbol mapping is explicit: the research requires normalized
  *  symbols per provider. */
 import type { Candle } from "./types";
@@ -229,11 +230,9 @@ export function decodeJetta(d: JettaCandleResponse): Candle[] {
 type KvLike = { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> } | undefined;
 
 let tdCreditsExhausted = false;
-let yahooUnavailable = false;
 
 export function resetProviderCircuitBreakers(): void {
   tdCreditsExhausted = false;
-  yahooUnavailable = false;
 }
 
 export async function fetchDukascopy(
@@ -898,9 +897,9 @@ export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "der
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
  *  exists (geo-restricted signups), else the keyless Dukascopy public feed
- *  (realtime broker quotes), with Yahoo as last resort. Deriv synthetics
+ *  (realtime broker quotes), or Twelve Data. Deriv synthetics
  *  (e.g., V75, V100) route directly to Deriv. Everything else → Twelve Data.
- *  PROVIDER_MAP overrides. */
+ *  PROVIDER_MAP overrides (including explicit "yahoo"). */
 export function providerForPair(
   pair: string,
   providerMap: Record<string, string> = {},
@@ -916,7 +915,7 @@ export function providerForPair(
   const isIndexCfd = INDEX_POINT_PAIRS.has(p) || Boolean(YAHOO_INDEX_SYMBOLS[p]);
   if (isIndexCfd) {
     if (oandaTokenPresent) return "oanda";
-    return dukascopyEnabled ? "dukascopy" : "yahoo";
+    return dukascopyEnabled ? "dukascopy" : "twelvedata";
   }
   return "twelvedata";
 }
@@ -1035,13 +1034,22 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
           pair: req.pair,
           tf: req.tf,
           from: "twelvedata",
-          to: "dukascopy",
+          to: req.oandaToken ? "oanda" : "dukascopy",
           reason: msg,
         }));
       }
     }
 
-    // Primary institutional fallback: Dukascopy Swiss Bank (keyless, tick-level precision)
+    if (req.oandaToken) {
+      try {
+        const candles = await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+        if (candles.length > 0) return { provider: "oanda", candles };
+      } catch (oandaErr) {
+        lastErr = oandaErr instanceof Error ? oandaErr : new Error(String(oandaErr));
+      }
+    }
+
+    // Institutional fallback: Dukascopy Swiss Bank (keyless, tick-level precision)
     try {
       const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
       if (candles.length > 0) {
@@ -1054,29 +1062,10 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         msg: "slk.provider.fallback",
         pair: req.pair,
         tf: req.tf,
-        from: "dukascopy",
-        to: req.oandaToken ? "oanda" : yahooUnavailable ? "failed" : "yahoo",
+        from: "twelvedata",
+        to: "failed",
         reason: lastErr.message,
       }));
-    }
-
-    if (req.oandaToken) {
-      try {
-        const candles = await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
-        if (candles.length > 0) return { provider: "oanda", candles };
-      } catch (oandaErr) {
-        lastErr = oandaErr instanceof Error ? oandaErr : new Error(String(oandaErr));
-      }
-    }
-
-    if (!yahooUnavailable) {
-      try {
-        const candles = await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-        return { provider: "yahoo", candles };
-      } catch (yahooErr) {
-        lastErr = yahooErr instanceof Error ? yahooErr : new Error(String(yahooErr));
-        yahooUnavailable = true;
-      }
     }
 
     throw lastErr ?? new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
@@ -1099,8 +1088,10 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
           try {
             return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
           } catch (dukaErr) {
-            if (!yahooUnavailable) {
-              return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+            if (req.tdKey && !tdCreditsExhausted) {
+              try {
+                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+              } catch {}
             }
             throw oandaErr;
           }
@@ -1130,22 +1121,12 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
                 return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
               } catch {}
             }
-            if (!yahooUnavailable) {
-              console.warn(JSON.stringify({
-                level: "warn",
-                msg: "slk.provider.fallback",
-                pair: req.pair,
-                tf: req.tf,
-                from: "dukascopy",
-                to: "yahoo",
-                reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
-              }));
-              return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-            }
             throw dukaErr;
           }
         })()
-      : await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+      : provider === "yahoo"
+        ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+        : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
 
