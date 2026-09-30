@@ -128,6 +128,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
 .checklist-item strong{color:var(--text);font-size:12px;display:block}
 .checklist-item small{color:var(--muted);font-size:11px;display:block;margin-top:2px}
 
+.replay-bar{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.replay-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.replay-step{margin-left:auto;color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace}.replay-stages{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.replay-stages span{padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace}.replay-stages span.done{border-color:#153126;background:#153126;color:#8cf0c6}.replay-stages span.now{border-color:#78531a;background:#1c150b;color:#f6c66d}.replay-narration{margin:10px 0 0;color:#c7d0dd;font-size:13px}.risk-calc{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.risk-calc h3{margin:0 0 10px;font-size:14px}.risk-inputs{display:flex;gap:12px;flex-wrap:wrap}.risk-inputs label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}.risk-inputs input{width:150px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:#0b111a;color:#e8edf4;font-family:'JetBrains Mono',monospace}.risk-outputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}.risk-outputs div{padding:8px 10px;border-radius:10px;background:#0b111a;border:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--muted)}.risk-outputs strong{display:block;color:#e8edf4;font-size:14px;font-family:'JetBrains Mono',monospace;margin-top:2px}
 </style>
 </head>
 <body>
@@ -711,6 +712,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <input id="alertSearch" type="search" placeholder="Search pair (e.g. XAUUSD, USDJPY)" aria-label="Search alerts">
         <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Status</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>
+        <button id="exportCsv" class="secondary" title="Download verified ledger as CSV">⬇ CSV</button>
+        <button id="exportJson" class="secondary" title="Download verified ledger as JSON">⬇ JSON</button>
       </div>
 
       <div id="alertsList" class="alert-list">
@@ -808,6 +811,26 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <div id="chartNotice" class="chart-notice" hidden></div>
         <div class="chart-wrap"><svg id="ohlcChart" viewBox="0 0 1000 460" role="img" aria-label="OHLC evidence chart"></svg></div>
         <div id="chartLegend" class="chart-legend"></div>
+        <div id="replayBar" class="replay-bar" hidden>
+          <div class="replay-controls">
+            <button id="replayReset" class="secondary" title="Restart replay">⏮</button>
+            <button id="replayPrev" class="secondary" title="Previous step">◀ Step</button>
+            <button id="replayPlay" class="secondary" title="Auto play">▶ Play</button>
+            <button id="replayNext" class="secondary" title="Next step">Step ▶</button>
+            <span id="replayStepLabel" class="replay-step"></span>
+          </div>
+          <div id="replayStages" class="replay-stages"></div>
+          <p id="replayNarration" class="replay-narration"></p>
+        </div>
+        <div id="riskCalc" class="risk-calc" hidden>
+          <h3>🧮 Position Size Calculator</h3>
+          <div class="risk-inputs">
+            <label>Account equity ($)<input id="riskEquity" type="number" min="1" step="100" value="10000"></label>
+            <label>Risk per trade (%)<input id="riskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
+          </div>
+          <div id="riskOutputs" class="risk-outputs"></div>
+          <p class="chart-disclaimer">Contract specifications differ by broker — always verify lot size with your broker before ordering.</p>
+        </div>
         <p class="chart-disclaimer">Real historical candles with entry, stop loss, invalidation, and target levels visualized.</p>
       </section>
     </div>
@@ -1487,13 +1510,16 @@ async function openChart(setupId, tf) {
   $('chartStatus').textContent = 'Loading market candles…';
   $('chartNotice').hidden = true;
   $('ohlcChart').innerHTML = '';
+  stopReplayTimer();
+  if ($('replayBar')) $('replayBar').hidden = true;
+  if ($('riskCalc')) $('riskCalc').hidden = true;
   try {
     const data = await api(\`/dashboard/signals/\${encodeURIComponent(setupId)}/chart?timeframe=\${encodeURIComponent(tf)}&before=200&after=20\`);
     if (data.status && data.status !== 'OK' && (!data.candles || !data.candles.length)) {
       showChartNotice(\`\${data.status}: \${data.error || 'No finalized history available.'}\`);
       return;
     }
-    renderChart(data);
+    initReplay(data);
   } catch (e) {
     showChartNotice(\`Chart unavailable: \${e.message}\`);
   }
@@ -1508,29 +1534,33 @@ function showChartNotice(text) {
   if ($('ohlcChart')) $('ohlcChart').innerHTML = '';
 }
 
-function renderChart(data) {
-  const candles = data.candles || [];
-  if (!candles.length) {
+function renderChart(data, view) {
+  const all = data.candles || [];
+  if (!all.length) {
     showChartNotice('HISTORY_INSUFFICIENT: No historical candles available for this setup.');
     return;
   }
+  const v = view || { upto: Infinity, showLevels: true, showOutcome: true };
+  const upto = Math.min(all.length - 1, v.upto);
+  const candles = all.slice(0, upto + 1);
   const svg = $('ohlcChart'), W = 1000, H = 460, pad = { l: 62, r: 24, t: 20, b: 44 };
-  const values = candles.flatMap(c => [c.high, c.low]);
+  // Axes stay stable across replay steps: scale from the FULL window + levels
+  const values = all.flatMap(c => [c.high, c.low]);
   const levels = data.levels || {};
-  Object.values(levels).forEach(v => {
-    if (v != null && Number.isFinite(Number(v))) values.push(Number(v));
+  Object.values(levels).forEach(val => {
+    if (val != null && Number.isFinite(Number(val))) values.push(Number(val));
   });
   let lo = Math.min(...values), hi = Math.max(...values), margin = (hi - lo) * 0.08 || 1;
   lo -= margin;
   hi += margin;
-  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, candles.length - 1);
-  const y = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
+  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, all.length - 1);
+  const y = val => pad.t + (hi - val) * (H - pad.t - pad.b) / (hi - lo);
   let out = \`<rect x="0" y="0" width="\${W}" height="\${H}" rx="14" fill="#0b111a"/>\`;
   for (let i = 0; i < 5; i++) {
-    const v = hi - (hi - lo) * i / 4;
-    out += \`<line x1="\${pad.l}" x2="\${W - pad.r}" y1="\${y(v)}" y2="\${y(v)}" stroke="#253044"/><text x="8" y="\${y(v) + 4}" fill="#8793a7" font-size="11">\${num(v)}</text>\`;
+    const val = hi - (hi - lo) * i / 4;
+    out += \`<line x1="\${pad.l}" x2="\${W - pad.r}" y1="\${y(val)}" y2="\${y(val)}" stroke="#253044"/><text x="8" y="\${y(val) + 4}" fill="#8793a7" font-size="11">\${num(val)}</text>\`;
   }
-  const cw = Math.max(2, Math.min(14, (W - pad.l - pad.r) / candles.length * 0.65));
+  const cw = Math.max(2, Math.min(14, (W - pad.l - pad.r) / all.length * 0.65));
   candles.forEach((c, i) => {
     const xx = x(i), up = c.close >= c.open, color = up ? '#8cf0c6' : '#ff8f9b', bodyY = Math.min(y(c.open), y(c.close)), bodyH = Math.max(1, Math.abs(y(c.open) - y(c.close)));
     out += \`<g><title>\${fmtDate(c.time)} · O \${num(c.open)} H \${num(c.high)} L \${num(c.low)} C \${num(c.close)}</title><line x1="\${xx}" x2="\${xx}" y1="\${y(c.high)}" y2="\${y(c.low)}" stroke="\${color}"/><rect x="\${xx - cw / 2}" y="\${bodyY}" width="\${cw}" height="\${bodyH}" fill="\${color}" opacity=".9"/></g>\`;
@@ -1548,25 +1578,245 @@ function renderChart(data) {
     ['keyLevelLow', 'Key Low', '#b093ff'],
     ['keyLevelHigh', 'Key High', '#b093ff']
   ];
-  lineDefs.forEach(([key, label, color]) => {
-    if (levels[key] == null) return;
-    const v = Number(levels[key]);
-    if (!Number.isFinite(v)) return;
-    out += \`<line x1="\${pad.l}" x2="\${W - pad.r}" y1="\${y(v)}" y2="\${y(v)}" stroke="\${color}" stroke-dasharray="6 5"/><text x="\${W - pad.r - 5}" y="\${y(v) - 5}" text-anchor="end" fill="\${color}" font-size="11">\${label} \${num(v)}</text>\`;
-  });
+  if (v.showLevels) {
+    lineDefs.forEach(([key, label, color]) => {
+      if (levels[key] == null) return;
+      const val = Number(levels[key]);
+      if (!Number.isFinite(val)) return;
+      out += \`<line x1="\${pad.l}" x2="\${W - pad.r}" y1="\${y(val)}" y2="\${y(val)}" stroke="\${color}" stroke-dasharray="6 5"/><text x="\${W - pad.r - 5}" y="\${y(val) - 5}" text-anchor="end" fill="\${color}" font-size="11">\${label} \${num(val)}</text>\`;
+    });
+  }
   (data.evidenceMarkers || []).forEach(m => {
-    const t = new Date(m.time).getTime(), idx = candles.findIndex(c => new Date(c.time).getTime() >= t);
-    if (idx < 0) return;
+    const t = new Date(m.time).getTime(), idx = all.findIndex(c => new Date(c.time).getTime() >= t);
+    if (idx < 0 || idx > upto) return;
     const xx = x(idx);
-    out += \`<circle cx="\${xx}" cy="\${pad.t + 10}" r="5" fill="#f6c66d"><title>\${esc(m.type)} · \${esc(m.label)}</title></circle>\`;
+    out += \`<circle cx="\${xx}" cy="\${pad.t + 10}" r="5" fill="#f6c66d"><title>\${esc(m.type)} · \${esc(m.label)}</title></circle><text x="\${xx}" y="\${pad.t + 27}" text-anchor="middle" fill="#f6c66d" font-size="9">\${esc(m.type)}</text>\`;
   });
-  out += \`<text x="\${pad.l}" y="\${H - 12}" fill="#8793a7" font-size="11">\${fmtDate(candles[0].time)}</text><text x="\${W - pad.r}" y="\${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">\${fmtDate(candles[candles.length - 1].time)}</text>\`;
+  if (v.showOutcome && data.outcome && data.outcome.status && data.outcome.status !== 'OPEN') {
+    const oc = data.outcome;
+    const color = oc.status === 'TP_HIT' ? '#8cf0c6' : oc.status === 'SL_HIT' ? '#ff8f9b' : oc.status === 'BE_HIT' ? '#f6c66d' : '#8793a7';
+    const rTxt = oc.rMultiple != null ? \` \${Number(oc.rMultiple) >= 0 ? '+' : ''}\${Number(oc.rMultiple).toFixed(2)}R\` : '';
+    const badge = \`\${oc.status}\${rTxt}\`;
+    out += \`<rect x="\${pad.l + 8}" y="\${pad.t + 4}" width="\${badge.length * 8 + 30}" height="24" rx="12" fill="#0b111a" stroke="\${color}"/><text x="\${pad.l + 22}" y="\${pad.t + 20}" fill="\${color}" font-size="12" font-weight="700">🏁 \${esc(badge)}</text>\`;
+  }
+  out += \`<text x="\${pad.l}" y="\${H - 12}" fill="#8793a7" font-size="11">\${fmtDate(all[0].time)}</text><text x="\${W - pad.r}" y="\${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">\${fmtDate(all[all.length - 1].time)}</text>\`;
   svg.innerHTML = out;
-  const requested = data.requestedBefore || candles.length;
   const incomplete = data.dataHealth && !data.dataHealth.historyComplete;
-  if ($('chartStatus')) $('chartStatus').textContent = \`LIVE OHLC · \${candles.length} candles · \${data.provider || 'twelvedata'}\${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}\`;
-  if ($('chartLegend')) $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(x => \`<span style="color:\${x[2]}">━ \${x[1]}</span>\`).join(' ');
+  if ($('chartStatus')) $('chartStatus').textContent = \`LIVE OHLC · \${candles.length}/\${all.length} candles · \${data.provider || 'twelvedata'}\${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}\`;
+  if ($('chartLegend')) $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(xd => \`<span style="color:\${xd[2]}">━ \${xd[1]}</span>\`).join(' ');
 }
+
+// ── Functionality #7: Interactive Trade Replay & Candle Stepper ──────────
+const STAGE_META = {
+  START: ['🎬', 'HISTORY'],
+  MAP: ['🗺️', 'MAP'],
+  TOUCH: ['👆', 'TOUCH'],
+  SWEEP: ['🌊', 'SWEEP'],
+  SHIFT: ['⚡', 'SHIFT'],
+  RETEST: ['🎯', 'RETEST'],
+  CONFIRMED: ['📢', 'CONFIRMED'],
+  OUTCOME: ['🏁', 'OUTCOME'],
+};
+let replay = null; // { data, steps, pos, timer }
+
+function buildReplaySteps(data) {
+  const candles = data.candles || [];
+  const idxAt = t => candles.findIndex(c => new Date(c.time).getTime() >= new Date(t).getTime());
+  const steps = [{ candleIdx: Math.min(20, Math.max(0, candles.length - 1)), stage: 'START', narration: 'Historical candles load — no lines drawn yet. This is exactly what the desk saw before the setup existed.' }];
+  const markers = (data.evidenceMarkers || []).slice().sort((a, b) => new Date(a.time) - new Date(b.time));
+  for (const m of markers) {
+    if (!STAGE_META[m.type]) continue;
+    const idx = idxAt(m.time);
+    if (idx < 0) continue;
+    steps.push({ candleIdx: idx, stage: m.type, narration: \`\${m.type} — \${m.label}\` });
+  }
+  if (data.confirmedAt) {
+    const idx = idxAt(data.confirmedAt);
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. SLK entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+  }
+  const oc = data.outcome;
+  if (oc && oc.status && oc.status !== 'OPEN') {
+    const idx = idxAt(oc.exitTime || data.confirmedAt);
+    const r = oc.rMultiple != null ? \` (\${Number(oc.rMultiple) >= 0 ? '+' : ''}\${Number(oc.rMultiple).toFixed(2)}R)\` : '';
+    steps.push({ candleIdx: idx < 0 ? candles.length - 1 : idx, stage: 'OUTCOME', narration: \`OUTCOME — \${oc.status}\${r} resolved on candle close and written to the verified ledger.\` });
+  }
+  return steps;
+}
+
+function renderReplayFrame() {
+  if (!replay) return;
+  const { data, steps, pos } = replay;
+  const step = steps[pos];
+  const confirmedIdx = steps.findIndex(s => s.stage === 'CONFIRMED');
+  const outcomeIdx = steps.findIndex(s => s.stage === 'OUTCOME');
+  renderChart(data, {
+    upto: step.candleIdx,
+    showLevels: confirmedIdx < 0 ? true : pos >= confirmedIdx,
+    showOutcome: outcomeIdx < 0 ? true : pos >= outcomeIdx,
+  });
+  const reached = steps.slice(0, pos + 1).map(s => s.stage);
+  const stagesEl = $('replayStages');
+  if (stagesEl) {
+    stagesEl.innerHTML = ['MAP', 'TOUCH', 'SWEEP', 'SHIFT', 'RETEST', 'CONFIRMED', 'OUTCOME'].map(st => {
+      const stageList = steps.map(s => s.stage);
+      const cls = stageList[pos] === st ? 'now' : (reached.includes(st) ? 'done' : '');
+      return \`<span class="\${cls}">\${STAGE_META[st][0]} \${st}</span>\`;
+    }).join('');
+  }
+  const lbl = $('replayStepLabel');
+  if (lbl) lbl.textContent = \`Step \${pos + 1}/\${steps.length} · \${step.stage}\`;
+  const nar = $('replayNarration');
+  if (nar) nar.textContent = \`\${STAGE_META[step.stage][0]} \${step.narration}\`;
+}
+
+function stopReplayTimer() {
+  if (replay && replay.timer) { clearInterval(replay.timer); replay.timer = null; }
+  const b = $('replayPlay');
+  if (b) b.textContent = '▶ Play';
+}
+
+function stepReplay(d) {
+  if (!replay) return;
+  replay.pos = Math.max(0, Math.min(replay.steps.length - 1, replay.pos + d));
+  renderReplayFrame();
+}
+
+function toggleReplayPlay() {
+  if (!replay) return;
+  if (replay.timer) { stopReplayTimer(); return; }
+  if (replay.pos >= replay.steps.length - 1) replay.pos = 0;
+  const b = $('replayPlay');
+  if (b) b.textContent = '⏸ Pause';
+  replay.timer = setInterval(() => {
+    if (!replay || replay.pos >= replay.steps.length - 1) { stopReplayTimer(); return; }
+    replay.pos++;
+    renderReplayFrame();
+  }, 1100);
+  renderReplayFrame();
+}
+
+function initReplay(data) {
+  stopReplayTimer();
+  replay = { data, steps: buildReplaySteps(data), pos: 0 };
+  const bar = $('replayBar');
+  if (bar) bar.hidden = false;
+  replay.pos = replay.steps.length - 1; // open on the finished picture
+  renderReplayFrame();
+  renderRiskCalc(data);
+}
+
+[['replayReset', () => { stopReplayTimer(); if (replay) { replay.pos = 0; renderReplayFrame(); } }],
+ ['replayPrev', () => { stopReplayTimer(); stepReplay(-1); }],
+ ['replayNext', () => { stopReplayTimer(); stepReplay(1); }],
+ ['replayPlay', () => toggleReplayPlay()]].forEach(([id, fn]) => {
+  const el = $(id);
+  if (el) el.addEventListener('click', fn);
+});
+
+// ── Functionality #8: In-app Risk & Position Sizing Calculator ───────────
+function pointValuePerLot(pair, price) {
+  const p = String(pair || '').toUpperCase();
+  if (p.endsWith('JPY')) return 100000 / (price || 1);
+  if (p === 'XAUUSD' || p === 'XAGUSD') return 100;
+  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'UK100', 'SPX500'].includes(p)) return 1;
+  if (/^V\\d|^R_\\d|1HZ/.test(p)) return 1;
+  return 100000; // USD-quoted forex: $10 per pip per standard lot
+}
+
+function updateRiskCalc() {
+  const box = $('riskCalc'), out = $('riskOutputs');
+  if (!box || !out || box.hidden) return;
+  const pair = box.dataset.pair || '';
+  const entry = Number(box.dataset.entry), stop = Number(box.dataset.stop), tp1 = Number(box.dataset.tp1 || '');
+  const equity = Number(($('riskEquity') || {}).value) || 0;
+  const pct = Number(($('riskPct') || {}).value) || 0;
+  const pv = pointValuePerLot(pair, entry);
+  const riskUsd = equity * pct / 100;
+  const stopDist = Math.abs(entry - stop);
+  const lots = stopDist > 0 ? riskUsd / (stopDist * pv) : 0;
+  const lotsR = Math.floor(lots * 100) / 100;
+  const tp1Usd = Number.isFinite(tp1) && tp1 > 0 ? Math.abs(tp1 - entry) * lotsR * pv : null;
+  const cls = pair.endsWith('JPY') ? 'forex · JPY quote' : (pv === 100 ? 'metal · 100 oz/lot' : (pv === 1 ? 'index/synthetic · $1/point/lot' : 'forex · USD quote'));
+  out.innerHTML = \`
+    <div>Dollar risk<strong>$\${riskUsd.toFixed(2)}</strong></div>
+    <div>Suggested size<strong>\${lotsR.toFixed(2)} lots</strong></div>
+    <div>Stop distance<strong>\${num(stopDist)} · \${cls}</strong></div>
+    <div>Payout at TP1<strong>\${tp1Usd != null ? '$' + tp1Usd.toFixed(2) : '—'}</strong></div>\`;
+}
+
+function renderRiskCalc(data) {
+  const box = $('riskCalc');
+  if (!box) return;
+  const lv = data.levels || {};
+  if (lv.entry == null || lv.stop == null || Math.abs(Number(lv.entry) - Number(lv.stop)) <= 0) { box.hidden = true; return; }
+  box.hidden = false;
+  box.dataset.pair = data.symbol || '';
+  box.dataset.entry = lv.entry;
+  box.dataset.stop = lv.stop;
+  box.dataset.tp1 = lv.target1 != null ? lv.target1 : '';
+  updateRiskCalc();
+}
+
+[['riskEquity'], ['riskPct']].forEach(([id]) => {
+  const el = $(id);
+  if (el) el.addEventListener('input', updateRiskCalc);
+});
+
+// ── Functionality #9: Exportable institutional audit log (CSV / JSON) ────
+async function fetchLedgerRows() {
+  const rows = [];
+  for (let page = 1; page <= 6; page++) {
+    const res = await api(\`/alerts?pageSize=200&page=\${page}&sort=candleCloseTime&order=desc\`);
+    const items = res.items || [];
+    rows.push(...items);
+    if (items.length < 200) break;
+  }
+  return rows.map(r => ({
+    ...r,
+    rr: (r.entry != null && r.stopLoss != null && r.tp1 != null && Math.abs(r.entry - r.stopLoss) > 0)
+      ? Number((Math.abs(r.tp1 - r.entry) / Math.abs(r.entry - r.stopLoss)).toFixed(2)) : null,
+  }));
+}
+
+function downloadBlob(name, mime, text) {
+  const blob = new Blob([text], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+const EXPORT_FIELDS = [
+  ['setupId', 'Setup ID'], ['pair', 'Pair'], ['tf', 'Timeframe'], ['direction', 'Direction'],
+  ['entry', 'Entry Price'], ['stopLoss', 'Stop Loss'], ['tp1', 'Take Profit 1'], ['tp2', 'Take Profit 2'],
+  ['rr', 'Target RR'], ['status', 'Outcome'], ['rMultiple', 'Net R'],
+  ['candleCloseTime', 'Timestamp Opened'], ['exitTime', 'Timestamp Resolved'],
+];
+
+async function exportLedger(fmt) {
+  try {
+    const rows = await fetchLedgerRows();
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (fmt === 'json') {
+      downloadBlob(\`slk-radar-ledger-\${stamp}.json\`, 'application/json', JSON.stringify(rows, null, 2));
+      return;
+    }
+    const escCsv = val => { const s = val == null ? '' : String(val); return /[",\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
+    for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
+    downloadBlob(\`slk-radar-ledger-\${stamp}.csv\`, 'text/csv', lines.join('\\n'));
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+[['exportCsv', 'csv'], ['exportJson', 'json']].forEach(([id, fmt]) => {
+  const el = $(id);
+  if (el) el.addEventListener('click', () => exportLedger(fmt));
+});
 
 function num(x) {
   return x == null ? '—' : Number(x).toPrecision(7);

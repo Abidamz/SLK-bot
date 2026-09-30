@@ -643,13 +643,16 @@ async function openChart(setupId, tf) {
   $('chartStatus').textContent = 'Loading market candles…';
   $('chartNotice').hidden = true;
   $('ohlcChart').innerHTML = '';
+  stopReplayTimer();
+  if ($('replayBar')) $('replayBar').hidden = true;
+  if ($('riskCalc')) $('riskCalc').hidden = true;
   try {
     const data = await api(`/dashboard/signals/${encodeURIComponent(setupId)}/chart?timeframe=${encodeURIComponent(tf)}&before=200&after=20`);
     if (data.status && data.status !== 'OK' && (!data.candles || !data.candles.length)) {
       showChartNotice(`${data.status}: ${data.error || 'No finalized history available.'}`);
       return;
     }
-    renderChart(data);
+    initReplay(data);
   } catch (e) {
     showChartNotice(`Chart unavailable: ${e.message}`);
   }
@@ -664,29 +667,33 @@ function showChartNotice(text) {
   if ($('ohlcChart')) $('ohlcChart').innerHTML = '';
 }
 
-function renderChart(data) {
-  const candles = data.candles || [];
-  if (!candles.length) {
+function renderChart(data, view) {
+  const all = data.candles || [];
+  if (!all.length) {
     showChartNotice('HISTORY_INSUFFICIENT: No historical candles available for this setup.');
     return;
   }
+  const v = view || { upto: Infinity, showLevels: true, showOutcome: true };
+  const upto = Math.min(all.length - 1, v.upto);
+  const candles = all.slice(0, upto + 1);
   const svg = $('ohlcChart'), W = 1000, H = 460, pad = { l: 62, r: 24, t: 20, b: 44 };
-  const values = candles.flatMap(c => [c.high, c.low]);
+  // Axes stay stable across replay steps: scale from the FULL window + levels
+  const values = all.flatMap(c => [c.high, c.low]);
   const levels = data.levels || {};
-  Object.values(levels).forEach(v => {
-    if (v != null && Number.isFinite(Number(v))) values.push(Number(v));
+  Object.values(levels).forEach(val => {
+    if (val != null && Number.isFinite(Number(val))) values.push(Number(val));
   });
   let lo = Math.min(...values), hi = Math.max(...values), margin = (hi - lo) * 0.08 || 1;
   lo -= margin;
   hi += margin;
-  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, candles.length - 1);
-  const y = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
+  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, all.length - 1);
+  const y = val => pad.t + (hi - val) * (H - pad.t - pad.b) / (hi - lo);
   let out = `<rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="#0b111a"/>`;
   for (let i = 0; i < 5; i++) {
-    const v = hi - (hi - lo) * i / 4;
-    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#253044"/><text x="8" y="${y(v) + 4}" fill="#8793a7" font-size="11">${num(v)}</text>`;
+    const val = hi - (hi - lo) * i / 4;
+    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(val)}" y2="${y(val)}" stroke="#253044"/><text x="8" y="${y(val) + 4}" fill="#8793a7" font-size="11">${num(val)}</text>`;
   }
-  const cw = Math.max(2, Math.min(14, (W - pad.l - pad.r) / candles.length * 0.65));
+  const cw = Math.max(2, Math.min(14, (W - pad.l - pad.r) / all.length * 0.65));
   candles.forEach((c, i) => {
     const xx = x(i), up = c.close >= c.open, color = up ? '#8cf0c6' : '#ff8f9b', bodyY = Math.min(y(c.open), y(c.close)), bodyH = Math.max(1, Math.abs(y(c.open) - y(c.close)));
     out += `<g><title>${fmtDate(c.time)} · O ${num(c.open)} H ${num(c.high)} L ${num(c.low)} C ${num(c.close)}</title><line x1="${xx}" x2="${xx}" y1="${y(c.high)}" y2="${y(c.low)}" stroke="${color}"/><rect x="${xx - cw / 2}" y="${bodyY}" width="${cw}" height="${bodyH}" fill="${color}" opacity=".9"/></g>`;
@@ -704,25 +711,245 @@ function renderChart(data) {
     ['keyLevelLow', 'Key Low', '#b093ff'],
     ['keyLevelHigh', 'Key High', '#b093ff']
   ];
-  lineDefs.forEach(([key, label, color]) => {
-    if (levels[key] == null) return;
-    const v = Number(levels[key]);
-    if (!Number.isFinite(v)) return;
-    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="${color}" stroke-dasharray="6 5"/><text x="${W - pad.r - 5}" y="${y(v) - 5}" text-anchor="end" fill="${color}" font-size="11">${label} ${num(v)}</text>`;
-  });
+  if (v.showLevels) {
+    lineDefs.forEach(([key, label, color]) => {
+      if (levels[key] == null) return;
+      const val = Number(levels[key]);
+      if (!Number.isFinite(val)) return;
+      out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(val)}" y2="${y(val)}" stroke="${color}" stroke-dasharray="6 5"/><text x="${W - pad.r - 5}" y="${y(val) - 5}" text-anchor="end" fill="${color}" font-size="11">${label} ${num(val)}</text>`;
+    });
+  }
   (data.evidenceMarkers || []).forEach(m => {
-    const t = new Date(m.time).getTime(), idx = candles.findIndex(c => new Date(c.time).getTime() >= t);
-    if (idx < 0) return;
+    const t = new Date(m.time).getTime(), idx = all.findIndex(c => new Date(c.time).getTime() >= t);
+    if (idx < 0 || idx > upto) return;
     const xx = x(idx);
-    out += `<circle cx="${xx}" cy="${pad.t + 10}" r="5" fill="#f6c66d"><title>${esc(m.type)} · ${esc(m.label)}</title></circle>`;
+    out += `<circle cx="${xx}" cy="${pad.t + 10}" r="5" fill="#f6c66d"><title>${esc(m.type)} · ${esc(m.label)}</title></circle><text x="${xx}" y="${pad.t + 27}" text-anchor="middle" fill="#f6c66d" font-size="9">${esc(m.type)}</text>`;
   });
-  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">${fmtDate(candles[0].time)}</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">${fmtDate(candles[candles.length - 1].time)}</text>`;
+  if (v.showOutcome && data.outcome && data.outcome.status && data.outcome.status !== 'OPEN') {
+    const oc = data.outcome;
+    const color = oc.status === 'TP_HIT' ? '#8cf0c6' : oc.status === 'SL_HIT' ? '#ff8f9b' : oc.status === 'BE_HIT' ? '#f6c66d' : '#8793a7';
+    const rTxt = oc.rMultiple != null ? ` ${Number(oc.rMultiple) >= 0 ? '+' : ''}${Number(oc.rMultiple).toFixed(2)}R` : '';
+    const badge = `${oc.status}${rTxt}`;
+    out += `<rect x="${pad.l + 8}" y="${pad.t + 4}" width="${badge.length * 8 + 30}" height="24" rx="12" fill="#0b111a" stroke="${color}"/><text x="${pad.l + 22}" y="${pad.t + 20}" fill="${color}" font-size="12" font-weight="700">🏁 ${esc(badge)}</text>`;
+  }
+  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">${fmtDate(all[0].time)}</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">${fmtDate(all[all.length - 1].time)}</text>`;
   svg.innerHTML = out;
-  const requested = data.requestedBefore || candles.length;
   const incomplete = data.dataHealth && !data.dataHealth.historyComplete;
-  if ($('chartStatus')) $('chartStatus').textContent = `LIVE OHLC · ${candles.length} candles · ${data.provider || 'twelvedata'}${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}`;
-  if ($('chartLegend')) $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(x => `<span style="color:${x[2]}">━ ${x[1]}</span>`).join(' ');
+  if ($('chartStatus')) $('chartStatus').textContent = `LIVE OHLC · ${candles.length}/${all.length} candles · ${data.provider || 'twelvedata'}${incomplete ? ' · HISTORY_INSUFFICIENT' : ''}`;
+  if ($('chartLegend')) $('chartLegend').innerHTML = '<span class="legend-live">● LIVE OHLC</span> ' + lineDefs.map(xd => `<span style="color:${xd[2]}">━ ${xd[1]}</span>`).join(' ');
 }
+
+// ── Functionality #7: Interactive Trade Replay & Candle Stepper ──────────
+const STAGE_META = {
+  START: ['🎬', 'HISTORY'],
+  MAP: ['🗺️', 'MAP'],
+  TOUCH: ['👆', 'TOUCH'],
+  SWEEP: ['🌊', 'SWEEP'],
+  SHIFT: ['⚡', 'SHIFT'],
+  RETEST: ['🎯', 'RETEST'],
+  CONFIRMED: ['📢', 'CONFIRMED'],
+  OUTCOME: ['🏁', 'OUTCOME'],
+};
+let replay = null; // { data, steps, pos, timer }
+
+function buildReplaySteps(data) {
+  const candles = data.candles || [];
+  const idxAt = t => candles.findIndex(c => new Date(c.time).getTime() >= new Date(t).getTime());
+  const steps = [{ candleIdx: Math.min(20, Math.max(0, candles.length - 1)), stage: 'START', narration: 'Historical candles load — no lines drawn yet. This is exactly what the desk saw before the setup existed.' }];
+  const markers = (data.evidenceMarkers || []).slice().sort((a, b) => new Date(a.time) - new Date(b.time));
+  for (const m of markers) {
+    if (!STAGE_META[m.type]) continue;
+    const idx = idxAt(m.time);
+    if (idx < 0) continue;
+    steps.push({ candleIdx: idx, stage: m.type, narration: `${m.type} — ${m.label}` });
+  }
+  if (data.confirmedAt) {
+    const idx = idxAt(data.confirmedAt);
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. SLK entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+  }
+  const oc = data.outcome;
+  if (oc && oc.status && oc.status !== 'OPEN') {
+    const idx = idxAt(oc.exitTime || data.confirmedAt);
+    const r = oc.rMultiple != null ? ` (${Number(oc.rMultiple) >= 0 ? '+' : ''}${Number(oc.rMultiple).toFixed(2)}R)` : '';
+    steps.push({ candleIdx: idx < 0 ? candles.length - 1 : idx, stage: 'OUTCOME', narration: `OUTCOME — ${oc.status}${r} resolved on candle close and written to the verified ledger.` });
+  }
+  return steps;
+}
+
+function renderReplayFrame() {
+  if (!replay) return;
+  const { data, steps, pos } = replay;
+  const step = steps[pos];
+  const confirmedIdx = steps.findIndex(s => s.stage === 'CONFIRMED');
+  const outcomeIdx = steps.findIndex(s => s.stage === 'OUTCOME');
+  renderChart(data, {
+    upto: step.candleIdx,
+    showLevels: confirmedIdx < 0 ? true : pos >= confirmedIdx,
+    showOutcome: outcomeIdx < 0 ? true : pos >= outcomeIdx,
+  });
+  const reached = steps.slice(0, pos + 1).map(s => s.stage);
+  const stagesEl = $('replayStages');
+  if (stagesEl) {
+    stagesEl.innerHTML = ['MAP', 'TOUCH', 'SWEEP', 'SHIFT', 'RETEST', 'CONFIRMED', 'OUTCOME'].map(st => {
+      const stageList = steps.map(s => s.stage);
+      const cls = stageList[pos] === st ? 'now' : (reached.includes(st) ? 'done' : '');
+      return `<span class="${cls}">${STAGE_META[st][0]} ${st}</span>`;
+    }).join('');
+  }
+  const lbl = $('replayStepLabel');
+  if (lbl) lbl.textContent = `Step ${pos + 1}/${steps.length} · ${step.stage}`;
+  const nar = $('replayNarration');
+  if (nar) nar.textContent = `${STAGE_META[step.stage][0]} ${step.narration}`;
+}
+
+function stopReplayTimer() {
+  if (replay && replay.timer) { clearInterval(replay.timer); replay.timer = null; }
+  const b = $('replayPlay');
+  if (b) b.textContent = '▶ Play';
+}
+
+function stepReplay(d) {
+  if (!replay) return;
+  replay.pos = Math.max(0, Math.min(replay.steps.length - 1, replay.pos + d));
+  renderReplayFrame();
+}
+
+function toggleReplayPlay() {
+  if (!replay) return;
+  if (replay.timer) { stopReplayTimer(); return; }
+  if (replay.pos >= replay.steps.length - 1) replay.pos = 0;
+  const b = $('replayPlay');
+  if (b) b.textContent = '⏸ Pause';
+  replay.timer = setInterval(() => {
+    if (!replay || replay.pos >= replay.steps.length - 1) { stopReplayTimer(); return; }
+    replay.pos++;
+    renderReplayFrame();
+  }, 1100);
+  renderReplayFrame();
+}
+
+function initReplay(data) {
+  stopReplayTimer();
+  replay = { data, steps: buildReplaySteps(data), pos: 0 };
+  const bar = $('replayBar');
+  if (bar) bar.hidden = false;
+  replay.pos = replay.steps.length - 1; // open on the finished picture
+  renderReplayFrame();
+  renderRiskCalc(data);
+}
+
+[['replayReset', () => { stopReplayTimer(); if (replay) { replay.pos = 0; renderReplayFrame(); } }],
+ ['replayPrev', () => { stopReplayTimer(); stepReplay(-1); }],
+ ['replayNext', () => { stopReplayTimer(); stepReplay(1); }],
+ ['replayPlay', () => toggleReplayPlay()]].forEach(([id, fn]) => {
+  const el = $(id);
+  if (el) el.addEventListener('click', fn);
+});
+
+// ── Functionality #8: In-app Risk & Position Sizing Calculator ───────────
+function pointValuePerLot(pair, price) {
+  const p = String(pair || '').toUpperCase();
+  if (p.endsWith('JPY')) return 100000 / (price || 1);
+  if (p === 'XAUUSD' || p === 'XAGUSD') return 100;
+  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'UK100', 'SPX500'].includes(p)) return 1;
+  if (/^V\d|^R_\d|1HZ/.test(p)) return 1;
+  return 100000; // USD-quoted forex: $10 per pip per standard lot
+}
+
+function updateRiskCalc() {
+  const box = $('riskCalc'), out = $('riskOutputs');
+  if (!box || !out || box.hidden) return;
+  const pair = box.dataset.pair || '';
+  const entry = Number(box.dataset.entry), stop = Number(box.dataset.stop), tp1 = Number(box.dataset.tp1 || '');
+  const equity = Number(($('riskEquity') || {}).value) || 0;
+  const pct = Number(($('riskPct') || {}).value) || 0;
+  const pv = pointValuePerLot(pair, entry);
+  const riskUsd = equity * pct / 100;
+  const stopDist = Math.abs(entry - stop);
+  const lots = stopDist > 0 ? riskUsd / (stopDist * pv) : 0;
+  const lotsR = Math.floor(lots * 100) / 100;
+  const tp1Usd = Number.isFinite(tp1) && tp1 > 0 ? Math.abs(tp1 - entry) * lotsR * pv : null;
+  const cls = pair.endsWith('JPY') ? 'forex · JPY quote' : (pv === 100 ? 'metal · 100 oz/lot' : (pv === 1 ? 'index/synthetic · $1/point/lot' : 'forex · USD quote'));
+  out.innerHTML = `
+    <div>Dollar risk<strong>$${riskUsd.toFixed(2)}</strong></div>
+    <div>Suggested size<strong>${lotsR.toFixed(2)} lots</strong></div>
+    <div>Stop distance<strong>${num(stopDist)} · ${cls}</strong></div>
+    <div>Payout at TP1<strong>${tp1Usd != null ? '$' + tp1Usd.toFixed(2) : '—'}</strong></div>`;
+}
+
+function renderRiskCalc(data) {
+  const box = $('riskCalc');
+  if (!box) return;
+  const lv = data.levels || {};
+  if (lv.entry == null || lv.stop == null || Math.abs(Number(lv.entry) - Number(lv.stop)) <= 0) { box.hidden = true; return; }
+  box.hidden = false;
+  box.dataset.pair = data.symbol || '';
+  box.dataset.entry = lv.entry;
+  box.dataset.stop = lv.stop;
+  box.dataset.tp1 = lv.target1 != null ? lv.target1 : '';
+  updateRiskCalc();
+}
+
+[['riskEquity'], ['riskPct']].forEach(([id]) => {
+  const el = $(id);
+  if (el) el.addEventListener('input', updateRiskCalc);
+});
+
+// ── Functionality #9: Exportable institutional audit log (CSV / JSON) ────
+async function fetchLedgerRows() {
+  const rows = [];
+  for (let page = 1; page <= 6; page++) {
+    const res = await api(`/alerts?pageSize=200&page=${page}&sort=candleCloseTime&order=desc`);
+    const items = res.items || [];
+    rows.push(...items);
+    if (items.length < 200) break;
+  }
+  return rows.map(r => ({
+    ...r,
+    rr: (r.entry != null && r.stopLoss != null && r.tp1 != null && Math.abs(r.entry - r.stopLoss) > 0)
+      ? Number((Math.abs(r.tp1 - r.entry) / Math.abs(r.entry - r.stopLoss)).toFixed(2)) : null,
+  }));
+}
+
+function downloadBlob(name, mime, text) {
+  const blob = new Blob([text], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+const EXPORT_FIELDS = [
+  ['setupId', 'Setup ID'], ['pair', 'Pair'], ['tf', 'Timeframe'], ['direction', 'Direction'],
+  ['entry', 'Entry Price'], ['stopLoss', 'Stop Loss'], ['tp1', 'Take Profit 1'], ['tp2', 'Take Profit 2'],
+  ['rr', 'Target RR'], ['status', 'Outcome'], ['rMultiple', 'Net R'],
+  ['candleCloseTime', 'Timestamp Opened'], ['exitTime', 'Timestamp Resolved'],
+];
+
+async function exportLedger(fmt) {
+  try {
+    const rows = await fetchLedgerRows();
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (fmt === 'json') {
+      downloadBlob(`slk-radar-ledger-${stamp}.json`, 'application/json', JSON.stringify(rows, null, 2));
+      return;
+    }
+    const escCsv = val => { const s = val == null ? '' : String(val); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
+    for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
+    downloadBlob(`slk-radar-ledger-${stamp}.csv`, 'text/csv', lines.join('\n'));
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+
+[['exportCsv', 'csv'], ['exportJson', 'json']].forEach(([id, fmt]) => {
+  const el = $(id);
+  if (el) el.addEventListener('click', () => exportLedger(fmt));
+});
 
 function num(x) {
   return x == null ? '—' : Number(x).toPrecision(7);

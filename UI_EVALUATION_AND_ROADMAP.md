@@ -133,12 +133,12 @@ Directly embedded into the dashboard:
 └──────────────┴───────────────────────────────┴─────────────────────────┘
 ```
 
-### Priority 1: Interactive Trade Replay & Candle Stepper (Near-Term)
+### Priority 1: Interactive Trade Replay & Candle Stepper (Near-Term) ✅ COMPLETED
 - **Concept:** Enhance the existing SVG candlestick chart modal with an interactive step-by-step playback bar (`Previous Step` / `Next Step` / `Auto Play`).
 - **Functionality:** Users can visually watch the trade transition through all 7 stages (`MAP` → `TOUCH` → `SWEEP` → `SHIFT` → `RETEST` → `CONFIRMED` → `OUTCOME`) with animated marker highlights.
 - **Conversion Value:** Provides incontrovertible visual proof to prospective members that signals are generated strictly by mechanical structure rather than hindsight.
 
-### Priority 2: In-App Risk & Position Sizing Calculator (Near-Term)
+### Priority 2: In-App Risk & Position Sizing Calculator (Near-Term) ✅ COMPLETED
 - **Concept:** An embedded risk calculator panel on every alert card and in the modal.
 - **Functionality:**
   - Input: Account Equity (e.g., $50,000 prop challenge, $10,000 personal), Risk Percentage (e.g., 0.5%, 1.0%), Asset Class.
@@ -150,7 +150,7 @@ Directly embedded into the dashboard:
 - **Functionality:** Real-time push notifications of state transitions (`TOUCH`, `SWEEP`, `CONFIRMED`) directly to the browser UI with an audio chime and visual ping.
 - **Technical Advantage:** Reduces edge CPU requests while delivering sub-second updates to active desk operators.
 
-### Priority 4: Exportable Institutional Performance Audit Log (Mid-Term)
+### Priority 4: Exportable Institutional Performance Audit Log (Mid-Term) ✅ COMPLETED
 - **Concept:** One-click CSV and JSON download of the verified historical ledger.
 - **Fields Included:** `Setup ID`, `Pair`, `Timeframe`, `Direction`, `Entry Price`, `Stop Loss`, `Take Profit 1`, `Target R:R`, `Outcome (TP/SL/Expired)`, `Net R`, `MFE (Max Favorable Excursion)`, `MAE (Max Adverse Excursion)`, `Bars Held`, `Timestamp Opened`, `Timestamp Resolved`.
 - **Strategic Impact:** Enables members to provide institutional-grade proof-of-strategy compliance for prop firm evaluations and private investor audits.
@@ -166,7 +166,7 @@ Directly embedded into the dashboard:
 
 | Check | Tool / Standard | Result | Status |
 | :--- | :--- | :--- | :---: |
-| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 170 passed across 12 test suites | PASS |
+| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 172 passed across 13 test suites | PASS |
 | **TypeScript Typecheck** | `tsc --noEmit` | 0 errors | PASS |
 | **Client Script Syntax** | `node --check dashboard/app.js` | Valid ES6+ syntax | PASS |
 | **Asset Consistency** | HTML/CSS parity (`dashboard/` vs `dashboard_html.ts`) | Synchronized | PASS |

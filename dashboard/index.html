@@ -584,6 +584,8 @@
         <input id="alertSearch" type="search" placeholder="Search pair (e.g. XAUUSD, USDJPY)" aria-label="Search alerts">
         <select id="alertSort" aria-label="Sort"><option value="candleCloseTime">Newest</option><option value="pair">Pair</option><option value="status">Status</option></select>
         <button id="clearAlertFilters" class="secondary">Clear</button>
+        <button id="exportCsv" class="secondary" title="Download verified ledger as CSV">⬇ CSV</button>
+        <button id="exportJson" class="secondary" title="Download verified ledger as JSON">⬇ JSON</button>
       </div>
 
       <div id="alertsList" class="alert-list">
@@ -681,6 +683,26 @@
         <div id="chartNotice" class="chart-notice" hidden></div>
         <div class="chart-wrap"><svg id="ohlcChart" viewBox="0 0 1000 460" role="img" aria-label="OHLC evidence chart"></svg></div>
         <div id="chartLegend" class="chart-legend"></div>
+        <div id="replayBar" class="replay-bar" hidden>
+          <div class="replay-controls">
+            <button id="replayReset" class="secondary" title="Restart replay">⏮</button>
+            <button id="replayPrev" class="secondary" title="Previous step">◀ Step</button>
+            <button id="replayPlay" class="secondary" title="Auto play">▶ Play</button>
+            <button id="replayNext" class="secondary" title="Next step">Step ▶</button>
+            <span id="replayStepLabel" class="replay-step"></span>
+          </div>
+          <div id="replayStages" class="replay-stages"></div>
+          <p id="replayNarration" class="replay-narration"></p>
+        </div>
+        <div id="riskCalc" class="risk-calc" hidden>
+          <h3>🧮 Position Size Calculator</h3>
+          <div class="risk-inputs">
+            <label>Account equity ($)<input id="riskEquity" type="number" min="1" step="100" value="10000"></label>
+            <label>Risk per trade (%)<input id="riskPct" type="number" min="0.1" max="5" step="0.1" value="1"></label>
+          </div>
+          <div id="riskOutputs" class="risk-outputs"></div>
+          <p class="chart-disclaimer">Contract specifications differ by broker — always verify lot size with your broker before ordering.</p>
+        </div>
         <p class="chart-disclaimer">Real historical candles with entry, stop loss, invalidation, and target levels visualized.</p>
       </section>
     </div>

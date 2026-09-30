@@ -1212,6 +1212,12 @@ export default {
         candles: selected.map((c) => ({ time: new Date(c.t).toISOString(), open: c.o, high: c.h, low: c.l, close: c.c, volume: 0, isFinal: true })),
         levels: { entry: Number(row.entry), stop: Number(row.stop_loss), target1: Number(row.tp_internal), target2: row.tp_external == null ? null : Number(row.tp_external), invalidation: row.invalidation_level == null ? null : Number(row.invalidation_level), keyLevelLow: bounds?.[0] ?? null, keyLevelHigh: bounds?.[1] ?? null },
         evidenceMarkers: events,
+        confirmedAt: String(row.candle_close_time),
+        outcome: {
+          status: String(row.status ?? "OPEN"),
+          exitTime: row.exit_time == null ? null : String(row.exit_time),
+          rMultiple: row.r_multiple == null ? null : Number(row.r_multiple),
+        },
         dataHealth: { freshnessSeconds: Math.max(0, Math.round((Date.now() - feed[feed.length - 1].t - tfSeconds * 1000) / 1000)), missingCandles: 0, isMarketIdle: false, historyComplete: selected.length >= Math.min(before, feed.length) },
       });
     }

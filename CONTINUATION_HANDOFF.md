@@ -284,3 +284,10 @@ For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continu
   - Simulation / dry-run mode for testing without risking capital on unsupported operating systems.
 * **Relevant Files:** `scripts/mt5_bridge.py`.
 
+
+### Recommendations 7-9: Dashboard Evidence Suite (Replay Stepper, Position Calculator, Audit Export) ✅ COMPLETED
+* **Status:** Implemented in `dashboard/app.js`, `dashboard/index.html`, `dashboard/styles.css`, and mirrored with exact parity in `worker/src/dashboard_html.ts` (escaped inline client JS + CSS). Endpoint contract extended in `worker/src/index.ts` (`/dashboard/signals/:id/chart` now returns `confirmedAt` + `outcome{status,exitTime,rMultiple}` alongside `evidenceMarkers`), covered by `worker/test/dashboard.test.ts`.
+* **Replay (#7):** ⏮//▶/ stepper + auto-play rebuilds each trade candle-by-candle through MAP → TOUCH → SWEEP → SHIFT → RETEST → CONFIRMED → OUTCOME. Entry/stop/target lines only appear at the CONFIRMED step and the outcome badge only at the OUTCOME step — visual proof that no line was ever drawn with hindsight. Stable axes across steps; stage chips + narration line explain each step.
+* **Calculator (#8):** equity + risk% inputs in the chart modal compute dollar risk, suggested lot size (asset-class aware: USD-quoted forex 100k/lot, JPY crosses 100k/price, metals 100 oz/lot, indices & synthetics $1/point/lot), stop distance and TP1 payout, with a broker-verification disclaimer.
+* **Audit export (#9):** ⬇ CSV / ⬇ JSON buttons paginate `/alerts` (up to 1,200 rows) and download the verified ledger with Setup ID, Pair, TF, Direction, Entry, SL, TP1/TP2, Target RR, Outcome, Net R, opened/resolved timestamps (RFC-4180 escaping).
+* **Safety:** purely presentational — no engine, delivery, dedupe, outcome, or risk-rule changes.
