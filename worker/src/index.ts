@@ -107,7 +107,12 @@ export async function checkAndDispatchScheduledRecaps(
   env: Env,
   store: Store,
   nowMs: number = Date.now(),
-  options: { forceDaily?: boolean; forceWeekly?: boolean; segment?: "institutional" | "synthetics" } = {},
+  options: {
+    forceDaily?: boolean;
+    forceWeekly?: boolean;
+    segment?: "institutional" | "synthetics";
+    targetChatId?: string;
+  } = {},
 ): Promise<{
   dailyInstitutionalSent: boolean;
   dailySyntheticsSent: boolean;
@@ -147,7 +152,7 @@ export async function checkAndDispatchScheduledRecaps(
       const kvKey = `recap:daily:institutional:${dateStr}`;
       const already = options.forceDaily ? null : await store.getKv(kvKey);
       if (!already) {
-        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "institutional", nowMs);
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "institutional", nowMs, options.targetChatId);
         if (res.sent) {
           dailyInstitutionalSent = true;
           await store.setKv(kvKey, new Date(nowMs).toISOString());
@@ -159,7 +164,7 @@ export async function checkAndDispatchScheduledRecaps(
       const kvKey = `recap:daily:synthetics:${dateStr}`;
       const already = options.forceDaily ? null : await store.getKv(kvKey);
       if (!already) {
-        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "synthetics", nowMs);
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "synthetics", nowMs, options.targetChatId);
         if (res.sent) {
           dailySyntheticsSent = true;
           await store.setKv(kvKey, new Date(nowMs).toISOString());
@@ -176,7 +181,7 @@ export async function checkAndDispatchScheduledRecaps(
       const kvKey = `recap:weekly:institutional:${weekKey}`;
       const already = options.forceWeekly ? null : await store.getKv(kvKey);
       if (!already) {
-        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "institutional", nowMs);
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "institutional", nowMs, options.targetChatId);
         if (res.sent) {
           weeklyInstitutionalSent = true;
           await store.setKv(kvKey, new Date(nowMs).toISOString());
@@ -188,7 +193,7 @@ export async function checkAndDispatchScheduledRecaps(
       const kvKey = `recap:weekly:synthetics:${weekKey}`;
       const already = options.forceWeekly ? null : await store.getKv(kvKey);
       if (!already) {
-        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "synthetics", nowMs);
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "synthetics", nowMs, options.targetChatId);
         if (res.sent) {
           weeklySyntheticsSent = true;
           await store.setKv(kvKey, new Date(nowMs).toISOString());
@@ -2084,16 +2089,27 @@ export default {
       return json({ ok: true, period, segment, stats, card });
     }
 
-    if ((url.pathname === "/admin/trigger-recap" || url.pathname === "/api/trigger-recap") && (request.method === "GET" || request.method === "POST")) {
+    if ((url.pathname === "/admin/trigger-recap" || url.pathname === "/api/trigger-recap" || url.pathname === "/admin/test-recap" || url.pathname === "/api/test-recap") && (request.method === "GET" || request.method === "POST")) {
       const store = makeStore(env.DB);
       const period = (url.searchParams.get("period") || "daily").toLowerCase() as "daily" | "weekly";
       const segment = (url.searchParams.get("segment") || "both").toLowerCase() as "institutional" | "synthetics" | "both";
       const force = url.searchParams.get("force") !== "false";
 
+      let targetChatId = url.searchParams.get("chat_id") || undefined;
+      const to = url.searchParams.get("to");
+      if (to === "dm") {
+        targetChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      } else if (to === "vip" || to === "channel") {
+        targetChatId = segment === "synthetics"
+          ? (env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || env.TELEGRAM_CHAT_ID)
+          : (env.TELEGRAM_CHAT_ID || undefined);
+      }
+
       const results = await checkAndDispatchScheduledRecaps(env, store, Date.now(), {
         forceDaily: period === "daily" && force,
         forceWeekly: period === "weekly" && force,
         segment: segment === "both" ? undefined : segment,
+        targetChatId,
       });
 
       return json({
@@ -2101,8 +2117,9 @@ export default {
         action: "trigger_recap",
         period,
         segment,
+        targetChatId: targetChatId ? `${targetChatId.slice(0, 4)}...${targetChatId.slice(-4)}` : "channel_default",
         results,
-        message: "Performance recap triggered. Check your Free Telegram channel(s).",
+        message: "Performance recap triggered. Check your Telegram destination.",
       });
     }
 

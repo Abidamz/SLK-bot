@@ -937,13 +937,16 @@ export async function sendPerformanceRecap(
   period: "daily" | "weekly",
   segment: "institutional" | "synthetics",
   nowMs: number = Date.now(),
+  targetChatIdOverride?: string,
 ): Promise<{ sent: boolean; targetChatIds: string[]; text: string }> {
   const stats = computeRecapStats(rows, segment, period, nowMs);
   const text = formatPerformanceRecap(stats);
 
-  const targetChatIds = segment === "synthetics"
-    ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID)
-    : parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+  const targetChatIds = targetChatIdOverride
+    ? [targetChatIdOverride]
+    : (segment === "synthetics"
+        ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID)
+        : parseChatIds(env.TELEGRAM_FREE_CHAT_ID));
 
   if (targetChatIds.length === 0 || !env.TELEGRAM_BOT_TOKEN) {
     return { sent: false, targetChatIds, text };
