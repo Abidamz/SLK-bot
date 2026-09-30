@@ -49,6 +49,8 @@ export interface StrategyConfig {
   cooldownMinutes: number;
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;
+  trailingBeEnabled?: boolean;
+  trailingBeTriggerR?: number;
 }
 
 export interface WorkerConfig {
@@ -107,6 +109,8 @@ export function defaultStrategy(): StrategyConfig {
     cooldownMinutes: 240,
     sessionsAllowlist: [],
     mapTfLabel: "4h",
+    trailingBeEnabled: true,  // automatically move stop loss to entry at +1.5R favorable excursion
+    trailingBeTriggerR: 1.5,  // favorable excursion threshold to activate breakeven
   };
 }
 
@@ -120,6 +124,8 @@ interface EnvVars {
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
   SL_BUFFER_ATR?: string;
+  TRAILING_BE_ENABLED?: string;
+  TRAILING_BE_TRIGGER_R?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
@@ -188,6 +194,9 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
+  if (env.TRAILING_BE_ENABLED !== undefined) strategy.trailingBeEnabled = env.TRAILING_BE_ENABLED.toLowerCase() !== "false";
+  const trailingBeTriggerR = Number(env.TRAILING_BE_TRIGGER_R ?? "");
+  if (Number.isFinite(trailingBeTriggerR) && trailingBeTriggerR > 0) strategy.trailingBeTriggerR = trailingBeTriggerR;
 
   return {
     pairs,

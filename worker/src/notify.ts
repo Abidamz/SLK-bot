@@ -236,12 +236,21 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   const paper = rec.alert_status === "PAPER" ? "🧪 PAPER — " : "";
   const r = oc.rMultiple;
   const [emoji, label] =
-    oc.status === "TP_HIT" ? ["✅", "TP HIT"] : oc.status === "SL_HIT" ? ["❌", "SL HIT"] : ["⌛", "EXPIRED"];
+    oc.status === "TP_HIT"
+      ? ["✅", "TP HIT"]
+      : oc.status === "SL_HIT"
+      ? ["❌", "SL HIT"]
+      : oc.status === "BE_HIT"
+      ? ["🛡️", "BREAKEVEN HIT"]
+      : ["⌛", "EXPIRED"];
   const lines = [
     `${paper}${emoji} ${label} — 🌟【 ${boldPair} 】🌟 · ${rec.entry_timeframe} · ${rec.direction} (setup ${rec.setup_id})`,
     `📍 Pair     : 🌟【 ${boldPair} 】🌟`,
     `Entry ${fmtPrice(pair, Number(rec.entry))} → Exit ${fmtPrice(pair, oc.exitPrice)}  (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)`,
   ];
+  if (oc.status === "BE_HIT") {
+    lines.push("🛡️ Trade was secured at Breakeven after reaching +1.50R favorable excursion. Zero loss incurred.");
+  }
   if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
   if (rec.tp_internal != null) lines.push(`Target 1 ${fmtPrice(pair, Number(rec.tp_internal))}`);
   if (rec.tp_external != null) lines.push(`Target 2 ${fmtPrice(pair, Number(rec.tp_external))}`);
@@ -501,7 +510,7 @@ export async function notifyWatch(
 export async function notifyOutcome(
   env: NotifyEnv, rec: AlertRowish, oc: OutcomeLike,
 ): Promise<Record<string, string>> {
-  const color = oc.status === "TP_HIT" ? GREEN : oc.status === "SL_HIT" ? RED : GREY;
+  const color = oc.status === "TP_HIT" ? GREEN : oc.status === "SL_HIT" ? RED : oc.status === "BE_HIT" ? AMBER : GREY;
   const pair = String(rec.canonical_symbol ?? "");
   const results = await broadcast(env, formatOutcome(rec, oc), color, { silent: false, pin: false, sendToDm: true, pair });
 

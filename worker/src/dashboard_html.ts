@@ -698,7 +698,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <select id="alertPair" aria-label="Pair"><option value="">All pairs</option></select>
         <select id="alertTimeframe" aria-label="Timeframe"><option value="">All timeframes</option><option>30m</option><option>1h</option><option>H1</option></select>
         <select id="alertDirection" aria-label="Direction"><option value="">Both directions</option><option value="LONG">Long</option><option value="SHORT">Short</option></select>
-        <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All states</option><option value="OPEN">Open (Active)</option><option value="TP_HIT">TP Hit</option><option value="SL_HIT">SL Hit</option><option value="EXPIRED">Expired</option></select>
+        <select id="alertLifecycle" aria-label="Lifecycle"><option value="">All states</option><option value="OPEN">Open (Active)</option><option value="TP_HIT">TP Hit</option><option value="BE_HIT">Breakeven</option><option value="SL_HIT">SL Hit</option><option value="EXPIRED">Expired</option></select>
         <div class="date-filter-group" style="display: flex; align-items: center; gap: 6px;">
           <span style="color: var(--muted); font-size: 11px;">From:</span>
           <input id="alertFrom" type="date" aria-label="From UTC" style="padding: 7px 9px;">
@@ -1391,6 +1391,9 @@ function renderAlerts() {
       const r = a.rMultiple != null ? Number(a.rMultiple) : -1.0;
       statusLabel = \`STOP LOSS 🛑 (\${r < 0 ? '' : '-'}\${Math.abs(r).toFixed(2)}R)\`;
       statusClass = 'loss-text';
+    } else if (a.status === 'BE_HIT') {
+      statusLabel = 'BREAKEVEN 🛡️ (0.00R)';
+      statusClass = 'state';
     } else if (a.status === 'OPEN') {
       statusLabel = a.alertStatus === 'SUPPRESSED' ? 'OPEN · AUDIT' : 'ACTIVE IN MARKET';
       statusClass = 'state';
@@ -1403,7 +1406,7 @@ function renderAlerts() {
       ? '<span class="market-tag synth-tag">⚡ 24/7 SYNTHETICS</span>'
       : '<span class="market-tag inst-tag">INSTITUTIONAL</span>';
     let timeLogHtml = 'Opened ' + fmtDate(a.candleCloseTime);
-    if (a.exitTime && (a.status === 'TP_HIT' || a.status === 'SL_HIT' || a.status === 'EXPIRED')) {
+    if (a.exitTime && (a.status === 'TP_HIT' || a.status === 'SL_HIT' || a.status === 'BE_HIT' || a.status === 'EXPIRED')) {
       const diffMs = Math.max(0, new Date(a.exitTime).getTime() - new Date(a.candleCloseTime).getTime());
       const diffMins = Math.round(diffMs / 60000);
       const durationStr = diffMins >= 60 ? (Math.floor(diffMins / 60) + 'h ' + (diffMins % 60) + 'm') : (diffMins + 'm');

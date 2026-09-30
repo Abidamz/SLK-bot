@@ -3,7 +3,7 @@
 import type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow";
 
 export type Direction = "LONG" | "SHORT";
-export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
+export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "BE_HIT" | "EXPIRED";
 
 export interface Candle {
   t: number; // candle OPEN time, ms epoch UTC

@@ -738,6 +738,8 @@ async function resolveOutcomes(
       rec.direction as "LONG" | "SHORT",
       Number(rec.entry), Number(rec.stop_loss), Number(rec.tp_internal),
       after, cfg.expireCandles, cfg.slOnClose,
+      cfg.strategy.trailingBeTriggerR ?? 1.5,
+      cfg.strategy.trailingBeEnabled ?? true,
     );
     if (!oc) continue;
     await store.recordOutcome(String(rec.setup_id), oc);
@@ -1133,7 +1135,7 @@ export default {
       const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
       if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
       const allowedSort = ["candleCloseTime", "pair", "timeframe", "direction", "status", "provider"];
-      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","yahoo","oanda"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
+      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","yahoo","oanda"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
       const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
       const fromMs = from ? Date.parse(from) : null; const toMs = to ? Date.parse(to) : null;
       if (bad) return json({ error: bad }, 400);
@@ -1226,9 +1228,10 @@ export default {
 
       const tp = rows.filter((r) => r.status === "TP_HIT").length;
       const sl = rows.filter((r) => r.status === "SL_HIT").length;
+      const be = rows.filter((r) => r.status === "BE_HIT").length;
       const expired = rows.filter((r) => r.status === "EXPIRED").length;
       const openn = rows.filter((r) => r.status === "OPEN" && r.alert_status !== "SUPPRESSED").length;
-      const completed = rows.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple))).sort((a,b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
+      const completed = rows.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "BE_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple))).sort((a,b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
       const calcCurve = (items: typeof completed) => { let equity = 0; let peak = 0; let drawdown = 0; for (const row of items) { equity += Number(row.r_multiple); peak = Math.max(peak, equity); drawdown = Math.min(drawdown, equity - peak); } return { netR: items.length ? equity : null, maxDD: items.length ? drawdown : null }; };
       const groups = new Map<string, typeof completed>();
       for (const row of completed) { const key = `${row.canonical_symbol} · ${row.entry_timeframe}`; const list = groups.get(key) ?? []; list.push(row); groups.set(key, list); }
@@ -1241,6 +1244,9 @@ export default {
           if (!bFirstDate || d < bFirstDate) bFirstDate = d;
           if (!bLastDate || d > bLastDate) bLastDate = d;
         }
+        const itemTp = items.filter(r => r.status === "TP_HIT").length;
+        const itemSl = items.filter(r => r.status === "SL_HIT").length;
+        const itemBe = items.filter(r => r.status === "BE_HIT").length;
         return {
           group,
           pair: items[0].canonical_symbol,
@@ -1248,9 +1254,10 @@ export default {
           firstDate: bFirstDate,
           lastDate: bLastDate,
           completed: items.length,
-          tp: items.filter(r => r.status === "TP_HIT").length,
-          sl: items.filter(r => r.status === "SL_HIT").length,
-          winRate: items.filter(r => r.status === "TP_HIT").length / items.length,
+          tp: itemTp,
+          sl: itemSl,
+          be: itemBe,
+          winRate: itemTp + itemSl > 0 ? itemTp / (itemTp + itemSl) : null,
           ...curve,
         };
       });
@@ -1260,9 +1267,10 @@ export default {
       const summarizeSet = (items: typeof dateFilteredRows) => {
         const itemTp = items.filter((r) => r.status === "TP_HIT").length;
         const itemSl = items.filter((r) => r.status === "SL_HIT").length;
+        const itemBe = items.filter((r) => r.status === "BE_HIT").length;
         const itemExpired = items.filter((r) => r.status === "EXPIRED").length;
         const itemOpen = items.filter((r) => r.status === "OPEN" && r.alert_status !== "SUPPRESSED").length;
-        const itemCompleted = items.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple)));
+        const itemCompleted = items.filter((r) => (r.status === "TP_HIT" || r.status === "SL_HIT" || r.status === "BE_HIT" || r.status === "EXPIRED") && Number.isFinite(Number(r.r_multiple)));
         let eq = 0; let pk = 0; let dd = 0;
         for (const r of itemCompleted) {
           eq += Number(r.r_multiple);
@@ -1274,6 +1282,7 @@ export default {
           open: itemOpen,
           tp: itemTp,
           sl: itemSl,
+          be: itemBe,
           expired: itemExpired,
           completed: itemCompleted.length,
           winRate: itemTp + itemSl > 0 ? itemTp / (itemTp + itemSl) : null,
@@ -1289,7 +1298,7 @@ export default {
         to: toMs ? new Date(toMs).toISOString() : lastDate,
         firstDate,
         lastDate,
-        total: rows.length, open: openn, tp, sl, expired, completed: completed.length,
+        total: rows.length, open: openn, tp, sl, be, expired, completed: completed.length,
         winRate: tp + sl > 0 ? tp / (tp + sl) : null,
         netR: completed.length ? equity : null, maxDD: completed.length ? maxDD : null, breakdown,
         segments: {

@@ -31,6 +31,79 @@ describe("corrupt-target guard", () => {
   });
 });
 
+describe("Trailing Breakeven (Recommendation 2)", () => {
+  it("resolves as BE_HIT with 0.0R when favorable excursion reaches +1.5R then retraces to entry", () => {
+    // LONG trade: entry = 100, stop = 90 (risk = 10), tp = 130 (+3.0R).
+    // +1.5R threshold = 100 + 1.5 * 10 = 115.
+    // Candle 1: reaches high 116 (+1.6R) -> arms BE! Effective stop moves to 100.
+    // Candle 2: retraces and drops to low 99 -> hits BE at 100!
+    const c1: Candle = { t: 1000, o: 100, h: 116, l: 99, c: 114 };
+    const c2: Candle = { t: 2000, o: 114, h: 115, l: 99, c: 101 };
+
+    const oc = evaluateSignal("LONG", 100, 90, 130, [c1, c2], 120, false, 1.5, true);
+    expect(oc).not.toBeNull();
+    expect(oc?.status).toBe("BE_HIT");
+    expect(oc?.exitPrice).toBe(100);
+    expect(oc?.rMultiple).toBe(0);
+    expect(oc?.exitTime).toBe(2000);
+  });
+
+  it("resolves as SL_HIT (-1.0R) when favorable excursion never reaches +1.5R before hitting stop", () => {
+    // LONG trade: entry = 100, stop = 90 (risk = 10), tp = 130 (+3.0R).
+    // Candle 1: reaches high 112 (+1.2R < 1.5R threshold) -> BE NOT armed.
+    // Candle 2: drops to low 89 -> hits initial SL at 90!
+    const c1: Candle = { t: 1000, o: 100, h: 112, l: 98, c: 110 };
+    const c2: Candle = { t: 2000, o: 110, h: 111, l: 89, c: 91 };
+
+    const oc = evaluateSignal("LONG", 100, 90, 130, [c1, c2], 120, false, 1.5, true);
+    expect(oc).not.toBeNull();
+    expect(oc?.status).toBe("SL_HIT");
+    expect(oc?.exitPrice).toBe(90);
+    expect(oc?.rMultiple).toBe(-1);
+  });
+
+  it("resolves as TP_HIT when price reaches +1.5R and continues to full target", () => {
+    // LONG trade: entry = 100, stop = 90, tp = 130 (+3.0R).
+    // Candle 1: reaches high 116 -> arms BE.
+    // Candle 2: reaches high 131 -> hits TP!
+    const c1: Candle = { t: 1000, o: 100, h: 116, l: 99, c: 114 };
+    const c2: Candle = { t: 2000, o: 114, h: 131, l: 112, c: 130 };
+
+    const oc = evaluateSignal("LONG", 100, 90, 130, [c1, c2], 120, false, 1.5, true);
+    expect(oc).not.toBeNull();
+    expect(oc?.status).toBe("TP_HIT");
+    expect(oc?.exitPrice).toBe(130);
+    expect(oc?.rMultiple).toBe(3);
+  });
+
+  it("symmetrically protects SHORT trades when favorable drop reaches +1.5R then rallies to entry", () => {
+    // SHORT trade: entry = 100, stop = 110 (risk = 10), tp = 70 (+3.0R).
+    // +1.5R threshold = 100 - 1.5 * 10 = 85.
+    // Candle 1: reaches low 84 (+1.6R) -> arms BE! Effective stop moves to 100.
+    // Candle 2: rallies to high 101 -> hits BE at 100!
+    const c1: Candle = { t: 1000, o: 100, h: 101, l: 84, c: 86 };
+    const c2: Candle = { t: 2000, o: 86, h: 101, l: 85, c: 99 };
+
+    const oc = evaluateSignal("SHORT", 100, 110, 70, [c1, c2], 120, false, 1.5, true);
+    expect(oc).not.toBeNull();
+    expect(oc?.status).toBe("BE_HIT");
+    expect(oc?.exitPrice).toBe(100);
+    expect(oc?.rMultiple).toBe(0);
+  });
+
+  it("respects trailingBeEnabled = false setting (never moves stop to entry)", () => {
+    // LONG trade: entry = 100, stop = 90, tp = 130.
+    // Candle 1 reaches 116.
+    // Candle 2 dips to 98 (below entry 100, but above initial stop 90).
+    // With trailingBeEnabled = false, trade stays OPEN!
+    const c1: Candle = { t: 1000, o: 100, h: 116, l: 99, c: 114 };
+    const c2: Candle = { t: 2000, o: 114, h: 115, l: 98, c: 105 };
+
+    const oc = evaluateSignal("LONG", 100, 90, 130, [c1, c2], 120, false, 1.5, false);
+    expect(oc).toBeNull(); // Still OPEN
+  });
+});
+
 describe("validateCandlesForOutcome (Option 2 Real-Time Intrabar Resolution)", () => {
   const baseT = 1700000000000;
   const tfSec = 1800; // 30m

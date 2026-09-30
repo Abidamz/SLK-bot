@@ -215,18 +215,22 @@ For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continu
   - Dispatch to `TELEGRAM_FREE_CHAT_ID` and `TELEGRAM_DERIV_FREE_CHAT_ID`.
 * **Relevant Files:** `worker/src/notify.ts` (formatter `formatDailyRecapCard`), `worker/src/index.ts` (cron schedule trigger).
 
-### Recommendation 2: Trailing Breakeven (`BE`) & Trade Protection Engine
-* **Objective:** Eliminate the risk of winning trades that reached +1.5R to +2.0R reversing into full -1.0R losses during high-impact news or liquidity sweeps.
+### Recommendation 2: Trailing Breakeven (`BE`) & Trade Protection Engine ✅ COMPLETED & OPERATIONAL
+* **Status:** Implemented in `worker/src/outcomes.ts`, `worker/src/types.ts`, `worker/src/config.ts`, `worker/src/notify.ts`, `worker/src/index.ts`, `dashboard/app.js`, `worker/src/dashboard_html.ts`, and verified via 5 deterministic tests in `worker/test/outcomes.test.ts`.
+* **Objective:** Eliminate the risk of winning trades that reached +1.5R favorable excursion reversing into full -1.0R losses during high-impact news or liquidity sweeps.
 * **Architecture:**
-  - Extend setup status enum in `worker/src/types.ts` to include `'BE_HIT'`.
-  - Add a flag `trailingBeTriggered: boolean` in `slk_alerts` table.
-  - In `resolveAllOpenAlerts()` (`worker/src/engine.ts`), when price achieves $\ge 1.5R$ favorable excursion (or sweeps an intermediate liquidity pool before TP1):
-    1. Mark `trailingBeTriggered = true`.
-    2. Adjust effective stop loss to the exact entry price (`entry`).
-    3. Send an automated trade management update to VIP channels: `🛡️ [TRADE SECURED] — {PAIR} Stop Loss moved to Break-Even (Risk: 0.00)`.
-  - If price retraces and hits entry, log status as `BE_HIT` with `rMultiple: 0.00`.
-* **Impact:** Drastically improves subscriber psychology and protects win rates from high-volatility flash wicks.
-* **Relevant Files:** `worker/src/types.ts`, `worker/src/engine.ts`, `worker/src/store.ts`, `worker/src/notify.ts`.
+  - Extended `SignalStatus` in `worker/src/types.ts` to include `'BE_HIT'`.
+  - Added configurable parameters in `StrategyConfig` & Worker config: `trailingBeEnabled` (default `true`) and `trailingBeTriggerR` (default `1.5R`).
+  - In `evaluateSignal()` (`worker/src/outcomes.ts`), when price achieves $\ge +1.5R$ favorable excursion:
+    1. Arms breakeven state (`beArmed = true`).
+    2. Adjusts effective stop loss to the exact entry price (`entry`).
+    3. If price subsequently retraces to entry price or beyond, resolves as `BE_HIT` with `exitPrice = entry` and `rMultiple = 0.00` (zero loss incurred).
+    4. Symmetrically supports both `LONG` and `SHORT` directions, with full support for intrabar touch or close invalidation.
+    5. If price continues toward target, resolves cleanly as `TP_HIT` (+2.5R to +3.0R).
+  - Outcome notification formatted in `worker/src/notify.ts` with institutional badge `🛡️ BREAKEVEN HIT`, amber Discord color, and reassuring messaging: `🛡️ Trade was secured at Breakeven after reaching +1.50R favorable excursion. Zero loss incurred.`
+  - Full dashboard integration: filterable by `BE_HIT` across public dashboard, API `/api/alerts`, and `/api/stats`.
+* **Impact:** Drastically improves subscriber psychology, protects capital from high-volatility flash wicks, and locks in breakeven on extended trades without risking initial stop losses.
+* **Relevant Files:** `worker/src/types.ts`, `worker/src/config.ts`, `worker/src/outcomes.ts`, `worker/src/notify.ts`, `worker/src/index.ts`, `worker/test/outcomes.test.ts`.
 
 ### Recommendation 3: Automated Visual Chart Snapshots in Telegram Alerts
 * **Objective:** Replace text-only Telegram alerts with visual chart cards showing the SLK sequence (origin zone, sweep wick, entry trigger, stop loss, and target).
