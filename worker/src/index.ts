@@ -2947,6 +2947,64 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/probe-chart-img" || url.pathname === "/api/probe-chart-img") && request.method === "GET") {
+      const store = makeStore(env.DB);
+      const key = url.searchParams.get("key") || env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key"));
+      if (!key) {
+        return json({ ok: false, error: "No CHART_IMG_API_KEY found. Pass ?key=..." }, 400);
+      }
+      const symbol = url.searchParams.get("symbol") || "DERIV:VOLATILITY_75_INDEX";
+      const interval = url.searchParams.get("interval") || "30m";
+      const startDatetime = new Date(Date.now() - 3600000).toISOString();
+
+      const payload = {
+        symbol,
+        interval,
+        theme: "dark",
+        width: 800,
+        height: 500,
+        drawings: [
+          {
+            name: "Long Position",
+            input: {
+              startDatetime,
+              entryPrice: 45038.51,
+              targetPrice: 47413.22,
+              stopPrice: 44249.13,
+            },
+          },
+        ],
+      };
+
+      try {
+        const resp = await fetch("https://api.chart-img.com/v2/tradingview/advanced-chart/storage", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": key,
+            "Authorization": `Bearer ${key}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const status = resp.status;
+        const text = await resp.text();
+        let parsed: unknown = null;
+        try { parsed = JSON.parse(text); } catch {}
+
+        return json({
+          ok: resp.ok,
+          status,
+          response: parsed ?? text,
+          testedSymbol: symbol,
+          keyLength: key.length,
+          keyPrefix: key.slice(0, 6) + "...",
+        });
+      } catch (err) {
+        return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    }
+
     return json({ error: "not found" }, 404);
   },
 

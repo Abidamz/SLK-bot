@@ -326,6 +326,7 @@ export async function fetchTradingViewSnapshot(
     "1d": "1D",
   };
   const interval = intervalMap[a.entryTf] ?? "1h";
+  const startDatetime = a.candleCloseTime ? new Date(a.candleCloseTime).toISOString() : new Date().toISOString();
 
   try {
     const resp = await fetchFn("https://api.chart-img.com/v2/tradingview/advanced-chart/storage", {
@@ -339,10 +340,13 @@ export async function fetchTradingViewSnapshot(
         symbol,
         interval,
         theme: "dark",
+        width: 800,
+        height: 500,
         drawings: [
           {
             name: a.direction === "LONG" ? "Long Position" : "Short Position",
             input: {
+              startDatetime,
               entryPrice: Number(a.entry),
               targetPrice: Number(a.tpInternal),
               stopPrice: Number(a.stopLoss),
@@ -351,10 +355,15 @@ export async function fetchTradingViewSnapshot(
         ],
       }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.warn(JSON.stringify({ level: "warn", msg: "chart-img snapshot rejected", status: resp.status, error: errText }));
+      return null;
+    }
     const data = (await resp.json()) as { url?: string };
     return data.url ?? null;
-  } catch {
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "chart-img fetch exception", error: err instanceof Error ? err.message : String(err) }));
     return null;
   }
 }
