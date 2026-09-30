@@ -277,5 +277,29 @@ describe("resolveAllOpenAlerts every-minute execution", () => {
     expect(openAfter).toHaveLength(1);
     expect(openAfter[0].status).toBe("OPEN");
   });
+
+  it("formats BE_HIT outcome as an explicit actionable instruction", async () => {
+    const { formatOutcome } = await import("../src/notify");
+    const rec: any = {
+      setup_id: "test:EURUSD:30m:LONG:1",
+      canonical_symbol: "EURUSD",
+      entry_timeframe: "30m",
+      direction: "LONG",
+      entry: 1.0850,
+      stop_loss: 1.0820,
+      tp_internal: 1.0940,
+      alert_status: "SENT",
+    };
+    const oc: any = {
+      status: "BE_HIT",
+      exitPrice: 1.0850,
+      exitTime: Date.now(),
+      rMultiple: 0.0,
+    };
+    const text = formatOutcome(rec, oc);
+    expect(text).toContain("BREAKEVEN HIT — [ACTION: EXIT AT ENTRY]");
+    expect(text).toContain("INSTRUCTION: Trade was secured at Breakeven after reaching +1.50R favorable excursion");
+    expect(text).toContain("ACTION: Exit / close position flat at Entry price (0.00R)");
+  });
 });
 

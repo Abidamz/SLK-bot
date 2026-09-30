@@ -18,7 +18,7 @@ import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
-import type { AlertRowish } from "./notify_types";
+import type { AlertRowish, OutcomeLike } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
@@ -2090,6 +2090,83 @@ export default {
         targetFreeChatId: freeChatId,
         results,
         message: "Test Bias Confirmation sent! Check VIP channel and Free channel (@SLK_radar).",
+      });
+    }
+
+    if ((url.pathname === "/admin/test-be" || url.pathname === "/api/test-be") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const segment = (url.searchParams.get("segment") || "both").toLowerCase();
+      const doInst = segment === "both" || segment === "institutional";
+      const doSynth = segment === "both" || segment === "synthetics";
+
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      const mainChatId = env.TELEGRAM_CHAT_ID || (await store.getKv("telegram_chat_id")) || undefined;
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+
+      const testEnv = {
+        ...env,
+        fetchFn: env.fetchFn ?? fetch,
+        TELEGRAM_CHAT_ID: mainChatId,
+        TELEGRAM_DERIV_CHAT_ID: derivChatId,
+        TELEGRAM_DM_CHAT_ID: dmChatId,
+      };
+
+      const results: Record<string, unknown> = {};
+
+      if (doInst && mainChatId) {
+        const instRec: AlertRowish = {
+          setup_id: `oanda:EURUSD:30m:LONG:V:${Date.now()}`,
+          canonical_symbol: "EURUSD",
+          entry_timeframe: "30m",
+          direction: "LONG",
+          entry: 1.0850,
+          stop_loss: 1.0820,
+          tp_internal: 1.0940,
+          tp_external: 1.0980,
+          alert_status: "SENT",
+          candle_close_time: new Date(Date.now() - 3600_000).toISOString(),
+        };
+        const instOc: OutcomeLike = {
+          status: "BE_HIT",
+          exitPrice: 1.0850,
+          exitTime: Date.now(),
+          rMultiple: 0.00,
+        };
+        results.institutional = await notifyOutcome(testEnv, instRec, instOc);
+      } else if (doInst) {
+        results.institutional = "TELEGRAM_CHAT_ID not configured";
+      }
+
+      if (doSynth && (derivChatId || mainChatId)) {
+        const synthRec: AlertRowish = {
+          setup_id: `deriv:V75:1h:LONG:A:${Date.now()}`,
+          canonical_symbol: "V75",
+          entry_timeframe: "1h",
+          direction: "LONG",
+          entry: 450250.00,
+          stop_loss: 449850.00,
+          tp_internal: 451550.00,
+          tp_external: 452800.00,
+          alert_status: "SENT",
+          candle_close_time: new Date(Date.now() - 7200_000).toISOString(),
+        };
+        const synthOc: OutcomeLike = {
+          status: "BE_HIT",
+          exitPrice: 450250.00,
+          exitTime: Date.now(),
+          rMultiple: 0.00,
+        };
+        results.synthetics = await notifyOutcome(testEnv, synthRec, synthOc);
+      } else if (doSynth) {
+        results.synthetics = "TELEGRAM_DERIV_CHAT_ID not configured";
+      }
+
+      return json({
+        ok: true,
+        action: "test_be_notification",
+        segment,
+        results,
+        message: "Instructional Breakeven test notification dispatched to VIP channel(s).",
       });
     }
 
