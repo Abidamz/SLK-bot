@@ -16,7 +16,8 @@
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair } from "./config";
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
-import { evaluateSignal } from "./outcomes";
+import { evaluateSignal, beArmedTime } from "./outcomes";
+import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
 import type { AlertRowish, OutcomeLike } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
@@ -45,6 +46,11 @@ export interface Env {
   PROVIDER_WEBHOOK_SECRET?: string;
   SIGNAL_API_KEY?: string;
   SIGNAL_SIGNING_SECRET?: string;
+  // MT5 execution bridge (Roadmap #6) — inert unless MODE=live + MT5_ENABLED=true
+  MT5_ENABLED?: string;
+  MT5_WEBHOOK_URL?: string;
+  MT5_HMAC_SECRET?: string;
+  MT5_RISK_USD?: string;
   PAIRS?: string;
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
@@ -779,6 +785,10 @@ export async function deliver(
   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
   const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
   await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, alert);
+
+  // Roadmap #6: forward confirmed entries to the MT5 execution bridge.
+  // Hard-gated: paper mode (production default) never touches the bridge.
+  await dispatchMt5Trade(env, cfg.mode, alert, fetchFn);
 }
 
 async function resolveOutcomes(
@@ -800,6 +810,23 @@ async function resolveOutcomes(
       cfg.strategy.trailingBeTriggerR ?? 1.5,
       cfg.strategy.trailingBeEnabled ?? true,
     );
+    // Roadmap #6: the exact candle the paper engine arms breakeven (+1.5R
+    // excursion), trail the live broker stop to entry — once per setup.
+    if (cfg.mode === "live" && mt5Active(env, cfg.mode) && !isSuppressed) {
+      const beSent = await store.getKv(`mt5_be:${rec.setup_id}`);
+      if (!beSent) {
+        const armedAt = beArmedTime(
+          rec.direction as "LONG" | "SHORT",
+          Number(rec.entry), Number(rec.stop_loss), after,
+          cfg.strategy.trailingBeTriggerR ?? 1.5,
+          cfg.strategy.trailingBeEnabled ?? true,
+        );
+        if (armedAt !== null) {
+          await store.setKv(`mt5_be:${rec.setup_id}`, String(armedAt));
+          await dispatchMt5Breakeven(env, cfg.mode, String(rec.setup_id), pair, Number(rec.entry), fetchFn);
+        }
+      }
+    }
     if (!oc) continue;
     await store.recordOutcome(String(rec.setup_id), oc);
     resolvedCount++;
@@ -966,6 +993,7 @@ export default {
         adminKeyConfigured: Boolean(env.ADMIN_KEY),
         oandaConfigured,
         oandaEnvironment: kvOandaEnv || "auto",
+        mt5BridgeActive: mt5Active(env, cfg.mode), // live+enabled+configured; paper ⇒ always false
         time: new Date().toISOString(),
       });
     }

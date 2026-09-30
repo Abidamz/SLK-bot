@@ -75,3 +75,28 @@ export function evaluateSignal(
   }
   return null;
 }
+
+/** Timestamp of the first candle whose favorable excursion reaches the
+ *  trailing-BE trigger (the exact candle where BE arms), or null when it
+ *  never arms. Mirrors the arming rule inside `evaluateSignal` so the live
+ *  MT5 bridge trails the broker stop on the same candle the paper engine
+ *  would have armed breakeven. */
+export function beArmedTime(
+  direction: Direction,
+  entry: number,
+  stop: number,
+  candlesAfter: Candle[],
+  trailingBeTriggerR = 1.5,
+  trailingBeEnabled = true,
+): number | null {
+  if (!trailingBeEnabled) return null;
+  const risk = Math.abs(entry - stop);
+  if (risk <= 0) return null;
+  for (const c of candlesAfter) {
+    const maxFavorableR = direction === "LONG"
+      ? (c.h - entry) / risk
+      : (entry - c.l) / risk;
+    if (maxFavorableR >= trailingBeTriggerR) return c.t;
+  }
+  return null;
+}

@@ -273,7 +273,7 @@ For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continu
 * **Relevant Files:** `worker/src/config.ts`, `worker/wrangler.jsonc`, `worker/src/index.ts`.
 
 ### Recommendation 6: MetaTrader 5 (MT5) Auto-Execution Webhook Bridge (For Live & Prop Firm Capital) ✅ COMPLETED & DEPLOYED
-* **Status:** Implemented in `scripts/mt5_bridge.py` with FastAPI, HMAC-SHA256 authentication, institutional dynamic lot sizing, and live + dry-run simulation modes.
+* **Status:** Implemented in `scripts/mt5_bridge.py` with FastAPI, HMAC-SHA256 authentication, institutional dynamic lot sizing, and live + dry-run simulation modes. Worker-side signed dispatch client lives in `worker/src/mt5.ts` (`POST /webhook/trade` on confirmed entries via `deliver()`, `POST /webhook/breakeven` on the exact +1.5R arming candle via `resolveOutcomes()` + `beArmedTime()`, KV-deduped per setup). HARD SAFETY GATE: every dispatch is a no-op unless `MODE=live` AND `MT5_ENABLED=true` AND `MT5_WEBHOOK_URL` AND `MT5_HMAC_SECRET` are set — the production paper deployment never touches the bridge (`/health` exposes `mt5BridgeActive: false`). Covered by 8 deterministic tests in `worker/test/mt5.test.ts` (gate matrix, RFC HMAC vector, wire contract, deliver + breakeven integration).
 * **Objective:** Enable one-click or automated trade execution on live MT5 broker accounts (e.g., FTMO, FundedNext, IC Markets, Pepperstone) when the owner is ready to transition from paper testing to real capital.
 * **Architecture:**
   - Python FastAPI micro-service deployed on a Windows VPS alongside the MT5 desktop terminal.

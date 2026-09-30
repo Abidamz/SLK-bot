@@ -166,7 +166,7 @@ Directly embedded into the dashboard:
 
 | Check | Tool / Standard | Result | Status |
 | :--- | :--- | :--- | :---: |
-| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 129 passed across 9 test suites | PASS |
+| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 170 passed across 12 test suites | PASS |
 | **TypeScript Typecheck** | `tsc --noEmit` | 0 errors | PASS |
 | **Client Script Syntax** | `node --check dashboard/app.js` | Valid ES6+ syntax | PASS |
 | **Asset Consistency** | HTML/CSS parity (`dashboard/` vs `dashboard_html.ts`) | Synchronized | PASS |
