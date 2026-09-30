@@ -92,6 +92,141 @@ export async function sendTelegram(
   }
 }
 
+/**
+ * Creates a single-use expiring invite link to a VIP channel via Telegram Bot API.
+ */
+export async function createTelegramInviteLink(
+  env: NotifyEnv,
+  chatId: string,
+  name?: string,
+  memberLimit = 1,
+  expireHours = 48,
+): Promise<string | null> {
+  if (!env.TELEGRAM_BOT_TOKEN || !chatId) return null;
+  const doFetch = env.fetchFn ?? fetch;
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/createChatInviteLink`;
+  const expireDate = Math.floor(Date.now() / 1000) + expireHours * 3600;
+  try {
+    const resp = await doFetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        name: name ?? "SLK VIP Access",
+        member_limit: memberLimit,
+        expire_date: expireDate,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.warn(JSON.stringify({ level: "warn", msg: "createChatInviteLink failed", chatId, error: errText }));
+      return null;
+    }
+    const data = (await resp.json()) as { ok?: boolean; result?: { invite_link?: string } };
+    return data?.result?.invite_link ?? null;
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "createChatInviteLink network error", error: String(err) }));
+    return null;
+  }
+}
+
+/**
+ * Revokes a member's access from a Telegram channel via ban+unban.
+ */
+export async function kickTelegramMember(
+  env: NotifyEnv,
+  chatId: string,
+  userId: number | string,
+): Promise<boolean> {
+  if (!env.TELEGRAM_BOT_TOKEN || !chatId || !userId) return false;
+  const doFetch = env.fetchFn ?? fetch;
+  const banUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/banChatMember`;
+  const unbanUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/unbanChatMember`;
+  try {
+    const bResp = await doFetch(banUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, user_id: userId }),
+    });
+    if (!bResp.ok) return false;
+    await doFetch(unbanUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, user_id: userId, only_if_banned: true }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates HMAC-SHA256 signature from Whop webhooks.
+ */
+export async function verifyWhopWebhookSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (!secret) return true;
+  if (!signatureHeader) return false;
+
+  let receivedHex = signatureHeader;
+  let signedPayload = rawBody;
+
+  if (signatureHeader.includes("v1=")) {
+    const parts = signatureHeader.split(",");
+    const tPart = parts.find((p) => p.startsWith("t="));
+    const v1Part = parts.find((p) => p.startsWith("v1="));
+    if (tPart && v1Part) {
+      const timestamp = tPart.slice(2);
+      receivedHex = v1Part.slice(3);
+      signedPayload = `${timestamp}.${rawBody}`;
+    }
+  }
+
+  try {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, enc.encode(signedPayload));
+    const computedHex = Array.from(new Uint8Array(signature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return computedHex.toLowerCase() === receivedHex.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Maps an instrument to its institutional TradingView or Deriv chart link.
+ */
+export function getChartUrl(pair: string): string {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) {
+    return `https://app.deriv.com/dtrader?symbol=${p}`;
+  }
+  const tvMap: Record<string, string> = {
+    US30: "CURRENCYCOM:US30",
+    NAS100: "CURRENCYCOM:US100",
+    GER40: "CURRENCYCOM:DE40",
+    JAPAN225: "CURRENCYCOM:JP225",
+    XAUUSD: "OANDA:XAUUSD",
+    EURUSD: "FX:EURUSD",
+    GBPUSD: "FX:GBPUSD",
+    USDJPY: "FX:USDJPY",
+    AUDJPY: "FX:AUDJPY",
+    GBPJPY: "FX:GBPJPY",
+  };
+  return `https://www.tradingview.com/chart/?symbol=${tvMap[p] ?? `FX:${p}`}`;
+}
+
 export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Promise<void> {
   if (!env.DISCORD_WEBHOOK_URL) return;
   const doFetch = env.fetchFn ?? fetch;
@@ -198,6 +333,7 @@ export function formatAlert(a: Alert): string {
     `Path        : sweep ${tfmt(a.sweepTime)} → BOS ${tfmt(a.bosTime)} → retest ${tfmt(a.returnTime)} UTC`,
   );
   if (a.session) lines.push(`Session     : ${a.session}`);
+  lines.push(`Chart View  : ${getChartUrl(a.pair)}`);
   lines.push(`Setup ID    : ${a.setupId}`);
   lines.push("");
   lines.push("Research signal only. No order was placed.");

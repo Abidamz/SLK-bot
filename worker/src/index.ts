@@ -17,7 +17,7 @@ import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
-import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap } from "./notify";
+import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
 import type { AlertRowish } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
@@ -38,6 +38,7 @@ export interface Env {
   TELEGRAM_DERIV_CHAT_ID?: string;
   TELEGRAM_DERIV_FREE_CHAT_ID?: string;
   DISCORD_WEBHOOK_URL?: string;
+  WHOP_WEBHOOK_SECRET?: string;
   fetchFn?: typeof fetch;
   ADMIN_KEY?: string;
   DASHBOARD_READ_KEY?: string;
@@ -2489,6 +2490,174 @@ export default {
         return json({ error: "bad signature" }, 401);
       console.info(JSON.stringify({ level: "info", msg: "provider webhook received (ingest not configured)", bytes: raw.length }));
       return json({ ok: true, ingest: "not-configured" }, 202);
+    }
+
+    if (url.pathname === "/api/whop-webhook" && request.method === "POST") {
+      const rawBody = await request.text();
+      const sigHeader = request.headers.get("webhook-signature") || request.headers.get("x-whop-signature");
+      const authHeader = request.headers.get("authorization");
+      const urlSecret = url.searchParams.get("secret");
+
+      const expectedSecret = env.WHOP_WEBHOOK_SECRET;
+      let isVerified = false;
+
+      if (!expectedSecret) {
+        // If no secret configured yet, permit for initial setup/sandbox
+        isVerified = true;
+      } else if (urlSecret === expectedSecret || authHeader === `Bearer ${expectedSecret}`) {
+        isVerified = true;
+      } else if (sigHeader && (await verifyWhopWebhookSignature(rawBody, sigHeader, expectedSecret))) {
+        isVerified = true;
+      }
+
+      if (!isVerified) {
+        return json({ error: "invalid signature or unauthorized" }, 401);
+      }
+
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {
+        return json({ error: "invalid JSON body" }, 400);
+      }
+
+      const action = String(payload.action ?? payload.event ?? payload.type ?? "");
+      const data = (payload.data ?? payload) as Record<string, unknown>;
+      const membershipId = String(data.id ?? data.membership_id ?? "unknown");
+      const user = (data.user ?? {}) as Record<string, unknown>;
+      const userId = String(user.id ?? data.user_id ?? membershipId);
+      const email = String(user.email ?? data.email ?? "");
+      const telegramUserId = (data.telegram_account_id ?? user.telegram_account_id ?? data.telegram_user_id) as string | number | undefined;
+
+      const store = makeStore(env.DB);
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+      const primaryChatId = env.TELEGRAM_CHAT_ID;
+
+      const notifyEnv = {
+        TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID: primaryChatId,
+        TELEGRAM_DERIV_CHAT_ID: derivChatId,
+        TELEGRAM_DM_CHAT_ID: dmChatId,
+        fetchFn: env.fetchFn ?? fetch,
+      };
+
+      if (action === "membership.went_valid" || action === "payment.succeeded") {
+        // Generate single-use invite link for primary VIP (Institutional)
+        const primaryLink = primaryChatId
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `SLK VIP - ${userId}`)
+          : null;
+
+        // Generate single-use invite link for Synthetics VIP
+        const derivLink = derivChatId
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `SLK Synthetics VIP - ${userId}`)
+          : null;
+
+        const memberRecord = {
+          membershipId,
+          userId,
+          email,
+          status: "active",
+          primaryLink,
+          derivLink,
+          telegramUserId: telegramUserId ?? null,
+          activatedAt: new Date().toISOString(),
+        };
+
+        await store.setKv(`whop:member:${membershipId}`, JSON.stringify(memberRecord));
+
+        console.info(JSON.stringify({
+          level: "info",
+          msg: "whop.membership.went_valid",
+          membershipId,
+          userId,
+          primaryLink: primaryLink ? "generated" : "none",
+          derivLink: derivLink ? "generated" : "none",
+        }));
+
+        return json({
+          ok: true,
+          action,
+          membershipId,
+          status: "active",
+          inviteLinks: {
+            institutional: primaryLink,
+            synthetics: derivLink,
+          },
+        });
+      }
+
+      if (action === "membership.went_invalid" || action === "membership.cancelled") {
+        const storedStr = await store.getKv(`whop:member:${membershipId}`);
+        const stored = storedStr ? JSON.parse(storedStr) : null;
+        const targetTgId = telegramUserId ?? stored?.telegramUserId;
+
+        let primaryRevoked = false;
+        let derivRevoked = false;
+
+        if (targetTgId) {
+          if (primaryChatId) primaryRevoked = await kickTelegramMember(notifyEnv, primaryChatId, targetTgId);
+          if (derivChatId) derivRevoked = await kickTelegramMember(notifyEnv, derivChatId, targetTgId);
+        }
+
+        const updatedRecord = {
+          ...(stored ?? {}),
+          status: "revoked",
+          revokedAt: new Date().toISOString(),
+          primaryRevoked,
+          derivRevoked,
+        };
+        await store.setKv(`whop:member:${membershipId}`, JSON.stringify(updatedRecord));
+
+        console.info(JSON.stringify({
+          level: "info",
+          msg: "whop.membership.went_invalid",
+          membershipId,
+          targetTgId,
+          primaryRevoked,
+          derivRevoked,
+        }));
+
+        return json({
+          ok: true,
+          action,
+          membershipId,
+          status: "revoked",
+          primaryRevoked,
+          derivRevoked,
+        });
+      }
+
+      return json({ ok: true, action, unhandled: true });
+    }
+
+    if (url.pathname === "/admin/whop-member" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const id = url.searchParams.get("id");
+      if (!id) return json({ error: "id parameter required" }, 400);
+      const store = makeStore(env.DB);
+      const member = await store.getKv(`whop:member:${id}`);
+      if (!member) return json({ error: "member not found" }, 404);
+      return json({ ok: true, member: JSON.parse(member) });
+    }
+
+    if (url.pathname === "/admin/generate-invite" && (request.method === "POST" || request.method === "GET")) {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const target = url.searchParams.get("target") ?? "institutional";
+      const store = makeStore(env.DB);
+      const chatId = target === "synthetics"
+        ? (env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")))
+        : env.TELEGRAM_CHAT_ID;
+      if (!chatId || !env.TELEGRAM_BOT_TOKEN) {
+        return json({ ok: false, error: "Telegram bot token or target chat ID missing" }, 400);
+      }
+      const notifyEnv = {
+        TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID: chatId,
+        fetchFn: env.fetchFn ?? fetch,
+      };
+      const link = await createTelegramInviteLink(notifyEnv, chatId, `Manual VIP Invite - ${target}`);
+      return json({ ok: Boolean(link), target, chatId, inviteLink: link });
     }
 
     return json({ error: "not found" }, 404);

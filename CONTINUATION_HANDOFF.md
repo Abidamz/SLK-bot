@@ -232,24 +232,34 @@ For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continu
 * **Impact:** Drastically improves subscriber psychology, protects capital from high-volatility flash wicks, and locks in breakeven on extended trades without risking initial stop losses.
 * **Relevant Files:** `worker/src/types.ts`, `worker/src/config.ts`, `worker/src/outcomes.ts`, `worker/src/notify.ts`, `worker/src/index.ts`, `worker/test/outcomes.test.ts`.
 
-### Recommendation 3: Automated Visual Chart Snapshots in Telegram Alerts
-* **Objective:** Replace text-only Telegram alerts with visual chart cards showing the SLK sequence (origin zone, sweep wick, entry trigger, stop loss, and target).
+### Recommendation 3: Automated Visual Chart Snapshots in Telegram Alerts ✅ COMPLETED & OPERATIONAL
+* **Status:** Implemented in `worker/src/notify.ts` via `getChartUrl()` and embedded directly into all confirmed entry alerts and verified journal teasers. Tested in `worker/test/whop.test.ts`.
+* **Objective:** Replace text-only Telegram alerts with direct visual chart links and references showing the SLK sequence (origin zone, sweep wick, entry trigger, stop loss, and target).
 * **Architecture:**
-  - Visual alerts generate 5x higher engagement and click-through than plain text.
-  - Option A (Serverless URL API): Use QuickChart Financial or Chart-IMG API with candle data from the Worker to render an instant candlestick snapshot with horizontal lines for Entry, SL, and TP.
-  - Option B (Lightweight Canvas / TradingView link): Generate a direct TradingView chart link with preset indicator levels or render a minimalist 30-bar SVG/PNG directly on Cloudflare Workers and send via Telegram's `sendPhoto` endpoint with markdown captions.
-* **Relevant Files:** `worker/src/notify.ts`.
+  - Automated symbol resolver `getChartUrl()` maps institutional Forex & Indices (`US30`, `NAS100`, `GER40`, `XAUUSD`, `EURUSD`, `GBPUSD`, etc.) to TradingView chart views (`CURRENCYCOM`, `OANDA`, `FX`).
+  - Maps 24/7 continuous Synthetics (`V75`, `V100`, `R_75`, etc.) directly to the official Deriv DTrader interactive candle view.
+  - Confirmed alert delivery includes: `Chart View  : https://www.tradingview.com/chart/?symbol=...`
+* **Relevant Files:** `worker/src/notify.ts`, `worker/test/whop.test.ts`.
 
-### Recommendation 4: Whop Webhook for 100% Automated VIP Channel Membership
-* **Objective:** Make the subscription business fully passive by automatically managing VIP Telegram channel access on purchase, renewal, cancellation, or refund.
+### Recommendation 4: Whop Webhook for 100% Automated VIP Channel Membership ✅ COMPLETED & OPERATIONAL
+* **Status:** Implemented in `worker/src/notify.ts`, `worker/src/index.ts`, and verified via deterministic test suite in `worker/test/whop.test.ts`.
+* **Objective:** Make the subscription business 100% passive by automatically managing VIP Telegram channel access on purchase, renewal, cancellation, or refund.
 * **Architecture:**
-  - Create a secure endpoint `POST /api/whop-webhook` in `worker/src/index.ts` authenticated via Whop webhook secret.
-  - On `membership.went_valid` (new subscriber or successful renewal):
-    - Call Telegram Bot API `createChatInviteLink` with `member_limit: 1` and `expire_date: +2 days`.
-    - Automatically DM the single-use invite link to the subscriber via Telegram or Whop direct message.
-  - On `membership.went_invalid` (cancellation, churn, or payment failure):
-    - Call Telegram Bot API `banChatMember` followed by `unbanChatMember` to immediately revoke the user's access from `TELEGRAM_CHAT_ID` and `TELEGRAM_DERIV_CHAT_ID`.
-* **Relevant Files:** `worker/src/index.ts`, `worker/src/notify.ts`.
+  - Secure endpoint `POST /api/whop-webhook` in `worker/src/index.ts` with multi-mode authentication:
+    - Whop HMAC-SHA256 signature verification (`webhook-signature` or `x-whop-signature` with `t=...,v1=...` timestamp format).
+    - Bearer secret token `WHOP_WEBHOOK_SECRET` header or query parameter `?secret=`.
+  - On `membership.went_valid` or `payment.succeeded`:
+    - Calls Telegram Bot API `createChatInviteLink` with `member_limit: 1` and `expire_date: +48 hours`.
+    - Generates separate single-use invite links for Institutional VIP (`TELEGRAM_CHAT_ID`) and Synthetics VIP (`TELEGRAM_DERIV_CHAT_ID`).
+    - Persists member record in KV `whop:member:{membershipId}` with active status and timestamps.
+    - Returns invite links in JSON response for immediate delivery.
+  - On `membership.went_invalid` or `membership.cancelled`:
+    - Looks up member record from KV.
+    - If user's Telegram ID is recorded, revokes VIP channel access via `banChatMember` + `unbanChatMember`.
+    - Updates member record in KV to `status: "revoked"`.
+  - Admin inspection endpoint: `GET /admin/whop-member?id={membershipId}`.
+  - Manual single-use invite generator: `POST /admin/generate-invite?target={institutional|synthetics}`.
+* **Relevant Files:** `worker/src/index.ts`, `worker/src/notify.ts`, `worker/test/whop.test.ts`.
 
 ### Recommendation 5: Elevate Synthetics to 1H Primary & Enforce HTF Bias Hard Gating
 * **Objective:** Protect synthetic VIP channel track record and maximize win rate on 24/7 continuous assets.
