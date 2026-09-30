@@ -288,26 +288,26 @@ export function generateQuickChartUrl(a: Alert): string {
         {
           label: "Target Zone (Green)",
           data: [tp1, tp1, tp1, tp1, tp1, tp1],
-          borderColor: "#10b981",
+          borderColor: "#089981",
           borderWidth: 2,
-          backgroundColor: "rgba(16, 185, 129, 0.32)",
+          backgroundColor: "rgba(8, 153, 129, 0.28)",
           fill: 1, // Fills to Entry dataset below
           pointRadius: 0,
         },
         {
           label: "Entry Level",
           data: [entry, entry, entry, entry, entry, entry],
-          borderColor: "#38bdf8",
+          borderColor: "#2962ff",
           borderWidth: 2,
           borderDash: [5, 4],
-          backgroundColor: "rgba(239, 68, 68, 0.32)",
+          backgroundColor: "rgba(242, 54, 69, 0.28)",
           fill: 2, // Fills to Stop Loss dataset below
           pointRadius: 0,
         },
         {
           label: "Stop Loss Zone (Red)",
           data: [sl, sl, sl, sl, sl, sl],
-          borderColor: "#ef4444",
+          borderColor: "#f23645",
           borderWidth: 2,
           fill: false,
           pointRadius: 0,
@@ -315,12 +315,12 @@ export function generateQuickChartUrl(a: Alert): string {
         {
           label: "+1.5R Breakeven Trigger",
           data: [null, null, null, bePrice, bePrice, bePrice],
-          borderColor: "#f59e0b",
+          borderColor: "#ff9800",
           borderWidth: 2,
           borderDash: [3, 3],
           fill: false,
           pointRadius: 4,
-          pointBackgroundColor: "#f59e0b",
+          pointBackgroundColor: "#ff9800",
         },
         {
           label: "SLK Trade Path",
@@ -332,10 +332,10 @@ export function generateQuickChartUrl(a: Alert): string {
             bePrice, // BE expansion
             tp1, // Target 1
           ],
-          borderColor: "#60a5fa",
+          borderColor: "#38bdf8",
           borderWidth: 3,
           pointRadius: 5,
-          pointBackgroundColor: "#3b82f6",
+          pointBackgroundColor: "#2962ff",
           fill: false,
         },
       ],
@@ -343,23 +343,23 @@ export function generateQuickChartUrl(a: Alert): string {
     options: {
       title: {
         display: true,
-        text: `SLK MODEL · ${a.pair} ${a.entryTf} ${a.direction} (${a.rrInternal ? `1:${a.rrInternal}R` : "1:2.5R"}) · TV STYLE`,
-        fontColor: "#f8fafc",
+        text: `SLK MODEL · TradingView · ${a.pair} ${a.entryTf} ${a.direction} · Risk/Reward 1:${a.rrInternal ?? "2.5"}R`,
+        fontColor: "#d1d4dc",
         fontSize: 15,
       },
       legend: {
-        labels: { fontColor: "#94a3b8", fontSize: 11 },
+        labels: { fontColor: "#787b86", fontSize: 11 },
       },
       scales: {
-        xAxes: [{ ticks: { fontColor: "#94a3b8", fontSize: 10 }, gridLines: { color: "#1e293b" } }],
+        xAxes: [{ ticks: { fontColor: "#787b86", fontSize: 10 }, gridLines: { color: "#1e222d" } }],
         yAxes: [{
           ticks: {
-            fontColor: "#94a3b8",
+            fontColor: "#787b86",
             fontSize: 11,
             min: Math.floor((minP - pad) * 100000) / 100000,
             max: Math.ceil((maxP + pad) * 100000) / 100000,
           },
-          gridLines: { color: "#1e293b" },
+          gridLines: { color: "#1e222d" },
         }],
       },
       annotation: {
@@ -369,8 +369,8 @@ export function generateQuickChartUrl(a: Alert): string {
             yScaleID: "y-axis-0",
             yMin: Math.min(entry, tp1),
             yMax: Math.max(entry, tp1),
-            backgroundColor: "rgba(16, 185, 129, 0.25)",
-            borderColor: "rgba(16, 185, 129, 0.6)",
+            backgroundColor: "rgba(8, 153, 129, 0.22)",
+            borderColor: "rgba(8, 153, 129, 0.7)",
             borderWidth: 1,
           },
           {
@@ -378,8 +378,8 @@ export function generateQuickChartUrl(a: Alert): string {
             yScaleID: "y-axis-0",
             yMin: Math.min(entry, sl),
             yMax: Math.max(entry, sl),
-            backgroundColor: "rgba(239, 68, 68, 0.25)",
-            borderColor: "rgba(239, 68, 68, 0.6)",
+            backgroundColor: "rgba(242, 54, 69, 0.22)",
+            borderColor: "rgba(242, 54, 69, 0.7)",
             borderWidth: 1,
           },
         ],
@@ -388,7 +388,7 @@ export function generateQuickChartUrl(a: Alert): string {
   };
 
   const jsonStr = JSON.stringify(chartConfig);
-  return `https://quickchart.io/chart?w=600&h=350&bkg=%230b0f17&c=${encodeURIComponent(jsonStr)}`;
+  return `https://quickchart.io/chart?w=600&h=350&bkg=%23131722&c=${encodeURIComponent(jsonStr)}`;
 }
 
 export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Promise<void> {

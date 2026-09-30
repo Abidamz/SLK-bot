@@ -2829,6 +2829,101 @@ export default {
       }
     }
 
+    if ((url.pathname === "/admin/test-chart" || url.pathname === "/api/test-chart") && request.method === "GET") {
+      const { generateQuickChartUrl } = await import("./notify");
+      const pair = (url.searchParams.get("pair") || "V75").toUpperCase();
+      const isLong = (url.searchParams.get("dir") || "LONG").toUpperCase() === "LONG";
+      const isDeriv = isDerivPair(pair);
+      const entry = isDeriv ? 450250.0 : 1.0850;
+      const sl = isDeriv ? (isLong ? 449650.0 : 450850.0) : (isLong ? 1.0810 : 1.0890);
+      const risk = Math.abs(entry - sl);
+      const tp1 = isLong ? entry + risk * 2.5 : entry - risk * 2.5;
+
+      const sampleAlert = {
+        setupId: `test:${pair}:chart`,
+        pair,
+        direction: isLong ? "LONG" : "SHORT",
+        entryTf: "1h",
+        mapTf: "4h",
+        keyLevelType: "V",
+        keyLevelBounds: [entry, entry],
+        keyLevelTested: true,
+        keyLevelFlipped: false,
+        candleCloseTime: Date.now(),
+        environment: "trend",
+        phase: "expansion",
+        htfAlignment: "aligned",
+        originKeyLevel: entry,
+        entry,
+        stopLoss: sl,
+        tpInternal: tp1,
+        tpExternal: null,
+        rrInternal: 2.5,
+        imbalanceContext: [],
+        internalLiquidity: [],
+        externalLiquidity: [],
+        drawOnLiquidity: null,
+        nearestExternalTarget: null,
+        intermediateZones: [],
+        opposingLiquidityStanding: false,
+        sweepTime: Date.now(),
+        bosTime: Date.now(),
+        returnTime: Date.now(),
+        invalidationLevel: sl,
+        invalidationReason: null,
+        parameterVersion: "v1.0",
+        alertStatus: "PAPER",
+        suppressReason: null,
+        session: "LONDON",
+        atrEntry: 10,
+        cycleStage: "EXPANSION",
+        entryMode: "CONFIRMATION",
+      } as unknown as Alert;
+
+      const chartUrl = generateQuickChartUrl(sampleAlert);
+
+      if (url.searchParams.get("raw") === "true") {
+        return Response.redirect(chartUrl, 302);
+      }
+
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TradingView Chart Preview - ${pair}</title>
+  <style>
+    body { background: #0b0e14; color: #f8fafc; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+    .card { background: #131722; border: 1px solid #1e222d; border-radius: 12px; padding: 24px; max-width: 700px; width: 100%; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    h1 { font-size: 20px; margin-bottom: 8px; color: #38bdf8; }
+    p { font-size: 14px; color: #94a3b8; margin-bottom: 20px; }
+    img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #1e222d; }
+    .btn-group { margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .btn { background: #2563eb; color: #fff; padding: 10px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: bold; }
+    .btn:hover { background: #1d4ed8; }
+    .btn-secondary { background: #1e293b; color: #cbd5e1; }
+    .btn-secondary:hover { background: #334155; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📊 TradingView Long/Short Position Tool Preview</h1>
+    <p>Asset: <strong>${pair}</strong> · Direction: <strong>${isLong ? "LONG 🟢" : "SHORT 🔴"}</strong> · Target: <strong>1:2.50R</strong></p>
+    <img src="${chartUrl}" alt="TradingView Chart Snapshot">
+    <div class="btn-group">
+      <a class="btn" href="?pair=V75">Preview V75</a>
+      <a class="btn" href="?pair=EURUSD">Preview EURUSD</a>
+      <a class="btn" href="?pair=US30">Preview US30</a>
+      <a class="btn btn-secondary" href="${chartUrl}" target="_blank">Direct Image URL</a>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      return new Response(html, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
     return json({ error: "not found" }, 404);
   },
 
