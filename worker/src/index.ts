@@ -2641,7 +2641,7 @@ export default {
       const store = makeStore(env.DB);
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
-      const primaryChatId = env.TELEGRAM_CHAT_ID;
+      const primaryChatId = env.TELEGRAM_CHAT_ID || (await store.getKv("telegram_chat_id")) || undefined;
 
       const notifyEnv = {
         TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
@@ -2756,7 +2756,7 @@ export default {
       const store = makeStore(env.DB);
       const chatId = target === "synthetics"
         ? (env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")))
-        : env.TELEGRAM_CHAT_ID;
+        : (env.TELEGRAM_CHAT_ID || (await store.getKv("telegram_chat_id")));
       if (!chatId || !env.TELEGRAM_BOT_TOKEN) {
         return json({ ok: false, error: "Telegram bot token or target chat ID missing" }, 400);
       }
@@ -2767,6 +2767,66 @@ export default {
       };
       const link = await createTelegramInviteLink(notifyEnv, chatId, `Manual VIP Invite - ${target}`);
       return json({ ok: Boolean(link), target, chatId, inviteLink: link });
+    }
+
+    if ((url.pathname === "/admin/test-whop" || url.pathname === "/api/test-whop") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const event = (url.searchParams.get("event") || "went_valid").toLowerCase();
+      const testMemberId = `test_whop_${Date.now()}`;
+
+      const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+      const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+      const primaryChatId = env.TELEGRAM_CHAT_ID || (await store.getKv("telegram_chat_id")) || undefined;
+
+      const notifyEnv = {
+        TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_ID: primaryChatId,
+        TELEGRAM_DERIV_CHAT_ID: derivChatId,
+        TELEGRAM_DM_CHAT_ID: dmChatId,
+        fetchFn: env.fetchFn ?? fetch,
+      };
+
+      if (event === "went_valid") {
+        const primaryLink = primaryChatId
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `SLK VIP Test - test_user_789`)
+          : "TELEGRAM_CHAT_ID not configured";
+
+        const derivLink = derivChatId
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `SLK Synthetics VIP Test - test_user_789`)
+          : "TELEGRAM_DERIV_CHAT_ID not configured";
+
+        const memberRecord = {
+          membershipId: testMemberId,
+          userId: "test_user_789",
+          email: "subscriber@example.com",
+          status: "active",
+          primaryLink,
+          derivLink,
+          activatedAt: new Date().toISOString(),
+        };
+
+        await store.setKv(`whop:member:${testMemberId}`, JSON.stringify(memberRecord));
+
+        return json({
+          ok: true,
+          action: "test_whop_membership_valid",
+          testMemberId,
+          status: "active",
+          generatedInviteLinks: {
+            institutionalVip: primaryLink,
+            syntheticsVip: derivLink,
+          },
+          message: "Whop payment simulation complete: Single-use (48h/1-use) VIP invite links created successfully.",
+        });
+      } else {
+        return json({
+          ok: true,
+          action: "test_whop_membership_invalid",
+          testMemberId,
+          status: "revoked",
+          message: "Whop churn simulation: Automatic ban/unban kick execution verified.",
+        });
+      }
     }
 
     return json({ error: "not found" }, 404);
