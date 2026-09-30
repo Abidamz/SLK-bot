@@ -261,22 +261,26 @@ For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continu
   - Manual single-use invite generator: `POST /admin/generate-invite?target={institutional|synthetics}`.
 * **Relevant Files:** `worker/src/index.ts`, `worker/src/notify.ts`, `worker/test/whop.test.ts`.
 
-### Recommendation 5: Elevate Synthetics to 1H Primary & Enforce HTF Bias Hard Gating
+### Recommendation 5: Elevate Synthetics to 1H Primary & Enforce HTF Bias Hard Gating ✅ COMPLETED & ENFORCED
+* **Status:** Enforced in production via `FILTER_HTF_CONFLICT_DERIV_ONLY=true` and `FILTER_HTF_CONFLICT=true` in `worker/src/config.ts` and `worker/wrangler.jsonc`.
 * **Objective:** Protect synthetic VIP channel track record and maximize win rate on 24/7 continuous assets.
 * **Analysis & Context:**
-  - Institutional Forex & Indices have an exceptional **+30.78R (75.0% win rate)** track record.
+  - Institutional Forex & Indices maintain an exceptional **+30.78R (75.0% win rate)** track record.
   - Synthetic volatility assets (`V75`, `V100`, etc.) are continuous algorithmic random walks with higher lower-timeframe noise. The 3 historical synthetic paper losses were all counter-trend setups flagged as `HTF_CONFLICT`.
 * **Action:**
-  - Permanently enforce `FILTER_HTF_CONFLICT_DERIV_ONLY=true` so counter-trend setups are never delivered to VIP synthetics.
-  - Focus synthetic scanning on higher-probability structural timeframes (`1h` and `4h`), while keeping `15m` and `30m` for institutional Forex/Indices.
-* **Relevant Files:** `worker/src/config.ts`, `worker/wrangler.jsonc`.
+  - Permanently enforce `FILTER_HTF_CONFLICT_DERIV_ONLY=true` so counter-trend setups are strictly suppressed from VIP synthetics.
+  - Retain 15m/30m for institutional Forex/Indices while ensuring 1H/4H directional consensus guards synthetic execution.
+* **Relevant Files:** `worker/src/config.ts`, `worker/wrangler.jsonc`, `worker/src/index.ts`.
 
-### Recommendation 6: MetaTrader 5 (MT5) Auto-Execution Webhook Bridge (For Live & Prop Firm Capital)
+### Recommendation 6: MetaTrader 5 (MT5) Auto-Execution Webhook Bridge (For Live & Prop Firm Capital) ✅ COMPLETED & DEPLOYED
+* **Status:** Implemented in `scripts/mt5_bridge.py` with FastAPI, HMAC-SHA256 authentication, institutional dynamic lot sizing, and live + dry-run simulation modes.
 * **Objective:** Enable one-click or automated trade execution on live MT5 broker accounts (e.g., FTMO, FundedNext, IC Markets, Pepperstone) when the owner is ready to transition from paper testing to real capital.
 * **Architecture:**
-  - The Cloudflare Worker cannot connect to MT5 directly (MT5 requires Windows native DLLs/C++ API).
-  - Deploy a lightweight Python FastAPI micro-service on a $5/mo Windows VPS with the MT5 desktop terminal running.
-  - When `scanEntry` records a confirmed entry, the Worker dispatches an authenticated POST request to `https://your-vps.com/webhook/trade`.
-  - The Python bridge parses the trade, calculates exact lot size based on account balance ($100 risk per trade / stop loss distance in points), and executes `mt5.order_send()`.
-* **Relevant Files:** Separate micro-service or `scripts/mt5_bridge.py`.
+  - Python FastAPI micro-service deployed on a Windows VPS alongside the MT5 desktop terminal.
+  - Receives authenticated JSON trade webhooks (`POST /webhook/trade`) with HMAC signature validation.
+  - Dynamic lot sizing engine: calculates point value and account equity to size lots based on exact dollar risk ($100 per trade) or account percentage (1.0%).
+  - Orders submitted with `mt5.order_send()` with instant market fill, explicit SL, and internal TP1.
+  - Trailing breakeven endpoint (`POST /webhook/breakeven`): modifies open trade stop loss to exact entry price when triggered by the Worker.
+  - Simulation / dry-run mode for testing without risking capital on unsupported operating systems.
+* **Relevant Files:** `scripts/mt5_bridge.py`.
 
