@@ -85,6 +85,45 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       expect(url).toContain("EURUSD");
     });
 
+    it("fetches TradingView screenshot with Long Position tool via chart-img.com", async () => {
+      const { fetchTradingViewSnapshot, getVisualAlertImageUrl } = await import("../src/notify");
+      const fakeAlert: any = {
+        pair: "V75",
+        entryTf: "30m",
+        direction: "LONG",
+        entry: 45038.51,
+        stopLoss: 44249.13,
+        tpInternal: 47413.22,
+      };
+
+      let sentBody: any = null;
+      let sentHeaders: any = null;
+      const fakeFetch = (async (_url: string | URL, init?: RequestInit) => {
+        sentBody = JSON.parse(String(init?.body));
+        sentHeaders = init?.headers;
+        return new Response(JSON.stringify({ url: "https://storage.chart-img.com/tradingview-v75.png" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await fetchTradingViewSnapshot("test_key_123", fakeAlert, fakeFetch);
+      expect(result).toBe("https://storage.chart-img.com/tradingview-v75.png");
+      expect(sentBody.symbol).toBe("DERIV:VOLATILITY_75_INDEX");
+      expect(sentBody.interval).toBe("30m");
+      expect(sentBody.drawings[0].name).toBe("Long Position");
+      expect(sentBody.drawings[0].input.entryPrice).toBe(45038.51);
+      expect(sentHeaders["x-api-key"]).toBe("test_key_123");
+
+      // Verify getVisualAlertImageUrl uses it when key is present
+      const imageUrl = await getVisualAlertImageUrl({ CHART_IMG_API_KEY: "test_key_123", fetchFn: fakeFetch }, fakeAlert);
+      expect(imageUrl).toBe("https://storage.chart-img.com/tradingview-v75.png");
+
+      // Verify getVisualAlertImageUrl falls back to QuickChart when no key is set
+      const fallbackUrl = await getVisualAlertImageUrl({}, fakeAlert);
+      expect(fallbackUrl).toContain("https://quickchart.io/chart");
+    });
+
     it("sends via sendPhoto when CHART_SNAPSHOTS is true", async () => {
       const { sendTelegram } = await import("../src/notify");
       const calls: any[] = [];

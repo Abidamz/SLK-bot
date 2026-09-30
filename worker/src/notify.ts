@@ -328,17 +328,17 @@ export async function fetchTradingViewSnapshot(
   const interval = intervalMap[a.entryTf] ?? "1h";
 
   try {
-    const resp = await fetchFn("https://api.chart-img.com/v1/tradingview/advanced-chart", {
+    const resp = await fetchFn("https://api.chart-img.com/v2/tradingview/advanced-chart/storage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-api-key": apiKey,
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         symbol,
         interval,
         theme: "dark",
-        format: "png",
         drawings: [
           {
             name: a.direction === "LONG" ? "Long Position" : "Short Position",
@@ -352,12 +352,8 @@ export async function fetchTradingViewSnapshot(
       }),
     });
     if (!resp.ok) return null;
-    const ctype = resp.headers.get("content-type") || "";
-    if (ctype.includes("json")) {
-      const data = (await resp.json()) as { url?: string };
-      return data.url ?? null;
-    }
-    return null;
+    const data = (await resp.json()) as { url?: string };
+    return data.url ?? null;
   } catch {
     return null;
   }
