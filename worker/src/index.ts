@@ -2492,10 +2492,11 @@ export default {
     }
 
     if ((url.pathname === "/admin/test-telegram" || url.pathname === "/api/test-telegram" || url.pathname === "/admin/test-loud" || url.pathname === "/api/test-loud") && (request.method === "GET" || request.method === "POST")) {
-      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+      const store = makeStore(env.DB);
+      const primaryChatId = env.TELEGRAM_CHAT_ID || (await store.getKv("telegram_chat_id"));
+      if (!env.TELEGRAM_BOT_TOKEN || !primaryChatId) {
         return json({ ok: false, error: "Telegram credentials missing in worker environment variables (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)" }, 400);
       }
-      const store = makeStore(env.DB);
       if (await checkTestCooldown(store, "test-loud")) {
         return json({
           ok: true,
@@ -2504,41 +2505,64 @@ export default {
         });
       }
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
-      const { broadcast, toBold } = await import("./notify");
-      const boldNas = toBold("NAS100");
-      const text = [
-        "🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨",
-        `🔴 SLK 🧪 PAPER ALERT — 🌟【 ${boldNas} 】🌟`,
-        `📍 Pair       : 🌟【 ${boldNas} 】🌟`,
-        "Direction   : SHORT 🔴",
-        "Timeframe   : 15m (map 4h)",
-        "State       : RETEST → CONFIRMED (EXECUTE NOW)",
-        "Bias Grade  : 🌟 A_GRADE",
-        "Story       : BEARISH · EXPANSION · ALIGNED",
-        "Entry       : 20,465.00 (retest close)",
-        "Stop        : 20,495.00 (+30.0 pts · beyond sweep extreme)",
-        "Target 1    : 20,390.00 internal liquidity (-75.0 pts · 2.50R)",
-        "Target 2    : 20,315.00 nearest external liquidity",
-        "Draw        : 20,150.00",
-        "Invalidation: CLOSE > 20,495.00",
-        "",
-        "Testing LOUD notification mode with auto-pin in channel + direct private DM delivery!",
-      ].join("\n");
+      const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
+      const { notifyAlert } = await import("./notify");
+
+      const sampleAlert: Alert = {
+        setupId: `oanda:NAS100:15m:SHORT:A:20465.00:${new Date().toISOString()}`,
+        pair: "NAS100",
+        entryTf: "15m",
+        mapTf: "4h",
+        direction: "SHORT",
+        entry: 20465.00,
+        stopLoss: 20495.00,
+        tpInternal: 20390.00,
+        tpExternal: 20315.00,
+        candleCloseTime: Date.now(),
+        environment: "bearish",
+        phase: "expansion",
+        htfAlignment: "M:↓ W:↓ D:↓ H4:↓",
+        originKeyLevel: 20495.00,
+        keyLevelType: "A",
+        keyLevelBounds: [20490.00, 20500.00],
+        keyLevelTested: true,
+        keyLevelFlipped: false,
+        imbalanceContext: [{ top: 20480.00, bottom: 20460.00 }],
+        internalLiquidity: [],
+        externalLiquidity: [],
+        drawOnLiquidity: 20150.00,
+        nearestExternalTarget: 20315.00,
+        intermediateZones: [],
+        opposingLiquidityStanding: true,
+        sweepTime: Date.now() - 900_000,
+        bosTime: Date.now() - 450_000,
+        returnTime: Date.now(),
+        invalidationLevel: 20500.00,
+        invalidationReason: null,
+        parameterVersion: "slk-w1.0",
+        alertStatus: "PAPER",
+        suppressReason: null,
+        session: "NEW_YORK",
+        atrEntry: 25.0,
+        rrInternal: 2.50,
+        cycleStage: "EXPANSION",
+        entryMode: "CONFIRMATION",
+        shadowClassification: "A_GRADE",
+      };
+
       try {
-        const results = await broadcast(
-          { ...env, TELEGRAM_DM_CHAT_ID: dmChatId },
-          text,
-          0xef4444,
-          { silent: false, pin: true, sendToDm: true },
-        );
+        const results = await notifyAlert({
+          ...env,
+          TELEGRAM_CHAT_ID: primaryChatId,
+          TELEGRAM_DM_CHAT_ID: dmChatId,
+          CHART_IMG_API_KEY: chartImgKey,
+        }, sampleAlert);
         return json({
           ok: true,
           mode: "loud_simultaneous",
           results,
           dmConfigured: Boolean(dmChatId),
-          message: dmChatId
-            ? "LOUD Confirmed Entry test was successfully sent simultaneously to your Telegram channel (with pin) AND directly to your private chat!"
-            : "LOUD Confirmed Entry test sent to your Telegram channel! (Tip: Link your private chat via /admin/connect-dm to receive signals in both places simultaneously).",
+          message: "LOUD Confirmed Entry test with live TradingView screenshot was successfully sent to your VIP Institutional channel AND direct DM!",
         });
       } catch (err) {
         return json({
