@@ -16,6 +16,7 @@ export interface NotifyEnv {
   VIP_WATCH_TELEGRAM?: string;
   VIP_WATCH_NOTIFY?: string;
   CHART_SNAPSHOTS?: string;
+  CHART_IMG_API_KEY?: string;
 }
 
 /** Row-shaped subset used when formatting outcomes and performance recaps (matches slk_alerts). */

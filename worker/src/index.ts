@@ -61,6 +61,7 @@ export interface Env {
   SYMBOL_MAP?: string;
   DERIV_APP_ID?: string;
   DERIV_PROXY_URL?: string;
+  CHART_IMG_API_KEY?: string;
 }
 
 interface ExecCtxLike {
@@ -740,7 +741,8 @@ async function deliver(
   }
   const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
-  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId }, alert);
+  const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
+  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, alert);
 }
 
 async function resolveOutcomes(
@@ -1886,7 +1888,8 @@ export default {
       };
 
       try {
-        const results = await notifyAlert({ ...env, fetchFn: doFetch, TELEGRAM_DERIV_CHAT_ID: derivChatId }, sampleAlert);
+        const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
+        const results = await notifyAlert({ ...env, fetchFn: doFetch, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, sampleAlert);
         return json({
           ok: true,
           status: "delivered",
@@ -2830,7 +2833,7 @@ export default {
     }
 
     if ((url.pathname === "/admin/test-chart" || url.pathname === "/api/test-chart") && request.method === "GET") {
-      const { generateQuickChartUrl } = await import("./notify");
+      const { generateQuickChartUrl, getVisualAlertImageUrl, getTradingViewChartUrl } = await import("./notify");
       const pair = (url.searchParams.get("pair") || "V75").toUpperCase();
       const isLong = (url.searchParams.get("dir") || "LONG").toUpperCase() === "LONG";
       const isDeriv = isDerivPair(pair);
@@ -2880,7 +2883,10 @@ export default {
         entryMode: "CONFIRMATION",
       } as unknown as Alert;
 
-      const chartUrl = generateQuickChartUrl(sampleAlert);
+      const store = makeStore(env.DB);
+      const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
+      const chartUrl = await getVisualAlertImageUrl({ ...env, CHART_IMG_API_KEY: chartImgKey }, sampleAlert);
+      const tvUrl = getTradingViewChartUrl(pair);
 
       if (url.searchParams.get("raw") === "true") {
         return Response.redirect(chartUrl, 302);
@@ -2902,6 +2908,8 @@ export default {
     .btn:hover { background: #1d4ed8; }
     .btn-secondary { background: #1e293b; color: #cbd5e1; }
     .btn-secondary:hover { background: #334155; }
+    .tv-btn { background: #089981; color: #fff; }
+    .tv-btn:hover { background: #067a67; }
   </style>
 </head>
 <body>
@@ -2913,6 +2921,7 @@ export default {
       <a class="btn" href="?pair=V75">Preview V75</a>
       <a class="btn" href="?pair=EURUSD">Preview EURUSD</a>
       <a class="btn" href="?pair=US30">Preview US30</a>
+      <a class="btn tv-btn" href="${tvUrl}" target="_blank">Open Live TradingView Chart ↗</a>
       <a class="btn btn-secondary" href="${chartUrl}" target="_blank">Direct Image URL</a>
     </div>
   </div>
@@ -2921,6 +2930,20 @@ export default {
 
       return new Response(html, {
         headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    if ((url.pathname === "/admin/set-chart-key" || url.pathname === "/api/set-chart-key") && (request.method === "GET" || request.method === "POST")) {
+      const key = url.searchParams.get("key");
+      if (!key) {
+        return json({ error: "key parameter required (e.g. /admin/set-chart-key?key=your_chart_img_api_key)" }, 400);
+      }
+      const store = makeStore(env.DB);
+      await store.setKv("chart_img_api_key", key.trim());
+      return json({
+        ok: true,
+        action: "set_chart_img_key",
+        message: "CHART_IMG_API_KEY saved to database. Live TradingView screenshots with Long/Short Position tools enabled for all symbols!",
       });
     }
 

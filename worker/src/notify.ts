@@ -234,6 +234,21 @@ export async function verifyWhopWebhookSignature(
   }
 }
 
+export const DERIV_TV_SYMBOLS: Record<string, string> = {
+  V75: "DERIV:VOLATILITY_75_INDEX",
+  V75_1S: "DERIV:VOLATILITY_75_1S_INDEX",
+  V100: "DERIV:VOLATILITY_100_INDEX",
+  V100_1S: "DERIV:VOLATILITY_100_1S_INDEX",
+  V50: "DERIV:VOLATILITY_50_INDEX",
+  V50_1S: "DERIV:VOLATILITY_50_1S_INDEX",
+  V25: "DERIV:VOLATILITY_25_INDEX",
+  V25_1S: "DERIV:VOLATILITY_25_1S_INDEX",
+  V10: "DERIV:VOLATILITY_10_INDEX",
+  V10_1S: "DERIV:VOLATILITY_10_1S_INDEX",
+  BOOM1000: "DERIV:BOOM_1000_INDEX",
+  CRASH1000: "DERIV:CRASH_1000_INDEX",
+};
+
 /**
  * Maps an instrument to its institutional TradingView or Deriv chart link.
  */
@@ -255,6 +270,115 @@ export function getChartUrl(pair: string): string {
     GBPJPY: "FX:GBPJPY",
   };
   return `https://www.tradingview.com/chart/?symbol=${tvMap[p] ?? `FX:${p}`}`;
+}
+
+/**
+ * Returns TradingView web URL for any pair (including Deriv synthetic indices).
+ */
+export function getTradingViewChartUrl(pair: string): string {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (DERIV_TV_SYMBOLS[p]) {
+    return `https://www.tradingview.com/chart/?symbol=${DERIV_TV_SYMBOLS[p]}`;
+  }
+  const tvMap: Record<string, string> = {
+    US30: "CURRENCYCOM:US30",
+    NAS100: "CURRENCYCOM:US100",
+    GER40: "CURRENCYCOM:DE40",
+    JAPAN225: "CURRENCYCOM:JP225",
+    XAUUSD: "OANDA:XAUUSD",
+    EURUSD: "FX:EURUSD",
+    GBPUSD: "FX:GBPUSD",
+    USDJPY: "FX:USDJPY",
+    AUDJPY: "FX:AUDJPY",
+    GBPJPY: "FX:GBPJPY",
+  };
+  return `https://www.tradingview.com/chart/?symbol=${tvMap[p] ?? `FX:${p}`}`;
+}
+
+/**
+ * Fetches an official TradingView browser snapshot with Long/Short position tool via chart-img.com if key is provided.
+ */
+export async function fetchTradingViewSnapshot(
+  apiKey: string,
+  a: Alert,
+  fetchFn: typeof fetch = fetch,
+): Promise<string | null> {
+  const p = a.pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  const tvMap: Record<string, string> = {
+    US30: "CURRENCYCOM:US30",
+    NAS100: "CURRENCYCOM:US100",
+    GER40: "CURRENCYCOM:DE40",
+    JAPAN225: "CURRENCYCOM:JP225",
+    XAUUSD: "OANDA:XAUUSD",
+    EURUSD: "FX:EURUSD",
+    GBPUSD: "FX:GBPUSD",
+    USDJPY: "FX:USDJPY",
+    AUDJPY: "FX:AUDJPY",
+    GBPJPY: "FX:GBPJPY",
+    ...DERIV_TV_SYMBOLS,
+  };
+  const symbol = tvMap[p] ?? `FX:${p}`;
+  const intervalMap: Record<string, string> = {
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1D",
+  };
+  const interval = intervalMap[a.entryTf] ?? "1h";
+
+  try {
+    const resp = await fetchFn("https://api.chart-img.com/v1/tradingview/advanced-chart", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        symbol,
+        interval,
+        theme: "dark",
+        format: "png",
+        drawings: [
+          {
+            name: a.direction === "LONG" ? "Long Position" : "Short Position",
+            input: {
+              entryPrice: Number(a.entry),
+              targetPrice: Number(a.tpInternal),
+              stopPrice: Number(a.stopLoss),
+            },
+          },
+        ],
+      }),
+    });
+    if (!resp.ok) return null;
+    const ctype = resp.headers.get("content-type") || "";
+    if (ctype.includes("json")) {
+      const data = (await resp.json()) as { url?: string };
+      return data.url ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the highest fidelity visual chart URL available:
+ * 1. Direct TradingView screenshot via chart-img.com if CHART_IMG_API_KEY is configured.
+ * 2. High-speed built-in TradingView dark theme position tool renderer via QuickChart.
+ */
+export async function getVisualAlertImageUrl(env: NotifyEnv, a: Alert): Promise<string> {
+  if (env.CHART_IMG_API_KEY) {
+    const doFetch = env.fetchFn ?? fetch;
+    try {
+      const tvSnap = await fetchTradingViewSnapshot(env.CHART_IMG_API_KEY, a, doFetch);
+      if (tvSnap) return tvSnap;
+    } catch {
+      // Fall through to QuickChart
+    }
+  }
+  return generateQuickChartUrl(a);
 }
 
 /**
@@ -506,7 +630,12 @@ export function formatAlert(a: Alert): string {
     `Path        : sweep ${tfmt(a.sweepTime)} → BOS ${tfmt(a.bosTime)} → retest ${tfmt(a.returnTime)} UTC`,
   );
   if (a.session) lines.push(`Session     : ${a.session}`);
-  lines.push(`Chart View  : ${getChartUrl(a.pair)}`);
+  if (isDerivPair(a.pair)) {
+    lines.push(`📈 TradingView : ${getTradingViewChartUrl(a.pair)}`);
+    lines.push(`📱 DTrader App : ${getChartUrl(a.pair)}`);
+  } else {
+    lines.push(`📈 TradingView : ${getTradingViewChartUrl(a.pair)}`);
+  }
   lines.push(`Setup ID    : ${a.setupId}`);
   lines.push("");
   lines.push("Research signal only. No order was placed.");
@@ -648,7 +777,7 @@ export async function broadcast(
  * Entry alerts are sent LOUD and auto-pinned to prevent missing execution,
  * and simultaneously sent to personal private DM so it cannot be missed. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
-  const photoUrl = generateQuickChartUrl(a);
+  const photoUrl = await getVisualAlertImageUrl(env, a);
   return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, {
     silent: false,
     pin: true,
