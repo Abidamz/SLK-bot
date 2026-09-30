@@ -19,6 +19,7 @@ export interface TelegramSendOptions {
   silent?: boolean;
   pin?: boolean;
   chatId?: string;
+  photoUrl?: string;
 }
 
 export function parseChatIds(raw?: string): string[] {
@@ -52,39 +53,68 @@ export async function sendTelegram(
 
   const doFetch = env.fetchFn ?? fetch;
   for (const chatId of targetChatIds) {
-    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-    const body: Record<string, unknown> = {
-      chat_id: chatId,
-      text,
-      disable_web_page_preview: true,
-    };
-    // Only pass disable_notification when explicitly silent
-    if (options.silent) {
-      body.disable_notification = true;
-    }
-    const resp = await doFetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) throw new Error(`Telegram failed: HTTP ${resp.status} ${await resp.text()}`);
+    let sentMsgId: number | undefined;
+    let photoSent = false;
 
-    if (options.pin) {
+    // Serverless visual chart snapshot via Telegram sendPhoto (Recommendation 3)
+    if (options.photoUrl && env.CHART_SNAPSHOTS === "true") {
+      const photoUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`;
+      const caption = text.length <= 1024 ? text : text.slice(0, 1020) + "...";
+      const photoBody: Record<string, unknown> = {
+        chat_id: chatId,
+        photo: options.photoUrl,
+        caption,
+      };
+      if (options.silent) photoBody.disable_notification = true;
       try {
-        const data = (await resp.json()) as { ok?: boolean; result?: { message_id?: number } };
-        const msgId = data?.result?.message_id;
-        if (msgId) {
-          const pinUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/pinChatMessage`;
-          await doFetch(pinUrl, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              chat_id: chatId,
-              message_id: msgId,
-              disable_notification: true, // Silent pin so it doesn't suppress or overwrite the loud message alert
-            }),
-          });
+        const pResp = await doFetch(photoUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(photoBody),
+        });
+        if (pResp.ok) {
+          photoSent = true;
+          const pData = (await pResp.json()) as { ok?: boolean; result?: { message_id?: number } };
+          sentMsgId = pData?.result?.message_id;
         }
+      } catch (pErr) {
+        console.warn(JSON.stringify({ level: "warn", msg: "sendPhoto failed, falling back to sendMessage", error: String(pErr) }));
+      }
+    }
+
+    if (!photoSent) {
+      const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+      };
+      // Only pass disable_notification when explicitly silent
+      if (options.silent) {
+        body.disable_notification = true;
+      }
+      const resp = await doFetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error(`Telegram failed: HTTP ${resp.status} ${await resp.text()}`);
+      const data = (await resp.json()) as { ok?: boolean; result?: { message_id?: number } };
+      sentMsgId = data?.result?.message_id;
+    }
+
+    if (options.pin && sentMsgId) {
+      try {
+        const pinUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/pinChatMessage`;
+        await doFetch(pinUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: sentMsgId,
+            disable_notification: true, // Silent pin so it doesn't suppress or overwrite the loud message alert
+          }),
+        });
       } catch (pinErr) {
         console.warn(JSON.stringify({ level: "warn", msg: "telegram pin failed", chatId, error: String(pinErr) }));
       }
@@ -225,6 +255,85 @@ export function getChartUrl(pair: string): string {
     GBPJPY: "FX:GBPJPY",
   };
   return `https://www.tradingview.com/chart/?symbol=${tvMap[p] ?? `FX:${p}`}`;
+}
+
+/**
+ * Generates an institutional visual candlestick/level snapshot image URL via QuickChart (Recommendation 3).
+ */
+export function generateQuickChartUrl(a: Alert): string {
+  const entry = Number(a.entry);
+  const sl = Number(a.stopLoss);
+  const tp1 = Number(a.tpInternal);
+  const tp2 = a.tpExternal ? Number(a.tpExternal) : null;
+  const origin = Number(a.originKeyLevel);
+
+  const prices = [entry, sl, tp1];
+  if (tp2) prices.push(tp2);
+  if (origin) prices.push(origin);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const pad = (maxP - minP) * 0.15 || (entry * 0.005);
+
+  const chartConfig = {
+    type: "line",
+    data: {
+      labels: ["Origin Zone", "Liquidity Sweep", "Structure Shift", "Retest Trigger", "Target 1"],
+      datasets: [
+        {
+          label: "Entry",
+          data: [null, null, null, entry, entry],
+          borderColor: "#3b82f6",
+          borderWidth: 3,
+          pointBackgroundColor: "#3b82f6",
+          pointRadius: 5,
+          fill: false,
+        },
+        {
+          label: "Stop Loss",
+          data: [sl, sl, sl, sl, sl],
+          borderColor: "#ef4444",
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "Target 1 (Internal)",
+          data: [tp1, tp1, tp1, tp1, tp1],
+          borderColor: "#10b981",
+          borderWidth: 2,
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      title: {
+        display: true,
+        text: `SLK MODEL · ${a.pair} ${a.entryTf} ${a.direction} (${a.rrInternal ? `1:${a.rrInternal}R` : "1:2.5R"})`,
+        fontColor: "#f8fafc",
+        fontSize: 16,
+      },
+      legend: {
+        labels: { fontColor: "#94a3b8" },
+      },
+      scales: {
+        xAxes: [{ ticks: { fontColor: "#94a3b8" }, gridLines: { color: "#334155" } }],
+        yAxes: [{
+          ticks: {
+            fontColor: "#94a3b8",
+            min: Math.floor((minP - pad) * 100000) / 100000,
+            max: Math.ceil((maxP + pad) * 100000) / 100000,
+          },
+          gridLines: { color: "#334155" },
+        }],
+      },
+    },
+  };
+
+  const jsonStr = JSON.stringify(chartConfig);
+  return `https://quickchart.io/chart?w=600&h=350&bkg=%230b0f17&c=${encodeURIComponent(jsonStr)}`;
 }
 
 export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Promise<void> {
@@ -399,6 +508,7 @@ export interface BroadcastOptions {
   sendToDm?: boolean;
   pair?: string;
   chatId?: string;
+  photoUrl?: string;
 }
 
 /** Fan out to every configured channel; a failing channel is logged and
@@ -471,7 +581,14 @@ export async function broadcast(
  * Entry alerts are sent LOUD and auto-pinned to prevent missing execution,
  * and simultaneously sent to personal private DM so it cannot be missed. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
-  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, { silent: false, pin: true, sendToDm: true, pair: a.pair });
+  const photoUrl = generateQuickChartUrl(a);
+  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, {
+    silent: false,
+    pin: true,
+    sendToDm: true,
+    pair: a.pair,
+    photoUrl,
+  });
 }
 
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT

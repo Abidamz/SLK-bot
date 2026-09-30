@@ -34,6 +34,8 @@
     "WATCH_NOTIFY": "true",
     // Keep VIP channels (Institutional & Synthetics) clean: only confirmed entry signals + outcomes delivered
     "VIP_WATCH_NOTIFY": "false",
+    // Automated visual chart snapshots via Telegram sendPhoto (Recommendation 3)
+    "CHART_SNAPSHOTS": "true",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
     "MIN_TP_R": "2.5",

@@ -51,6 +51,7 @@ export interface Env {
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
   VIP_WATCH_NOTIFY?: string;
+  CHART_SNAPSHOTS?: string;
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;

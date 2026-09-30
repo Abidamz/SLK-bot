@@ -65,6 +65,52 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       expect(getChartUrl("V75")).toBe("https://app.deriv.com/dtrader?symbol=V75");
       expect(getChartUrl("R_100")).toBe("https://app.deriv.com/dtrader?symbol=R_100");
     });
+
+    it("generates QuickChart visual image URL with entry, SL, and TP datasets", async () => {
+      const { generateQuickChartUrl } = await import("../src/notify");
+      const fakeAlert: any = {
+        pair: "EURUSD",
+        entryTf: "30m",
+        direction: "LONG",
+        entry: 1.0850,
+        stopLoss: 1.0820,
+        tpInternal: 1.0940,
+        tpExternal: 1.0980,
+        originKeyLevel: 1.0835,
+        rrInternal: 3.0,
+      };
+      const url = generateQuickChartUrl(fakeAlert);
+      expect(url).toContain("https://quickchart.io/chart");
+      expect(url).toContain("SLK%20MODEL");
+      expect(url).toContain("EURUSD");
+    });
+
+    it("sends via sendPhoto when CHART_SNAPSHOTS is true", async () => {
+      const { sendTelegram } = await import("../src/notify");
+      const calls: any[] = [];
+      const fakeFetch = (async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 12345 } }), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      await sendTelegram(
+        {
+          TELEGRAM_BOT_TOKEN: "fake_token",
+          TELEGRAM_CHAT_ID: "-10012345",
+          CHART_SNAPSHOTS: "true",
+          fetchFn: fakeFetch,
+        },
+        "🚨 SLK CONFIRMED ENTRY — EURUSD 30m LONG",
+        {
+          photoUrl: "https://quickchart.io/chart?c=test",
+        },
+      );
+
+      const photoCall = calls.find((c) => c.url.includes("/sendPhoto"));
+      expect(photoCall).toBeDefined();
+      expect(photoCall.body.photo).toBe("https://quickchart.io/chart?c=test");
+      expect(photoCall.body.caption).toContain("SLK CONFIRMED ENTRY");
+    });
   });
 
   describe("createTelegramInviteLink & kickTelegramMember", () => {
