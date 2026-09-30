@@ -1,9 +1,9 @@
 # SLK Radar — Complete Continuation Handoff & Architecture Summary
 
-**Updated:** 2026-09-28 (UTC)  
+**Updated:** 2026-09-30 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `07d1a5c` (`fix(notify): isolate synthetic signals strictly to synthetics channels and remove from forex free channel`)
+**Latest Synced Commit:** `b8e2b08` (`fix(provider): map GER40/DE40 to official OANDA instrument DE30_EUR`)
 
 ---
 
@@ -17,11 +17,17 @@
   - Health probe: `GET https://slk-bot.vercel.app/health`
   - Latency probe: `GET https://slk-bot.vercel.app/probe`
 - **Cloudflare Worker API (Backend - 100% Automated Git Deployments Active):** `https://slk-alert-worker.abidogundamilola.workers.dev`
-  - Health: `GET /health`
+  - Health: `GET /health` (`oandaConfigured: true`, `v2.5.4`)
   - Stats: `GET /stats`
   - Public Ledger: `GET /alerts`
   - Scan Logs: `GET /scan-log`
-  - Derive WebSocket Probe: `GET /api/probe-deriv`
+  - OANDA Live Probe: `GET /api/probe-oanda?pair=US30`
+  - Deriv WebSocket Probe: `GET /api/probe-deriv`
+- **OANDA v3 REST Provider Status:**
+  - Token verified and securely stored in D1 KV (`slk_kv.oanda_api_token`).
+  - Active coverage for 10 Institutional assets: `US30`, `NAS100`, `GER40` (`DE30_EUR`), `JAPAN225`, `XAUUSD`, `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`.
+  - Latency: 240–350ms per edge request.
+  - Multi-tier institutional failover: OANDA $\leftrightarrow$ Swiss Bank Dukascopy $\leftrightarrow$ Twelve Data / Yahoo.
 - **Telegram Channels (4-Channel Isolated Architecture):**
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
   - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
