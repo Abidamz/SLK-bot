@@ -309,16 +309,42 @@ function fmtDateOnly(x) {
 
 function renderStats(s) {
   if (!s) return;
-  const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : `${Number(s.netR) > 0 ? '+' : ''}${Number(s.netR).toFixed(2)}R`;
+  const netRNum = Number(s.netR || 0);
+  const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : `${netRNum > 0 ? '+' : ''}${netRNum.toFixed(2)}R`;
   if ($('total')) $('total').textContent = s.total != null ? String(s.total) : '0';
   if ($('open')) $('open').textContent = s.open != null ? String(s.open) : '0';
   if ($('tp')) $('tp').textContent = s.tp != null ? String(s.tp) : '0';
   if ($('sl')) $('sl').textContent = s.sl != null ? String(s.sl) : '0';
   if ($('expired')) $('expired').textContent = s.expired != null ? String(s.expired) : '0';
   if ($('completed')) $('completed').textContent = s.completed != null ? String(s.completed) : '0';
-  if ($('overviewNetR')) $('overviewNetR').textContent = netRText;
-  if ($('netR')) $('netR').textContent = netRText;
-  if ($('maxDD')) $('maxDD').textContent = s.maxDD == null ? '0.00R' : `${Number(s.maxDD).toFixed(2)}R`;
+
+  const updateNetRElement = (el, val) => {
+    if (!el) return;
+    const num = Number(val);
+    el.classList.remove('accent-text', 'profit-text', 'loss-text');
+    if (isNaN(num) || num === 0) {
+      el.classList.add('accent-text');
+    } else if (num < 0) {
+      el.classList.add('loss-text');
+    } else {
+      el.classList.add('profit-text');
+    }
+  };
+
+  if ($('overviewNetR')) {
+    $('overviewNetR').textContent = netRText;
+    updateNetRElement($('overviewNetR'), s.netR);
+  }
+  if ($('netR')) {
+    $('netR').textContent = netRText;
+    updateNetRElement($('netR'), s.netR);
+  }
+  if ($('maxDD')) {
+    const ddNum = Number(s.maxDD || 0);
+    $('maxDD').textContent = s.maxDD == null ? '0.00R' : `${ddNum.toFixed(2)}R`;
+    $('maxDD').classList.remove('loss-text', 'profit-text');
+    if (ddNum < 0) $('maxDD').classList.add('loss-text');
+  }
   const winRateText = s.winRate == null ? (s.total === 0 ? 'N/A' : 'Syncing…') : `${(s.winRate * 100).toFixed(1)}%`;
   if ($('winRate')) $('winRate').textContent = winRateText;
   if ($('perfWinRate')) $('perfWinRate').textContent = winRateText;
@@ -335,17 +361,26 @@ function renderStats(s) {
     const synthOut = `${synth.tp || 0} TP · ${synth.sl || 0} SL`;
 
     ['segInstWinRate', 'segInstWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = instWr; });
-    ['segInstNetR', 'segInstNetROverview'].forEach(id => { if ($(id)) $(id).textContent = instNr; });
+    ['segInstNetR', 'segInstNetROverview'].forEach(id => {
+      const el = $(id);
+      if (el) {
+        el.textContent = instNr;
+        updateNetRElement(el, inst.netR);
+      }
+    });
     ['segInstOutcomes', 'segInstOutcomesOverview'].forEach(id => { if ($(id)) $(id).textContent = instOut; });
     ['segInstSignals', 'segInstSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(inst.total || 0); });
 
     ['segSynthWinRate', 'segSynthWinRateOverview'].forEach(id => { if ($(id)) $(id).textContent = synthWr; });
     ['segSynthNetR', 'segSynthNetROverview'].forEach(id => {
-      if ($(id)) {
+      const el = $(id);
+      if (el) {
         if (!synth.total || synth.total === 0) {
-          $(id).innerHTML = '0.00R <span class="empty-notice-pill">No completed paper outcomes yet</span>';
+          el.innerHTML = '0.00R <span class="empty-notice-pill">No completed paper outcomes yet</span>';
+          updateNetRElement(el, 0);
         } else {
-          $(id).textContent = synthNr;
+          el.textContent = synthNr;
+          updateNetRElement(el, synth.netR);
         }
       }
     });
@@ -396,6 +431,13 @@ function renderBreakdown(rows) {
     const groupBadge = isSynth
       ? '<span class="market-tag synth-tag" style="margin-left:6px;">⚡ 24/7 SYNTHETICS</span>'
       : '';
+    const netRVal = Number(r.netR || 0);
+    const maxDDVal = Number(r.maxDD || 0);
+    const netRClass = netRVal < 0 ? 'loss-text' : (netRVal > 0 ? 'profit-text' : '');
+    const maxDDClass = maxDDVal < 0 ? 'loss-text' : '';
+    const rowBClass = netRVal < 0 ? 'loss-text' : (netRVal > 0 ? 'profit-text' : '');
+    const netRFormatted = `${netRVal > 0 ? '+' : ''}${netRVal.toFixed(2)}R`;
+    const maxDDFormatted = `${maxDDVal.toFixed(2)}R`;
     return `
       <div class="breakdown-row">
         <div>
@@ -403,7 +445,7 @@ function renderBreakdown(rows) {
           <small style="display:block; color:var(--muted); font-size:11px; margin-top:2px;">📅 ${dateContext}</small>
         </div>
         <span>${r.completed} completed · <span class="profit-text">${r.tp} TP</span> · <span class="loss-text">${r.sl} SL</span></span>
-        <b>${Number(r.netR) > 0 ? '+' : ''}${Number(r.netR).toFixed(2)}R · Max DD ${Number(r.maxDD).toFixed(2)}R</b>
+        <b class="${rowBClass}"><span class="${netRClass}">${netRFormatted}</span> · Max DD <span class="${maxDDClass}">${maxDDFormatted}</span></b>
       </div>
     `;
   }).join('');
