@@ -258,7 +258,8 @@ export function getChartUrl(pair: string): string {
 }
 
 /**
- * Generates an institutional visual candlestick/level snapshot image URL via QuickChart (Recommendation 3).
+ * Generates an institutional visual candlestick/level snapshot image URL via QuickChart (Recommendation 3),
+ * styled after TradingView's Long/Short Position risk-reward tool overlay.
  */
 export function generateQuickChartUrl(a: Alert): string {
   const entry = Number(a.entry);
@@ -266,44 +267,75 @@ export function generateQuickChartUrl(a: Alert): string {
   const tp1 = Number(a.tpInternal);
   const tp2 = a.tpExternal ? Number(a.tpExternal) : null;
   const origin = Number(a.originKeyLevel);
+  const isLong = a.direction === "LONG";
+  const risk = Math.abs(entry - sl);
+  const bePrice = isLong ? entry + risk * 1.5 : entry - risk * 1.5;
 
-  const prices = [entry, sl, tp1];
+  const prices = [entry, sl, tp1, bePrice];
   if (tp2) prices.push(tp2);
   if (origin) prices.push(origin);
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
-  const pad = (maxP - minP) * 0.15 || (entry * 0.005);
+  const pad = (maxP - minP) * 0.12 || (entry * 0.005);
+
+  const labels = ["Origin Zone", "Liquidity Sweep", "Structure Shift", "Retest (Entry)", "+1.5R Breakeven", "Target 1"];
 
   const chartConfig = {
     type: "line",
     data: {
-      labels: ["Origin Zone", "Liquidity Sweep", "Structure Shift", "Retest Trigger", "Target 1"],
+      labels,
       datasets: [
         {
-          label: "Entry",
-          data: [null, null, null, entry, entry],
-          borderColor: "#3b82f6",
-          borderWidth: 3,
-          pointBackgroundColor: "#3b82f6",
-          pointRadius: 5,
-          fill: false,
-        },
-        {
-          label: "Stop Loss",
-          data: [sl, sl, sl, sl, sl],
-          borderColor: "#ef4444",
-          borderWidth: 2,
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false,
-        },
-        {
-          label: "Target 1 (Internal)",
-          data: [tp1, tp1, tp1, tp1, tp1],
+          label: "Target Zone (Green)",
+          data: [tp1, tp1, tp1, tp1, tp1, tp1],
           borderColor: "#10b981",
           borderWidth: 2,
-          borderDash: [5, 5],
+          backgroundColor: "rgba(16, 185, 129, 0.32)",
+          fill: 1, // Fills to Entry dataset below
           pointRadius: 0,
+        },
+        {
+          label: "Entry Level",
+          data: [entry, entry, entry, entry, entry, entry],
+          borderColor: "#38bdf8",
+          borderWidth: 2,
+          borderDash: [5, 4],
+          backgroundColor: "rgba(239, 68, 68, 0.32)",
+          fill: 2, // Fills to Stop Loss dataset below
+          pointRadius: 0,
+        },
+        {
+          label: "Stop Loss Zone (Red)",
+          data: [sl, sl, sl, sl, sl, sl],
+          borderColor: "#ef4444",
+          borderWidth: 2,
+          fill: false,
+          pointRadius: 0,
+        },
+        {
+          label: "+1.5R Breakeven Trigger",
+          data: [null, null, null, bePrice, bePrice, bePrice],
+          borderColor: "#f59e0b",
+          borderWidth: 2,
+          borderDash: [3, 3],
+          fill: false,
+          pointRadius: 4,
+          pointBackgroundColor: "#f59e0b",
+        },
+        {
+          label: "SLK Trade Path",
+          data: [
+            origin || entry,
+            isLong ? sl + risk * 0.2 : sl - risk * 0.2, // Sweep
+            isLong ? entry + risk * 0.4 : entry - risk * 0.4, // Shift
+            entry, // Retest
+            bePrice, // BE expansion
+            tp1, // Target 1
+          ],
+          borderColor: "#60a5fa",
+          borderWidth: 3,
+          pointRadius: 5,
+          pointBackgroundColor: "#3b82f6",
           fill: false,
         },
       ],
@@ -311,23 +343,46 @@ export function generateQuickChartUrl(a: Alert): string {
     options: {
       title: {
         display: true,
-        text: `SLK MODEL · ${a.pair} ${a.entryTf} ${a.direction} (${a.rrInternal ? `1:${a.rrInternal}R` : "1:2.5R"})`,
+        text: `SLK MODEL · ${a.pair} ${a.entryTf} ${a.direction} (${a.rrInternal ? `1:${a.rrInternal}R` : "1:2.5R"}) · TV STYLE`,
         fontColor: "#f8fafc",
-        fontSize: 16,
+        fontSize: 15,
       },
       legend: {
-        labels: { fontColor: "#94a3b8" },
+        labels: { fontColor: "#94a3b8", fontSize: 11 },
       },
       scales: {
-        xAxes: [{ ticks: { fontColor: "#94a3b8" }, gridLines: { color: "#334155" } }],
+        xAxes: [{ ticks: { fontColor: "#94a3b8", fontSize: 10 }, gridLines: { color: "#1e293b" } }],
         yAxes: [{
           ticks: {
             fontColor: "#94a3b8",
+            fontSize: 11,
             min: Math.floor((minP - pad) * 100000) / 100000,
             max: Math.ceil((maxP + pad) * 100000) / 100000,
           },
-          gridLines: { color: "#334155" },
+          gridLines: { color: "#1e293b" },
         }],
+      },
+      annotation: {
+        annotations: [
+          {
+            type: "box",
+            yScaleID: "y-axis-0",
+            yMin: Math.min(entry, tp1),
+            yMax: Math.max(entry, tp1),
+            backgroundColor: "rgba(16, 185, 129, 0.25)",
+            borderColor: "rgba(16, 185, 129, 0.6)",
+            borderWidth: 1,
+          },
+          {
+            type: "box",
+            yScaleID: "y-axis-0",
+            yMin: Math.min(entry, sl),
+            yMax: Math.max(entry, sl),
+            backgroundColor: "rgba(239, 68, 68, 0.25)",
+            borderColor: "rgba(239, 68, 68, 0.6)",
+            borderWidth: 1,
+          },
+        ],
       },
     },
   };
@@ -433,7 +488,11 @@ export function formatAlert(a: Alert): string {
   const risk = Math.abs(a.entry - a.stopLoss);
   const bePrice = a.direction === "LONG" ? a.entry + risk * 1.5 : a.entry - risk * 1.5;
   lines.push(
-    `🛡️ Breakeven : At +1.50R (${fmtPrice(a.pair, bePrice)}) → PLACE PENDING BE ORDER (Move SL to Entry ${fmtPrice(a.pair, a.entry)} to secure trade at 0.00R risk)`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `🛡️ RISK MANAGEMENT PROTOCOL:`,
+    `• Breakeven Trigger : +1.50R (${fmtPrice(a.pair, bePrice)})`,
+    `👉 INSTRUCTION: Place a pending Breakeven order to move Stop Loss to Entry (${fmtPrice(a.pair, a.entry)}) as soon as +1.50R is reached. Never let a +1.50R trade turn into a loss!`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
   );
   if (a.drawOnLiquidity !== null)
     lines.push(`Draw        : ${fmtPrice(a.pair, a.drawOnLiquidity)}`);
