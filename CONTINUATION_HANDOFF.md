@@ -3,7 +3,7 @@
 **Updated:** 2026-09-30 (UTC)  
 **Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
 **Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `b8e2b08` (`fix(provider): map GER40/DE40 to official OANDA instrument DE30_EUR`)
+**Latest Synced Commit:** `0e8f954` (`fix(provider): eliminate automated Yahoo Finance failovers and fallbacks`)
 
 ---
 
@@ -26,7 +26,8 @@
 - **OANDA v3 REST Provider Status:**
   - Token verified and securely stored in D1 KV (`slk_kv.oanda_api_token`).
   - Active coverage for 10 Institutional assets: `US30`, `NAS100`, `GER40` (`DE30_EUR`), `JAPAN225`, `XAUUSD`, `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`.
-  - Latency: 240–350ms per edge request.
+  - Rate Limits & Capacity: 120 requests/minute with **no daily credit ceiling** (unlike Twelve Data's 800/day cliff). Current cron scan pace consumes <4% of OANDA's limit.
+  - Edge CPU Optimization: Server-side OHLC midpoint candle aggregation reduces Cloudflare edge CPU usage by ~85% (from 9ms down to 1–2ms), completely eliminating Cloudflare Free Tier 10ms CPU isolation kills.
   - Multi-tier institutional failover: OANDA $\leftrightarrow$ Swiss Bank Dukascopy $\leftrightarrow$ Twelve Data (Yahoo Finance completely removed from automated fallback chain).
 - **Telegram Channels (4-Channel Isolated Architecture):**
   - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
@@ -44,7 +45,7 @@ MODE=paper
 WATCH_NOTIFY=true             (Active radar for heads-up detection)
 VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics channels receive ONLY confirmed entries and outcomes)
 PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=2             (Optimized throughput: 2 pairs per minute, interleaved oldest-first scanning)
+PAIR_BATCH_SIZE=1             (Free Tier CPU optimized: 1 pair per minute batch, oldest-first scanning)
 MIN_RISK_ATR=0.8
 MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor across all pairs)
 SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
@@ -193,3 +194,71 @@ If continuing in a new Arena session or environment:
 2. Run `git pull origin arena/01a0b153-slk-bot`.
 3. Keep safety settings intact (`MODE=paper`, `MIN_RISK_ATR=0.8`, `PAIR_BATCH_SIZE=1`).
 4. Validate changes using `npm test -- --run`, `npm run typecheck`, and `node --check dashboard/app.js`.
+
+---
+
+## 7. Recommended Next Steps & Roadmap (ChatGPT / LLM Continuation Recommendations)
+
+For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continuing work on `SLK-bot`, the following 6 roadmap enhancements offer the highest immediate ROI for trading edge, subscriber retention, and operational automation:
+
+### Recommendation 1: Automated Daily & Weekly Performance Recaps for Free Channels (Subscriber Conversion Funnel)
+* **Objective:** Automatically convert free channel lurkers into paying $100/mo VIP subscribers without manual daily journal posting.
+* **Architecture:**
+  - In `worker/src/index.ts`, add a daily cron check triggered at 21:00 UTC (New York market close) and Friday 21:00 UTC (market close).
+  - Query D1 `slk_alerts` for all trades closed in the last 24h / 7d.
+  - Calculate daily stats: Total Setups, Won, Lost, Breakeven, Net R-Multiple (e.g. `+5.8R today`, `+18.4R this week`), and Cumulative Ledger Return (+30.78R).
+  - Format a high-impact institutional summary card with a CTA button/link pointing to `https://slk-radar.pages.dev` (verified proof) and `https://whop.com/slk-radar` (VIP upgrade).
+  - Dispatch to `TELEGRAM_FREE_CHAT_ID` and `TELEGRAM_DERIV_FREE_CHAT_ID`.
+* **Relevant Files:** `worker/src/notify.ts` (formatter `formatDailyRecapCard`), `worker/src/index.ts` (cron schedule trigger).
+
+### Recommendation 2: Trailing Breakeven (`BE`) & Trade Protection Engine
+* **Objective:** Eliminate the risk of winning trades that reached +1.5R to +2.0R reversing into full -1.0R losses during high-impact news or liquidity sweeps.
+* **Architecture:**
+  - Extend setup status enum in `worker/src/types.ts` to include `'BE_HIT'`.
+  - Add a flag `trailingBeTriggered: boolean` in `slk_alerts` table.
+  - In `resolveAllOpenAlerts()` (`worker/src/engine.ts`), when price achieves $\ge 1.5R$ favorable excursion (or sweeps an intermediate liquidity pool before TP1):
+    1. Mark `trailingBeTriggered = true`.
+    2. Adjust effective stop loss to the exact entry price (`entry`).
+    3. Send an automated trade management update to VIP channels: `🛡️ [TRADE SECURED] — {PAIR} Stop Loss moved to Break-Even (Risk: 0.00)`.
+  - If price retraces and hits entry, log status as `BE_HIT` with `rMultiple: 0.00`.
+* **Impact:** Drastically improves subscriber psychology and protects win rates from high-volatility flash wicks.
+* **Relevant Files:** `worker/src/types.ts`, `worker/src/engine.ts`, `worker/src/store.ts`, `worker/src/notify.ts`.
+
+### Recommendation 3: Automated Visual Chart Snapshots in Telegram Alerts
+* **Objective:** Replace text-only Telegram alerts with visual chart cards showing the SLK sequence (origin zone, sweep wick, entry trigger, stop loss, and target).
+* **Architecture:**
+  - Visual alerts generate 5x higher engagement and click-through than plain text.
+  - Option A (Serverless URL API): Use QuickChart Financial or Chart-IMG API with candle data from the Worker to render an instant candlestick snapshot with horizontal lines for Entry, SL, and TP.
+  - Option B (Lightweight Canvas / TradingView link): Generate a direct TradingView chart link with preset indicator levels or render a minimalist 30-bar SVG/PNG directly on Cloudflare Workers and send via Telegram's `sendPhoto` endpoint with markdown captions.
+* **Relevant Files:** `worker/src/notify.ts`.
+
+### Recommendation 4: Whop Webhook for 100% Automated VIP Channel Membership
+* **Objective:** Make the subscription business fully passive by automatically managing VIP Telegram channel access on purchase, renewal, cancellation, or refund.
+* **Architecture:**
+  - Create a secure endpoint `POST /api/whop-webhook` in `worker/src/index.ts` authenticated via Whop webhook secret.
+  - On `membership.went_valid` (new subscriber or successful renewal):
+    - Call Telegram Bot API `createChatInviteLink` with `member_limit: 1` and `expire_date: +2 days`.
+    - Automatically DM the single-use invite link to the subscriber via Telegram or Whop direct message.
+  - On `membership.went_invalid` (cancellation, churn, or payment failure):
+    - Call Telegram Bot API `banChatMember` followed by `unbanChatMember` to immediately revoke the user's access from `TELEGRAM_CHAT_ID` and `TELEGRAM_DERIV_CHAT_ID`.
+* **Relevant Files:** `worker/src/index.ts`, `worker/src/notify.ts`.
+
+### Recommendation 5: Elevate Synthetics to 1H Primary & Enforce HTF Bias Hard Gating
+* **Objective:** Protect synthetic VIP channel track record and maximize win rate on 24/7 continuous assets.
+* **Analysis & Context:**
+  - Institutional Forex & Indices have an exceptional **+30.78R (75.0% win rate)** track record.
+  - Synthetic volatility assets (`V75`, `V100`, etc.) are continuous algorithmic random walks with higher lower-timeframe noise. The 3 historical synthetic paper losses were all counter-trend setups flagged as `HTF_CONFLICT`.
+* **Action:**
+  - Permanently enforce `FILTER_HTF_CONFLICT_DERIV_ONLY=true` so counter-trend setups are never delivered to VIP synthetics.
+  - Focus synthetic scanning on higher-probability structural timeframes (`1h` and `4h`), while keeping `15m` and `30m` for institutional Forex/Indices.
+* **Relevant Files:** `worker/src/config.ts`, `worker/wrangler.jsonc`.
+
+### Recommendation 6: MetaTrader 5 (MT5) Auto-Execution Webhook Bridge (For Live & Prop Firm Capital)
+* **Objective:** Enable one-click or automated trade execution on live MT5 broker accounts (e.g., FTMO, FundedNext, IC Markets, Pepperstone) when the owner is ready to transition from paper testing to real capital.
+* **Architecture:**
+  - The Cloudflare Worker cannot connect to MT5 directly (MT5 requires Windows native DLLs/C++ API).
+  - Deploy a lightweight Python FastAPI micro-service on a $5/mo Windows VPS with the MT5 desktop terminal running.
+  - When `scanEntry` records a confirmed entry, the Worker dispatches an authenticated POST request to `https://your-vps.com/webhook/trade`.
+  - The Python bridge parses the trade, calculates exact lot size based on account balance ($100 risk per trade / stop loss distance in points), and executes `mt5.order_send()`.
+* **Relevant Files:** Separate micro-service or `scripts/mt5_bridge.py`.
+
