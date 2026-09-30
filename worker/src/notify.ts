@@ -430,6 +430,11 @@ export function formatAlert(a: Alert): string {
     lines.push(
       `Target 2    : ${fmtPrice(a.pair, a.tpExternal)} nearest external liquidity (targets beyond are anticipatory)`,
     );
+  const risk = Math.abs(a.entry - a.stopLoss);
+  const bePrice = a.direction === "LONG" ? a.entry + risk * 1.5 : a.entry - risk * 1.5;
+  lines.push(
+    `🛡️ Breakeven : At +1.50R (${fmtPrice(a.pair, bePrice)}) → PLACE PENDING BE ORDER (Move SL to Entry ${fmtPrice(a.pair, a.entry)} to secure trade at 0.00R risk)`,
+  );
   if (a.drawOnLiquidity !== null)
     lines.push(`Draw        : ${fmtPrice(a.pair, a.drawOnLiquidity)}`);
   lines.push(
