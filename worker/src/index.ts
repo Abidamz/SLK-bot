@@ -47,6 +47,7 @@ export interface Env {
   SIGNAL_SIGNING_SECRET?: string;
   PAIRS?: string;
   ENTRY_TFS?: string;
+  SYNTH_ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -280,6 +281,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       }
       let isDue = false;
       for (const { tf, boundary } of due) {
+        // Synthetics 1H Primary: Deriv pairs are never due on non-primary TFs
+        if (!entryTfAppliesToPair(pair, tf, cfg)) continue;
         const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
         const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
         if (boundary > lastScan) {
@@ -499,6 +502,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       }
 
       for (const { tf, secs, boundary } of due) {
+        // Synthetics 1H Primary: Deriv pairs confirm entries only on their
+        // primary TFs; non-primary boundaries are bookkept as scanned.
+        if (!entryTfAppliesToPair(pair, tf, cfg)) {
+          await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+          continue;
+        }
         let candles: Candle[];
         const derivedFeed = feeds[tf];
         if (derivedFeed) {
@@ -613,6 +622,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       let allDone = true;
       for (const pair of cfg.pairs) {
         if (isWeekend && !isDerivPair(pair)) continue;
+        // Synthetics 1H Primary: non-primary TFs never block boundary advancement
+        if (!entryTfAppliesToPair(pair, tf, cfg)) continue;
         const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
         const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
         if (boundary > lastScan) {
@@ -688,7 +699,37 @@ function deliverAllowed(
   return !isFirstScan || opts.force === true;
 }
 
-async function deliver(
+/** Synthetics 1H Primary: whether `tf` is a scannable entry timeframe for
+ *  `pair`. Deriv synthetic indices confirm entries only on their primary
+ *  entry TFs (`cfg.synthEntryTfs`, default 1h); institutional pairs keep the
+ *  full entry-TF set. Non-applicable boundaries are bookkept as scanned so
+ *  pair rotation and TF-boundary advancement stay healthy. */
+export function entryTfAppliesToPair(
+  pair: string, tf: string, cfg: ReturnType<typeof loadConfig>,
+): boolean {
+  return isDerivPair(pair) ? cfg.synthEntryTfs.includes(tf) : true;
+}
+
+/** HTF Conflict Hard Gate (behavior-neutral delivery gate): marks the alert
+ *  SUPPRESSED in-place when it is an HTF_CONFLICT counter-trend setup and the
+ *  gate applies to its segment (synthetics by default via
+ *  FILTER_HTF_CONFLICT_DERIV_ONLY). Entry decisions, dedupe, and outcome
+ *  resolution never consult the shadow classification — only delivery does. */
+export function applyHtfConflictGate(
+  alert: Alert, cfg: ReturnType<typeof loadConfig>,
+): boolean {
+  if (alert.alertStatus === "SUPPRESSED") return false;
+  if (!cfg.filterHtfConflict) return false;
+  const applies = !cfg.filterHtfConflictDerivOnly || isDerivPair(alert.pair);
+  if (applies && alert.shadowClassification === "HTF_CONFLICT") {
+    alert.alertStatus = "SUPPRESSED";
+    alert.suppressReason = "HTF conflict: entry opposes higher-timeframe momentum (4H/1H)";
+    return true;
+  }
+  return false;
+}
+
+export async function deliver(
   env: Env, store: Store, alert: Alert,
   cfg: ReturnType<typeof loadConfig>, allowed: boolean,
   fetchFn: typeof fetch = fetch,
@@ -702,23 +743,18 @@ async function deliver(
     }
   }
 
-  // HTF Conflict Gate: Filter counter-trend setups opposing higher timeframe momentum
-  if (alert.alertStatus !== "SUPPRESSED" && cfg.filterHtfConflict) {
-    const isDeriv = isDerivPair(alert.pair);
-    const applies = !cfg.filterHtfConflictDerivOnly || isDeriv;
-    if (applies && alert.shadowClassification === "HTF_CONFLICT") {
-      alert.alertStatus = "SUPPRESSED";
-      alert.suppressReason = "HTF conflict: entry opposes higher-timeframe momentum (4H/1H)";
-      await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
-      console.info(JSON.stringify({
-        level: "info",
-        msg: "alert suppressed: HTF conflict",
-        pair: alert.pair,
-        setupId: alert.setupId,
-        classification: alert.shadowClassification,
-        reason: alert.suppressReason,
-      }));
-    }
+  // HTF Conflict Hard Gate: filter counter-trend setups opposing higher
+  // timeframe momentum before any channel delivery happens.
+  if (applyHtfConflictGate(alert, cfg)) {
+    await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason ?? undefined);
+    console.info(JSON.stringify({
+      level: "info",
+      msg: "alert suppressed: HTF conflict",
+      pair: alert.pair,
+      setupId: alert.setupId,
+      classification: alert.shadowClassification,
+      reason: alert.suppressReason,
+    }));
   }
 
   if (alert.alertStatus === "SUPPRESSED") {
@@ -922,7 +958,7 @@ export default {
         buildTime: "2026-09-30 00:15 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
-        pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs),
+        pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
         watchNotify: cfg.watchNotify,
         vipWatchNotify: (env.VIP_WATCH_NOTIFY ?? "false").toLowerCase() === "true",
         paperNotify: cfg.paperNotify,
@@ -1833,9 +1869,9 @@ export default {
       const doFetch = env.fetchFn ?? fetch;
       const { notifyAlert } = await import("./notify");
       const sampleAlert: Alert = {
-        setupId: `deriv:V75:30m:LONG:V:45038.50:${new Date().toISOString()}`,
+        setupId: `deriv:V75:1h:LONG:V:45038.50:${new Date().toISOString()}`,
         pair: "V75",
-        entryTf: "30m",
+        entryTf: "1h",
         mapTf: "4h",
         direction: "LONG",
         entry: 45038.50,
@@ -2297,6 +2333,7 @@ export default {
           mode: cfg.mode,
           activePairs: cfg.pairs,
           entryTimeframes: Object.keys(cfg.entryTfs),
+          synthEntryTimeframes: cfg.synthEntryTfs,
         },
         recentScanLogs: recentLogs.map((l) => ({
           timestamp: l.ts,

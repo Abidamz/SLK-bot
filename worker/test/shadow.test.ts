@@ -652,13 +652,10 @@ describe("video-aligned directional bias shadow classification", () => {
       shadowClassification: "HTF_CONFLICT" as const,
     };
 
-    // When HTF conflict filter applies to synthetic pair:
-    const isDeriv = isDerivPair(conflictAlert.pair);
-    const applies = !cfgDerivGated.filterHtfConflictDerivOnly || isDeriv;
-    if (applies && conflictAlert.shadowClassification === "HTF_CONFLICT") {
-      conflictAlert.alertStatus = "SUPPRESSED";
-      conflictAlert.suppressReason = "HTF conflict: entry opposes higher-timeframe momentum (4H/1H)";
-    }
+    // When HTF conflict filter applies to synthetic pair, the production
+    // delivery gate (same function deliver() consults) suppresses it:
+    const { applyHtfConflictGate } = await import("../src/index");
+    expect(applyHtfConflictGate(conflictAlert, cfgDerivGated)).toBe(true);
 
     expect(conflictAlert.alertStatus).toBe("SUPPRESSED");
     expect(conflictAlert.suppressReason).toContain("HTF conflict");

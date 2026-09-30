@@ -56,6 +56,11 @@ export interface StrategyConfig {
 export interface WorkerConfig {
   pairs: string[];
   entryTfs: Record<string, number>; // label -> seconds
+  /** Primary entry timeframes for Deriv synthetic pairs ("Synthetics 1H
+   *  Primary"): confirmed synthetic entries fire only on these TFs while
+   *  institutional pairs keep every entry TF. Non-primary boundaries are
+   *  skipped (and bookkept) so rotation/boundary health is unaffected. */
+  synthEntryTfs: string[];
   pairBatchSize: number; // number of pairs to scan per cron tick (keeps CPU under 10ms)
   mapTimeframe: string; // "4h" (built from mapSource)
   mapSourceTimeframe: string; // "1h" — derived from base feed (see baseTimeframe)
@@ -117,6 +122,7 @@ export function defaultStrategy(): StrategyConfig {
 interface EnvVars {
   PAIRS?: string;
   ENTRY_TFS?: string;
+  SYNTH_ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -154,6 +160,17 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     }
     entryTfs[label] = secs;
   }
+
+  // Synthetics 1H Primary: Deriv synthetic indices confirm entries only on
+  // their primary entry timeframes (default 1h) while institutional pairs keep
+  // every entry TF. Labels are validated against TF_SECONDS; an empty/invalid
+  // override falls back to the full institutional set so a misconfiguration
+  // can never silence synthetics entirely.
+  const synthLabels = (env.SYNTH_ENTRY_TFS ?? "1h")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => Boolean(s) && Boolean(TF_SECONDS[s]) && s !== "1d");
+  const synthEntryTfs = synthLabels.length ? synthLabels : Object.keys(entryTfs);
 
   const mode = (env.MODE ?? "paper").toLowerCase() === "live" ? "live" : "paper";
   const paperNotify = (env.PAPER_NOTIFY ?? "true").toLowerCase() !== "false";
@@ -201,6 +218,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   return {
     pairs,
     entryTfs,
+    synthEntryTfs,
     pairBatchSize,
     mapTimeframe: "4h",
     mapSourceTimeframe: "1h",

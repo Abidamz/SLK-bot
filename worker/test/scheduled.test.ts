@@ -4,7 +4,9 @@
  *  outage. Synthetic fixtures only — logic verification, not performance
  *  evidence. */
 import { describe, expect, it } from "vitest";
-import worker, { scanAll, watchEventFresh, type Env } from "../src/index";
+import worker, { scanAll, watchEventFresh, deliver, applyHtfConflictGate, type Env } from "../src/index";
+import { loadConfig } from "../src/config";
+import type { Alert } from "../src/types";
 import { notifyAlert, notifyWatch } from "../src/notify";
 import { MemStore } from "../src/store";
 import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
@@ -523,6 +525,7 @@ describe("scheduled scan cycle", () => {
       PAIRS: "EURUSD,GBPUSD,USDJPY,V75,V100,V50",
       PAIR_BATCH_SIZE: "2",
       ENTRY_TFS: "30m",
+      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
     });
 
     const baseTime = NOW + 30_000;
@@ -560,6 +563,7 @@ describe("scheduled scan cycle", () => {
       PAIRS: "EURUSD,GBPUSD,V75,V100",
       PAIR_BATCH_SIZE: "1",
       ENTRY_TFS: "30m",
+      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
     });
 
     const baseTime = NOW + 30_000;
@@ -618,4 +622,83 @@ describe("scheduled scan cycle", () => {
     const healthResp = await worker.fetch(healthReq, env, {} as any);
     const healthData = (await healthResp.json()) as any;
     expect(healthData.oandaConfigured).toBe(true);
+  });
+
+  it("synthetics 1H primary: Deriv pairs confirm only on primary TFs while institutional pairs keep every entry TF", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    const env = makeEnv({ PAIRS: "EURUSD,V75", ENTRY_TFS: "30m,1h", PAIR_BATCH_SIZE: "2" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.pairs.sort()).toEqual(["EURUSD", "V75"]);
+
+    // production default: synthetics primary entry TF is 1H
+    expect(loadConfig(env).synthEntryTfs).toEqual(["1h"]);
+
+    // institutional pair books its 30m confirmation on the fixture storyline
+    const instAlerts = [...store.alerts.values()].filter((a) => a.canonical_symbol === "EURUSD");
+    expect(instAlerts.some((a) => a.entry_timeframe === "30m")).toBe(true);
+
+    // synthetic pair records zero 30m events/alerts — 1H is its only primary TF
+    expect(store.events.filter((e) => String(e.setup_id).includes(":V75:30m:"))).toHaveLength(0);
+    expect([...store.alerts.values()].filter((a) => a.canonical_symbol === "V75" && a.entry_timeframe === "30m")).toHaveLength(0);
+    expect(calls.telegram.filter((t) => t.includes("V75"))).toHaveLength(0);
+
+    // non-primary boundaries are bookkept as scanned so rotation/boundaries stay healthy
+    expect(store.kv.get("last_scan:V75:30m")).toBeDefined();
+    expect(store.kv.get("last_scan:V75:1h")).toBeDefined();
+    expect(store.kv.get("last_scan:EURUSD:30m")).toBeDefined();
+    expect(store.kv.get("last_scan:EURUSD:1h")).toBeDefined();
+  });
+
+  it("HTF conflict hard gate suppresses synthetic VIP delivery while institutional and aligned synthetic alerts stay loud", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    const env = makeEnv({ TELEGRAM_DERIV_CHAT_ID: "456" }); // synthetics VIP channel
+    const cfg = loadConfig(env); // FILTER_HTF_CONFLICT_DERIV_ONLY defaults to true
+    const fetchFn = makeFakeFetch(calls);
+
+    const mk = (overrides: Partial<Alert>): Alert => ({
+      setupId: "x", pair: "EURUSD", entryTf: "1h", mapTf: "4h",
+      direction: "SHORT", entry: 104.9, stopLoss: 105.2, tpInternal: 104.0, tpExternal: null,
+      candleCloseTime: NOW, environment: "bearish", phase: "expansion", htfAlignment: "H4:↓",
+      originKeyLevel: 105.0, keyLevelType: "OC", keyLevelBounds: [104.95, 105.05],
+      keyLevelTested: true, keyLevelFlipped: false, imbalanceContext: [],
+      internalLiquidity: [], externalLiquidity: [], drawOnLiquidity: null,
+      nearestExternalTarget: null, intermediateZones: [],
+      opposingLiquidityStanding: true, sweepTime: NOW - 3600_000, bosTime: NOW - 1800_000,
+      returnTime: NOW, invalidationLevel: 105.2, invalidationReason: null,
+      parameterVersion: "1", alertStatus: "PAPER", suppressReason: null, session: null,
+      atrEntry: 0.3, rrInternal: 3.0, cycleStage: "entry_alert", entryMode: "confirmation",
+      shadowClassification: "A_GRADE", ...overrides,
+    });
+
+    const synthConflict = mk({ pair: "V75", setupId: "deriv:V75:1h:SHORT:V:104.2:g1", shadowClassification: "HTF_CONFLICT" });
+    const instConflict = mk({ pair: "EURUSD", setupId: "td:EURUSD:30m:SHORT:V:104.2:g2", shadowClassification: "HTF_CONFLICT" });
+    const synthAligned = mk({ pair: "V100", setupId: "deriv:V100:1h:LONG:V:104.2:g3", direction: "LONG", shadowClassification: "A_GRADE" });
+    for (const a of [synthConflict, instConflict, synthAligned]) await store.insertAlert(a, "test");
+
+    // 1. synthetic HTF_CONFLICT → suppressed before any channel delivery
+    await deliver(env, store, synthConflict, cfg, true, fetchFn);
+    expect(synthConflict.alertStatus).toBe("SUPPRESSED");
+    expect(synthConflict.suppressReason).toContain("HTF conflict");
+    expect(calls.telegram).toHaveLength(0);
+
+    // 2. institutional HTF_CONFLICT → deriv-only gate leaves it loud
+    await deliver(env, store, instConflict, cfg, true, fetchFn);
+    expect(instConflict.alertStatus).toBe("PAPER");
+    expect(calls.telegram).toHaveLength(1);
+
+    // 3. aligned synthetic (A_GRADE) → loud
+    await deliver(env, store, synthAligned, cfg, true, fetchFn);
+    expect(synthAligned.alertStatus).toBe("PAPER");
+    expect(calls.telegram).toHaveLength(2);
+
+    // 4. pure gate matrix across config variants
+    const gateAll = loadConfig({ FILTER_HTF_CONFLICT_DERIV_ONLY: "false" });
+    const gateOff = loadConfig({ FILTER_HTF_CONFLICT: "false" });
+    expect(applyHtfConflictGate(mk({ pair: "EURUSD", setupId: "g4", shadowClassification: "HTF_CONFLICT" }), gateAll)).toBe(true);
+    expect(applyHtfConflictGate(mk({ pair: "EURUSD", setupId: "g5", shadowClassification: "HTF_CONFLICT" }), gateOff)).toBe(false);
+    expect(applyHtfConflictGate(mk({ pair: "V75", setupId: "g6", shadowClassification: "B_GRADE" }), cfg)).toBe(false);
   });

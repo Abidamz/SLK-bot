@@ -28,6 +28,12 @@
     "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S",
     "SYMBOL_MAP": "{\"US30\":\"^DJI\",\"GER40\":\"^GDAXI\",\"JAPAN225\":\"^N225\",\"NAS100\":\"^NDX\"}",
     "ENTRY_TFS": "15m,30m,1h",
+    // Synthetics 1H Primary: Deriv synthetic indices confirm entries only on 1H
+    // (institutional pairs keep the full 15m/30m/1h entry set)
+    "SYNTH_ENTRY_TFS": "1h",
+    // HTF Bias Hard Gate: suppress VIP counter-trend alerts on synthetics when
+    // the shadow classifier flags HTF_CONFLICT (behavior-neutral on entries)
+    "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
     "MODE": "paper",
     "PAPER_NOTIFY": "true",
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) and bias cards ahead of entry alerts
