@@ -8,7 +8,7 @@
 import { fmtPips, fmtPrice, isDerivPair } from "./config";
 import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
 import type { DirectionalBiasDiagnostics } from "./shadow";
-import type { AlertRowish, NotifyEnv, OutcomeLike } from "./notify_types";
+import type { AlertRowish, NotifyEnv, OutcomeLike, PerformanceRecapStats } from "./notify_types";
 
 const GREEN = 0x2ecc71;
 const RED = 0xe74c3c;
@@ -521,4 +521,186 @@ export async function notifyOutcome(
   }
 
   return results;
+}
+
+// ------------------------------------------------ Performance Journal Recaps
+
+/**
+ * Aggregates verified performance stats for institutional or synthetic segments
+ * over a given rolling period (daily 24h or weekly 7d).
+ */
+export function computeRecapStats(
+  rows: AlertRowish[],
+  segment: "institutional" | "synthetics",
+  period: "daily" | "weekly",
+  nowMs: number = Date.now(),
+): PerformanceRecapStats {
+  const isTargetSegment = (symbol: string) => {
+    const isSynth = isDerivPair(symbol);
+    return segment === "synthetics" ? isSynth : !isSynth;
+  };
+
+  const segmentRows = rows.filter((r) => isTargetSegment(String(r.canonical_symbol ?? "")));
+
+  // Window for period: daily = past 24 hours; weekly = past 7 days
+  const windowMs = period === "daily" ? 24 * 3600 * 1000 : 7 * 86400 * 1000;
+  const cutoffMs = nowMs - windowMs;
+
+  // Closed trades in period
+  const periodClosed = segmentRows.filter((r) => {
+    const exitTimeStr = r.exit_time ?? r.candle_close_time;
+    const t = exitTimeStr ? Date.parse(String(exitTimeStr)) : NaN;
+    if (!Number.isFinite(t) || t < cutoffMs || t > nowMs) return false;
+    const s = String(r.status ?? "").toUpperCase();
+    return s === "TP_HIT" || s === "SL_HIT" || s === "BE_HIT";
+  });
+
+  const periodTp = periodClosed.filter((r) => String(r.status ?? "").toUpperCase() === "TP_HIT").length;
+  const periodSl = periodClosed.filter((r) => String(r.status ?? "").toUpperCase() === "SL_HIT").length;
+  const periodBe = periodClosed.filter((r) => String(r.status ?? "").toUpperCase() === "BE_HIT").length;
+  const periodDecided = periodTp + periodSl;
+  const periodWinRate = periodDecided > 0 ? (periodTp / periodDecided) * 100 : null;
+  const periodNetR = periodClosed.reduce((sum, r) => sum + (Number(r.r_multiple) || 0), 0);
+
+  // All-time closed trades in segment
+  const allTimeClosed = segmentRows.filter((r) => {
+    const s = String(r.status ?? "").toUpperCase();
+    return s === "TP_HIT" || s === "SL_HIT" || s === "BE_HIT";
+  });
+  const allTimeTp = allTimeClosed.filter((r) => String(r.status ?? "").toUpperCase() === "TP_HIT").length;
+  const allTimeSl = allTimeClosed.filter((r) => String(r.status ?? "").toUpperCase() === "SL_HIT").length;
+  const allTimeDecided = allTimeTp + allTimeSl;
+  const allTimeWinRate = allTimeDecided > 0 ? (allTimeTp / allTimeDecided) * 100 : null;
+  const allTimeNetR = allTimeClosed.reduce((sum, r) => sum + (Number(r.r_multiple) || 0), 0);
+
+  // Date label formatting
+  const d = new Date(nowMs);
+  const dateStr = d.toISOString().slice(0, 10);
+  const dateLabel = period === "daily" ? `New York Close · ${dateStr}` : `Week Ending Friday · ${dateStr}`;
+
+  return {
+    period,
+    segment,
+    dateLabel,
+    periodSetups: periodClosed.length,
+    periodTp,
+    periodSl,
+    periodBe,
+    periodWinRate: periodWinRate !== null ? Math.round(periodWinRate * 10) / 10 : null,
+    periodNetR: Math.round(periodNetR * 100) / 100,
+    allTimeSetups: allTimeClosed.length,
+    allTimeTp,
+    allTimeSl,
+    allTimeWinRate: allTimeWinRate !== null ? Math.round(allTimeWinRate * 10) / 10 : null,
+    allTimeNetR: Math.round(allTimeNetR * 100) / 100,
+  };
+}
+
+/**
+ * Formats a high-converting institutional performance recap card for free channels.
+ */
+export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
+  const isDaily = stats.period === "daily";
+  const isInst = stats.segment === "institutional";
+  const title = isDaily
+    ? isInst
+      ? "📊 [SLK RADAR] — DAILY PERFORMANCE RECAP"
+      : "📊 [SLK RADAR] — 24/7 SYNTHETICS DAILY RECAP"
+    : isInst
+      ? "📊 [SLK RADAR] — WEEKLY PERFORMANCE JOURNAL"
+      : "📊 [SLK RADAR] — 24/7 SYNTHETICS WEEKLY JOURNAL";
+
+  const marketLine = isInst
+    ? "Market: Institutional (Forex · Indices · Metals)"
+    : "Market: Continuous Synthetics (V75 · V100 · V50 · V25 · V10)";
+
+  const periodHeader = isDaily ? "📈 TODAY'S RESULTS" : "📈 THIS WEEK'S RESULTS";
+
+  const netRFormatted = stats.periodNetR >= 0 ? `+${stats.periodNetR.toFixed(2)}R` : `${stats.periodNetR.toFixed(2)}R`;
+  const allTimeNetRFormatted = stats.allTimeNetR >= 0 ? `+${stats.allTimeNetR.toFixed(2)}R` : `${stats.allTimeNetR.toFixed(2)}R`;
+
+  let resultsBlock = "";
+  if (stats.periodSetups > 0) {
+    const winRateStr = stats.periodWinRate !== null ? `${stats.periodWinRate.toFixed(1)}%` : "N/A";
+    resultsBlock = [
+      periodHeader,
+      `• Setups Closed: ${stats.periodSetups}`,
+      `• Outcomes: ${stats.periodTp} TP Hit | ${stats.periodSl} SL Hit${stats.periodBe > 0 ? ` | ${stats.periodBe} BE` : ""}`,
+      `• Win Rate: ${winRateStr}`,
+      `• Net Return: ${netRFormatted}`,
+    ].join("\n");
+  } else {
+    resultsBlock = [
+      periodHeader,
+      "• Setups Triggered: 0 (Strict Discipline)",
+      "• Note: Capital preserved. Zero low-probability setups forced during non-expansion conditions.",
+    ].join("\n");
+  }
+
+  const allTimeWinRateStr = stats.allTimeWinRate !== null ? `${stats.allTimeWinRate.toFixed(1)}%` : "N/A";
+  const ledgerUrl = isInst ? "https://slk-radar.pages.dev" : "https://slk-radar.pages.dev?segment=synthetics";
+
+  return [
+    title,
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    marketLine,
+    `Session: ${stats.dateLabel}`,
+    "",
+    resultsBlock,
+    "",
+    "🏆 VERIFIED ALL-TIME TRACK RECORD",
+    `• Net Return: ${allTimeNetRFormatted}`,
+    `• Decided Win Rate: ${allTimeWinRateStr}`,
+    `• Cumulative Record: ${stats.allTimeTp} TP Hit | ${stats.allTimeSl} SL Hit`,
+    "• Target Floor: 2.50R - 4.50R Asymmetric Expansion",
+    "",
+    "🔒 100% PUBLIC TRANSPARENCY",
+    "Every execution is mathematically recorded intrabar on our public ledger:",
+    `🔗 Track Record: ${ledgerUrl}`,
+    "",
+    "💎 READY FOR REAL-TIME CONFIRMED ENTRIES?",
+    "Stop trading counter-trend noise. Get loud, real-time SLK confirmation alerts with exact Entry, Invalidation, and Target levels:",
+    "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    "SLK Model · Structure · Liquidity · Key Levels",
+  ].join("\n");
+}
+
+/**
+ * Dispatches an automated performance recap card to the designated Free Channel.
+ */
+export async function sendPerformanceRecap(
+  env: NotifyEnv,
+  rows: AlertRowish[],
+  period: "daily" | "weekly",
+  segment: "institutional" | "synthetics",
+  nowMs: number = Date.now(),
+): Promise<{ sent: boolean; targetChatIds: string[]; text: string }> {
+  const stats = computeRecapStats(rows, segment, period, nowMs);
+  const text = formatPerformanceRecap(stats);
+
+  const targetChatIds = segment === "synthetics"
+    ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID)
+    : parseChatIds(env.TELEGRAM_FREE_CHAT_ID);
+
+  if (targetChatIds.length === 0 || !env.TELEGRAM_BOT_TOKEN) {
+    return { sent: false, targetChatIds, text };
+  }
+
+  for (const chatId of targetChatIds) {
+    try {
+      await sendTelegram(env, text, { silent: false, pin: false, chatId });
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "performance recap delivery failed",
+        chatId,
+        segment,
+        period,
+        error: String(err),
+      }));
+    }
+  }
+
+  return { sent: true, targetChatIds, text };
 }

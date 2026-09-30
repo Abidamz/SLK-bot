@@ -201,12 +201,16 @@ If continuing in a new Arena session or environment:
 
 For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continuing work on `SLK-bot`, the following 6 roadmap enhancements offer the highest immediate ROI for trading edge, subscriber retention, and operational automation:
 
-### Recommendation 1: Automated Daily & Weekly Performance Recaps for Free Channels (Subscriber Conversion Funnel)
+### Recommendation 1: Automated Daily & Weekly Performance Recaps for Free Channels ✅ COMPLETED & DEPLOYED
+* **Status:** Implemented in `worker/src/notify.ts`, `worker/src/index.ts`, and fully covered by 8 vitest unit tests in `worker/test/recap.test.ts`.
 * **Objective:** Automatically convert free channel lurkers into paying $100/mo VIP subscribers without manual daily journal posting.
 * **Architecture:**
-  - In `worker/src/index.ts`, add a daily cron check triggered at 21:00 UTC (New York market close) and Friday 21:00 UTC (market close).
-  - Query D1 `slk_alerts` for all trades closed in the last 24h / 7d.
-  - Calculate daily stats: Total Setups, Won, Lost, Breakeven, Net R-Multiple (e.g. `+5.8R today`, `+18.4R this week`), and Cumulative Ledger Return (+30.78R).
+  - Automated cron scheduler runs at 21:00 UTC (New York market close) for Daily Recaps and Friday 21:05 UTC (market close) for Weekly Recaps.
+  - Queries D1 `slk_alerts` for all trades closed in the last 24h / 7d.
+  - Calculates daily stats: Total Setups, Won, Lost, Breakeven, Net R-Multiple (e.g. `+5.8R today`, `+18.4R this week`), and Cumulative Ledger Return (+30.78R).
+  - Strict channel segregation: Institutional recap dispatches to `TELEGRAM_FREE_CHAT_ID`; 24/7 Synthetics recap dispatches to `TELEGRAM_DERIV_FREE_CHAT_ID`.
+  - Built-in deduplication via `slk_kv` prevents duplicate cards on multiple cron invocations.
+  - Admin inspection and manual trigger endpoints active: `/admin/preview-recap` and `/admin/trigger-recap`.
   - Format a high-impact institutional summary card with a CTA button/link pointing to `https://slk-radar.pages.dev` (verified proof) and `https://whop.com/slk-radar` (VIP upgrade).
   - Dispatch to `TELEGRAM_FREE_CHAT_ID` and `TELEGRAM_DERIV_FREE_CHAT_ID`.
 * **Relevant Files:** `worker/src/notify.ts` (formatter `formatDailyRecapCard`), `worker/src/index.ts` (cron schedule trigger).

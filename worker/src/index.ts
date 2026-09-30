@@ -17,7 +17,8 @@ import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal } from "./outcomes";
-import { notifyAlert, notifyOutcome, notifyWatch, notifyBias } from "./notify";
+import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap } from "./notify";
+import type { AlertRowish } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
@@ -93,6 +94,110 @@ function isTraditionalMarketWeekend(nowMs: number): boolean {
   return false;
 }
 
+// -------------------------------------------------------------- performance recaps
+
+/**
+ * Automatically checks schedule boundaries (21:00 UTC New York close for daily,
+ * Friday 21:05 UTC for weekly) and dispatches performance journal recaps to
+ * the respective free channels with built-in deduplication via D1/KV.
+ */
+export async function checkAndDispatchScheduledRecaps(
+  env: Env,
+  store: Store,
+  nowMs: number = Date.now(),
+  options: { forceDaily?: boolean; forceWeekly?: boolean; segment?: "institutional" | "synthetics" } = {},
+): Promise<{
+  dailyInstitutionalSent: boolean;
+  dailySyntheticsSent: boolean;
+  weeklyInstitutionalSent: boolean;
+  weeklySyntheticsSent: boolean;
+}> {
+  const d = new Date(nowMs);
+  const hour = d.getUTCHours();
+  const minute = d.getUTCMinutes();
+  const dayOfWeek = d.getUTCDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+
+  // Daily recap: 21:00 UTC (New York close)
+  const isDailyDue = options.forceDaily || (hour === 21 && minute === 0);
+  // Weekly recap: Friday 21:05 UTC (Forex/Indices weekend close)
+  const isWeeklyDue = options.forceWeekly || (dayOfWeek === 5 && hour === 21 && minute === 5);
+
+  let dailyInstitutionalSent = false;
+  let dailySyntheticsSent = false;
+  let weeklyInstitutionalSent = false;
+  let weeklySyntheticsSent = false;
+
+  if (!isDailyDue && !isWeeklyDue) {
+    return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent };
+  }
+
+  const dateStr = d.toISOString().slice(0, 10);
+  const weekNumber = Math.ceil(d.getUTCDate() / 7);
+  const weekKey = `${d.getUTCFullYear()}-W${weekNumber}`;
+
+  const allRows = await store.recentAlerts(1000);
+
+  if (isDailyDue) {
+    const doInst = !options.segment || options.segment === "institutional";
+    const doSynth = !options.segment || options.segment === "synthetics";
+
+    if (doInst) {
+      const kvKey = `recap:daily:institutional:${dateStr}`;
+      const already = options.forceDaily ? null : await store.getKv(kvKey);
+      if (!already) {
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "institutional", nowMs);
+        if (res.sent) {
+          dailyInstitutionalSent = true;
+          await store.setKv(kvKey, new Date(nowMs).toISOString());
+        }
+      }
+    }
+
+    if (doSynth) {
+      const kvKey = `recap:daily:synthetics:${dateStr}`;
+      const already = options.forceDaily ? null : await store.getKv(kvKey);
+      if (!already) {
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "daily", "synthetics", nowMs);
+        if (res.sent) {
+          dailySyntheticsSent = true;
+          await store.setKv(kvKey, new Date(nowMs).toISOString());
+        }
+      }
+    }
+  }
+
+  if (isWeeklyDue) {
+    const doInst = !options.segment || options.segment === "institutional";
+    const doSynth = !options.segment || options.segment === "synthetics";
+
+    if (doInst) {
+      const kvKey = `recap:weekly:institutional:${weekKey}`;
+      const already = options.forceWeekly ? null : await store.getKv(kvKey);
+      if (!already) {
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "institutional", nowMs);
+        if (res.sent) {
+          weeklyInstitutionalSent = true;
+          await store.setKv(kvKey, new Date(nowMs).toISOString());
+        }
+      }
+    }
+
+    if (doSynth) {
+      const kvKey = `recap:weekly:synthetics:${weekKey}`;
+      const already = options.forceWeekly ? null : await store.getKv(kvKey);
+      if (!already) {
+        const res = await sendPerformanceRecap(env, allRows as AlertRowish[], "weekly", "synthetics", nowMs);
+        if (res.sent) {
+          weeklySyntheticsSent = true;
+          await store.setKv(kvKey, new Date(nowMs).toISOString());
+        }
+      }
+    }
+  }
+
+  return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent };
+}
+
 // -------------------------------------------------------------- scan cycle
 
 export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSummary> {
@@ -113,6 +218,13 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   // 1. Real-time intrabar outcome resolution: check all open trades every minute
   // so SL/TP hits are resolved immediately without waiting for candle closes or round-robin rotation.
   const resolvedOutcomes = await resolveAllOpenAlerts(env, store, cfg, now, fetchFn);
+
+  // 1.1 Automated Performance Journal Recaps for Free Channels (at 21:00 UTC and Friday close)
+  try {
+    await checkAndDispatchScheduledRecaps(env, store, now);
+  } catch (recapErr) {
+    console.warn(JSON.stringify({ level: "warn", msg: "scheduled recap check failed", error: String(recapErr) }));
+  }
 
   const due: { tf: string; secs: number; boundary: number }[] = [];
   for (const [tf, secs] of Object.entries(cfg.entryTfs)) {
@@ -1951,6 +2063,38 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/preview-recap" || url.pathname === "/api/preview-recap") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const period = (url.searchParams.get("period") || "daily").toLowerCase() as "daily" | "weekly";
+      const segment = (url.searchParams.get("segment") || "institutional").toLowerCase() as "institutional" | "synthetics";
+      const allRows = await store.recentAlerts(1000);
+      const stats = computeRecapStats(allRows as AlertRowish[], segment, period);
+      const card = formatPerformanceRecap(stats);
+      return json({ ok: true, period, segment, stats, card });
+    }
+
+    if ((url.pathname === "/admin/trigger-recap" || url.pathname === "/api/trigger-recap") && (request.method === "GET" || request.method === "POST")) {
+      const store = makeStore(env.DB);
+      const period = (url.searchParams.get("period") || "daily").toLowerCase() as "daily" | "weekly";
+      const segment = (url.searchParams.get("segment") || "both").toLowerCase() as "institutional" | "synthetics" | "both";
+      const force = url.searchParams.get("force") !== "false";
+
+      const results = await checkAndDispatchScheduledRecaps(env, store, Date.now(), {
+        forceDaily: period === "daily" && force,
+        forceWeekly: period === "weekly" && force,
+        segment: segment === "both" ? undefined : segment,
+      });
+
+      return json({
+        ok: true,
+        action: "trigger_recap",
+        period,
+        segment,
+        results,
+        message: "Performance recap triggered. Check your Free Telegram channel(s).",
+      });
+    }
+
     if ((url.pathname === "/admin/telegram-status" || url.pathname === "/api/telegram-status") && request.method === "GET") {
       const store = makeStore(env.DB);
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id"));
@@ -1971,6 +2115,8 @@ export default {
         derivFreeChannelConfigured: Boolean(derivFreeChatId),
         derivFreeChannelChatId: derivFreeChatId ? `${derivFreeChatId.slice(0, 4)}...${derivFreeChatId.slice(-4)}` : null,
         instructions: {
+          previewRecap: "Visit /admin/preview-recap?period=daily&segment=institutional (or segment=synthetics) to inspect the automated performance recap card.",
+          triggerRecap: "Visit /admin/trigger-recap?period=daily&segment=both to instantly dispatch the performance recaps to the respective free channels.",
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
           connectDerivChannel: "1. Add bot as Admin to Synthetics VIP channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",

@@ -17,7 +17,7 @@ export interface NotifyEnv {
   VIP_WATCH_NOTIFY?: string;
 }
 
-/** Row-shaped subset used when formatting outcomes (matches slk_alerts). */
+/** Row-shaped subset used when formatting outcomes and performance recaps (matches slk_alerts). */
 export interface AlertRowish {
   canonical_symbol: unknown;
   entry_timeframe: unknown;
@@ -28,6 +28,27 @@ export interface AlertRowish {
   tp_external?: unknown;
   setup_id: unknown;
   alert_status: unknown;
+  status?: unknown;
+  exit_time?: unknown;
+  candle_close_time?: unknown;
+  r_multiple?: unknown;
+}
+
+export interface PerformanceRecapStats {
+  period: "daily" | "weekly";
+  segment: "institutional" | "synthetics";
+  dateLabel: string;
+  periodSetups: number;
+  periodTp: number;
+  periodSl: number;
+  periodBe: number;
+  periodWinRate: number | null; // e.g. 75.0 (percentage), or null if 0 setups
+  periodNetR: number; // sum of r_multiple in period
+  allTimeSetups: number;
+  allTimeTp: number;
+  allTimeSl: number;
+  allTimeWinRate: number | null;
+  allTimeNetR: number; // sum of all completed r_multiple in segment
 }
 
 export interface OutcomeLike {
