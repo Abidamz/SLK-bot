@@ -89,7 +89,7 @@ export function yahooSymbolFor(pair: string, symbolMap: Record<string, string> =
 
 /** OANDA instrument names for our canonical pairs. */
 const OANDA_INSTRUMENTS: Record<string, string> = {
-  US30: "US30_USD", GER40: "DE40_EUR", DE40: "DE40_EUR",
+  US30: "US30_USD", GER40: "DE30_EUR", DE40: "DE30_EUR", DE30: "DE30_EUR",
   JAPAN225: "JP225_USD", JP225: "JP225_USD",
   NAS100: "NAS100_USD", US100: "NAS100_USD", SPX500: "SPX500_USD", US500: "SPX500_USD",
   UK100: "UK100_GBP", XAUUSD: "XAU_USD", XAGUSD: "XAG_USD",
