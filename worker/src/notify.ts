@@ -486,7 +486,7 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
       : oc.status === "SL_HIT"
       ? ["❌", "SL HIT"]
       : oc.status === "BE_HIT"
-      ? ["🛡️", "BREAKEVEN HIT"]
+      ? ["🛡️", "BREAKEVEN HIT — [ACTION: EXIT AT ENTRY]"]
       : ["⌛", "EXPIRED"];
   const lines = [
     `${paper}${emoji} ${label} — 🌟【 ${boldPair} 】🌟 · ${rec.entry_timeframe} · ${rec.direction} (setup ${rec.setup_id})`,
@@ -494,7 +494,10 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
     `Entry ${fmtPrice(pair, Number(rec.entry))} → Exit ${fmtPrice(pair, oc.exitPrice)}  (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)`,
   ];
   if (oc.status === "BE_HIT") {
-    lines.push("🛡️ Trade was secured at Breakeven after reaching +1.50R favorable excursion. Zero loss incurred.");
+    lines.push(
+      "🛡️ INSTRUCTION: Trade was secured at Breakeven after reaching +1.50R favorable excursion.",
+      "👉 ACTION: Exit / close position flat at Entry price (0.00R). Zero loss incurred — account 100% protected. Await the next SLK confirmed setup.",
+    );
   }
   if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
   if (rec.tp_internal != null) lines.push(`Target 1 ${fmtPrice(pair, Number(rec.tp_internal))}`);
@@ -945,8 +948,8 @@ export async function sendPerformanceRecap(
   const targetChatIds = targetChatIdOverride
     ? [targetChatIdOverride]
     : (segment === "synthetics"
-        ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID)
-        : parseChatIds(env.TELEGRAM_FREE_CHAT_ID));
+        ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID || env.TELEGRAM_DERIV_CHAT_ID || env.TELEGRAM_FREE_CHAT_ID || env.TELEGRAM_CHAT_ID)
+        : parseChatIds(env.TELEGRAM_FREE_CHAT_ID || env.TELEGRAM_CHAT_ID));
 
   if (targetChatIds.length === 0 || !env.TELEGRAM_BOT_TOKEN) {
     return { sent: false, targetChatIds, text };
