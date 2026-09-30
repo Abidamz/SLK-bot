@@ -114,6 +114,7 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       expect(sentBody.drawings[0].name).toBe("Long Position");
       expect(sentBody.drawings[0].input.entryPrice).toBe(45038.51);
       expect(sentBody.drawings[0].input.startDatetime).toBeDefined();
+      expect(sentBody.drawings[0].input.endDatetime).toBeDefined();
       expect(sentHeaders["x-api-key"]).toBe("test_key_123");
 
       // Verify getVisualAlertImageUrl uses it when key is present

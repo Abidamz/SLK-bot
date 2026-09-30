@@ -1833,35 +1833,35 @@ export default {
       const doFetch = env.fetchFn ?? fetch;
       const { notifyAlert } = await import("./notify");
       const sampleAlert: Alert = {
-        setupId: `deriv:V75:30m:LONG:V:450250.00:${new Date().toISOString()}`,
+        setupId: `deriv:V75:30m:LONG:V:45038.50:${new Date().toISOString()}`,
         pair: "V75",
         entryTf: "30m",
         mapTf: "4h",
         direction: "LONG",
-        entry: 450320.00,
-        stopLoss: 449850.00,
-        tpInternal: 451550.00,
-        tpExternal: 452800.00,
+        entry: 45038.50,
+        stopLoss: 44250.00,
+        tpInternal: 47400.00,
+        tpExternal: 48000.00,
         candleCloseTime: Date.now(),
         environment: "bullish",
         phase: "expansion",
         htfAlignment: "M:↑ W:↑ D:↑ H4:↑",
-        originKeyLevel: 450250.00,
+        originKeyLevel: 44250.00,
         keyLevelType: "V",
-        keyLevelBounds: [450100.00, 450400.00],
+        keyLevelBounds: [44200.00, 44300.00],
         keyLevelTested: true,
         keyLevelFlipped: false,
-        imbalanceContext: [{ top: 450450.00, bottom: 450280.00 }],
+        imbalanceContext: [{ top: 45100.00, bottom: 45000.00 }],
         internalLiquidity: [],
         externalLiquidity: [],
-        drawOnLiquidity: 452800.00,
-        nearestExternalTarget: 452800.00,
+        drawOnLiquidity: 48000.00,
+        nearestExternalTarget: 48000.00,
         intermediateZones: [],
         opposingLiquidityStanding: true,
         sweepTime: Date.now() - 1800_000,
         bosTime: Date.now() - 900_000,
         returnTime: Date.now(),
-        invalidationLevel: 449700.00,
+        invalidationLevel: 44200.00,
         invalidationReason: null,
         parameterVersion: "slk-w1.0",
         alertStatus: "PAPER",
@@ -2837,8 +2837,8 @@ export default {
       const pair = (url.searchParams.get("pair") || "V75").toUpperCase();
       const isLong = (url.searchParams.get("dir") || "LONG").toUpperCase() === "LONG";
       const isDeriv = isDerivPair(pair);
-      const entry = isDeriv ? 450250.0 : 1.0850;
-      const sl = isDeriv ? (isLong ? 449650.0 : 450850.0) : (isLong ? 1.0810 : 1.0890);
+      const entry = isDeriv ? 45038.50 : 1.0850;
+      const sl = isDeriv ? (isLong ? 44250.0 : 45850.0) : (isLong ? 1.0810 : 1.0890);
       const risk = Math.abs(entry - sl);
       const tp1 = isLong ? entry + risk * 2.5 : entry - risk * 2.5;
 

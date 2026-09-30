@@ -326,7 +326,18 @@ export async function fetchTradingViewSnapshot(
     "1d": "1D",
   };
   const interval = intervalMap[a.entryTf] ?? "1h";
-  const startDatetime = a.candleCloseTime ? new Date(a.candleCloseTime).toISOString() : new Date().toISOString();
+  const tfSecMap: Record<string, number> = {
+    "15m": 900,
+    "30m": 1800,
+    "1h": 3600,
+    "4h": 14400,
+    "1d": 86400,
+  };
+  const tfSecs = tfSecMap[a.entryTf] ?? 1800;
+  const entryMs = a.candleCloseTime ? Number(a.candleCloseTime) : Date.now();
+  // Anchor the tool 4 candles back so the entry candle is inside the box, and extend 20 candles forward
+  const startDatetime = new Date(entryMs - (tfSecs * 1000 * 4)).toISOString();
+  const endDatetime = new Date(entryMs + (tfSecs * 1000 * 20)).toISOString();
 
   try {
     const resp = await fetchFn("https://api.chart-img.com/v2/tradingview/advanced-chart/storage", {
@@ -347,6 +358,7 @@ export async function fetchTradingViewSnapshot(
             name: a.direction === "LONG" ? "Long Position" : "Short Position",
             input: {
               startDatetime,
+              endDatetime,
               entryPrice: Number(a.entry),
               targetPrice: Number(a.tpInternal),
               stopPrice: Number(a.stopLoss),
