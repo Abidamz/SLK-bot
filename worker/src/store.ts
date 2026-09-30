@@ -560,7 +560,16 @@ export class MemStore implements Store {
   }
 }
 
+let defaultMemStore: Store | null = null;
+
+export function resetDefaultMemStore(): void {
+  defaultMemStore = null;
+}
+
 export function makeStore(db: D1Like | undefined): Store {
-  if (!db) return new MemStore();
+  if (!db) {
+    if (!defaultMemStore) defaultMemStore = new MemStore();
+    return defaultMemStore;
+  }
   return new D1Store(db);
 }

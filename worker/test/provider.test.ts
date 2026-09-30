@@ -150,6 +150,22 @@ describe("fetchOanda", () => {
       new Response(JSON.stringify({ errorMessage: "Invalid token" }), { status: 401 });
     await expect(fetchOanda("BAD", "US30", "30m", 100, {}, fake)).rejects.toThrow(/OANDA error for US30_USD.*401.*Invalid token/s);
   });
+
+  it("automatically falls back from practice to live endpoint when practice returns 401", async () => {
+    const seen: string[] = [];
+    const fake: typeof fetch = async (u) => {
+      seen.push(String(u));
+      if (String(u).includes("api-fxpractice")) {
+        return new Response(JSON.stringify({ errorMessage: "Invalid token" }), { status: 401 });
+      }
+      return new Response(JSON.stringify(wire), { status: 200 });
+    };
+    const candles = await fetchOanda("LIVE_TOK", "US30", "30m", 100, {}, fake);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toContain("api-fxpractice.oanda.com");
+    expect(seen[1]).toContain("api-fxtrade.oanda.com");
+    expect(candles).toHaveLength(2);
+  });
 });
 
 describe("decodeJetta", () => {

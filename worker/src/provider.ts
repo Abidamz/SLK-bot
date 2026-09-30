@@ -93,6 +93,7 @@ const OANDA_INSTRUMENTS: Record<string, string> = {
   JAPAN225: "JP225_USD", JP225: "JP225_USD",
   NAS100: "NAS100_USD", US100: "NAS100_USD", SPX500: "SPX500_USD", US500: "SPX500_USD",
   UK100: "UK100_GBP", XAUUSD: "XAU_USD", XAGUSD: "XAG_USD",
+  EURUSD: "EUR_USD", GBPUSD: "GBP_USD", USDJPY: "USD_JPY", AUDJPY: "AUD_JPY", GBPJPY: "GBP_JPY",
 };
 
 const OANDA_GRANULARITIES: Record<string, string> = {
@@ -106,6 +107,7 @@ export async function fetchOanda(
   limit: number,
   symbolMap: Record<string, string> = {},
   fetchFn: FetchLike = fetch,
+  environment: "practice" | "live" | "auto" = "auto",
 ): Promise<Candle[]> {
   if (!apiToken) throw new Error("OANDA_API_TOKEN is not set");
   const gran = OANDA_GRANULARITIES[tf];
@@ -119,34 +121,49 @@ export async function fetchOanda(
     granularity: gran,
     price: "M", // midpoint candles
   });
-  const url = `https://api-fxpractice.oanda.com/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
-  const resp = await fetchFn(url, {
-    headers: {
-      authorization: `Bearer ${apiToken}`,
-      "accept-datetime-format": "RFC3339",
-    },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const data = (await resp.json()) as {
-    errorMessage?: string;
-    candles?: {
-      complete: boolean;
-      time: string;
-      mid?: { o: string; h: string; l: string; c: string };
-    }[];
-  };
-  if (!resp.ok || !data.candles) {
-    throw new Error(`OANDA error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
-  }
-  const out: Candle[] = [];
-  for (const cd of data.candles) {
-    if (!cd.mid) continue; // skipped session gaps come back without prices
-    out.push({
-      t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
-      o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+
+  const endpoints = environment === "live"
+    ? ["https://api-fxtrade.oanda.com", "https://api-fxpractice.oanda.com"]
+    : environment === "practice"
+      ? ["https://api-fxpractice.oanda.com"]
+      : ["https://api-fxpractice.oanda.com", "https://api-fxtrade.oanda.com"];
+
+  let lastError: Error | null = null;
+  for (const base of endpoints) {
+    const url = `${base}/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
+    const resp = await fetchFn(url, {
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        "accept-datetime-format": "RFC3339",
+      },
+      signal: AbortSignal.timeout(20_000),
     });
+    const data = (await resp.json().catch(() => ({}))) as {
+      errorMessage?: string;
+      candles?: {
+        complete: boolean;
+        time: string;
+        mid?: { o: string; h: string; l: string; c: string };
+      }[];
+    };
+    if (!resp.ok || !data.candles) {
+      lastError = new Error(`OANDA error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
+      if (resp.status === 401 && endpoints.length > 1) {
+        continue;
+      }
+      throw lastError;
+    }
+    const out: Candle[] = [];
+    for (const cd of data.candles) {
+      if (!cd.mid) continue; // skipped session gaps come back without prices
+      out.push({
+        t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
+        o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+      });
+    }
+    return out;
   }
-  return out;
+  throw lastError ?? new Error(`OANDA error for ${instrument} ${gran}`);
 }
 
 // ------------------------------------------------------------------ Dukascopy
@@ -970,6 +987,7 @@ export interface MarketDataRequest {
   limit: number;
   tdKey?: string;
   oandaToken?: string;
+  oandaEnv?: "practice" | "live" | "auto";
   derivAppId?: string;
   derivProxyUrl?: string;
   symbolMap?: Record<string, string>;
@@ -1037,9 +1055,18 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         pair: req.pair,
         tf: req.tf,
         from: "dukascopy",
-        to: yahooUnavailable ? "failed" : "yahoo",
+        to: req.oandaToken ? "oanda" : yahooUnavailable ? "failed" : "yahoo",
         reason: lastErr.message,
       }));
+    }
+
+    if (req.oandaToken) {
+      try {
+        const candles = await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+        if (candles.length > 0) return { provider: "oanda", candles };
+      } catch (oandaErr) {
+        lastErr = oandaErr instanceof Error ? oandaErr : new Error(String(oandaErr));
+      }
     }
 
     if (!yahooUnavailable) {
@@ -1056,12 +1083,48 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
   }
 
   const candles = provider === "oanda"
-    ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+    ? await (async () => {
+        try {
+          return await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+        } catch (oandaErr) {
+          console.warn(JSON.stringify({
+            level: "warn",
+            msg: "slk.provider.fallback",
+            pair: req.pair,
+            tf: req.tf,
+            from: "oanda",
+            to: "dukascopy",
+            reason: oandaErr instanceof Error ? oandaErr.message : String(oandaErr),
+          }));
+          try {
+            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+          } catch (dukaErr) {
+            if (!yahooUnavailable) {
+              return await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+            }
+            throw oandaErr;
+          }
+        }
+      })()
     : provider === "dukascopy"
       ? await (async () => {
           try {
             return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
           } catch (dukaErr) {
+            if (req.oandaToken) {
+              try {
+                console.warn(JSON.stringify({
+                  level: "warn",
+                  msg: "slk.provider.fallback",
+                  pair: req.pair,
+                  tf: req.tf,
+                  from: "dukascopy",
+                  to: "oanda",
+                  reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+                }));
+                return await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+              } catch {}
+            }
             if (req.tdKey && !tdCreditsExhausted) {
               try {
                 return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);

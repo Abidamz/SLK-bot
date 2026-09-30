@@ -238,14 +238,18 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     }
   }
 
+  const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
+  const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
+  const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
+  const oandaTokenPresent = Boolean(oandaToken);
+
   for (const pair of pairsToScan) {
     try {
       // provider routing: forex/metals → Twelve Data, index CFDs → OANDA
       // (if its token exists) → Dukascopy public feed → Yahoo last resort
       // (a per-pair outage never blocks the other pairs — see catch below)
-      const providerName = providerForPair(pair, cfg.providerMap, Boolean(env.OANDA_API_KEY ?? env.OANDA_API_TOKEN));
+      const providerName = providerForPair(pair, cfg.providerMap, oandaTokenPresent);
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
-      const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
       const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
       const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || undefined;
       // kv adapter for immutable historical buckets (Dukascopy minute/hour/day files)
@@ -258,7 +262,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const cached = await store.getKv(cacheKey);
       if (cached) d1 = JSON.parse(cached) as Candle[];
       if (!d1) {
-        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+        const ctx = await fetchMarketData({ pair, tf: cfg.contextTimeframe, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
         d1 = validateAndClose(ctx.candles, TF_SECONDS["1d"], now, 25);
         await store.setKv(cacheKey, JSON.stringify(d1));
       }
@@ -267,7 +271,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the 4h map and all coarser entry TFs are resampled from it. This is
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
-      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+      const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -290,7 +294,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         // If 4H resampled from base has fewer than 30 bars (e.g. Dukascopy minute feed budget),
         // fetch the 1h feed directly (which uses 1 monthly file in Dukascopy) and resample H4 from it.
         try {
-          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           const h1Candles = validateAndClose(h1Res.candles, TF_SECONDS["1h"], now, 30);
           feeds["1h"] = h1Candles;
           const directH4 = dropIncomplete(resampleCandles(h1Candles, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now);
@@ -366,7 +370,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
-          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
@@ -659,7 +663,9 @@ export async function resolveAllOpenAlerts(
 
   let totalResolved = 0;
   const apiKey = env.TWELVEDATA_API_KEY ?? "";
-  const oandaToken = env.OANDA_API_KEY ?? env.OANDA_API_TOKEN ?? "";
+  const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
+  const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
+  const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
   const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
   const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
   const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
@@ -669,7 +675,7 @@ export async function resolveAllOpenAlerts(
     try {
       const res = await fetchMarketData({
         pair, tf, limit: 30,
-        tdKey: apiKey, oandaToken, derivAppId, derivProxyUrl,
+        tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
         symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
       });
       const outcomeCandles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
@@ -766,6 +772,10 @@ export default {
 
     if (url.pathname === "/health") {
       const cfg = loadConfig(env);
+      const store = makeStore(env.DB);
+      const kvOanda = await store.getKv("oanda_api_token");
+      const kvOandaEnv = await store.getKv("oanda_environment");
+      const oandaConfigured = Boolean(env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOanda);
       return json({
         ok: true,
         service: "slk-alert-worker · Free Tier CPU Optimized & Real-Time Intrabar Outcome Resolution",
@@ -781,6 +791,8 @@ export default {
         paperNotify: cfg.paperNotify,
         telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
         adminKeyConfigured: Boolean(env.ADMIN_KEY),
+        oandaConfigured,
+        oandaEnvironment: kvOandaEnv || "auto",
         time: new Date().toISOString(),
       });
     }
@@ -964,9 +976,13 @@ export default {
       const providerMap = provider ? { ...cfg.providerMap, [String(row.canonical_symbol)]: provider } : cfg.providerMap;
       let feed: Candle[];
       try {
+        const chartStore = makeStore(env.DB);
+        const kvOanda = (await chartStore.getKv("oanda_api_token")) || "";
+        const chartOandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOanda;
+        const chartOandaEnv = ((await chartStore.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
         const result = await fetchMarketData({
           pair: String(row.canonical_symbol), tf, limit: before + after + 80,
-          tdKey: env.TWELVEDATA_API_KEY, oandaToken: env.OANDA_API_TOKEN,
+          tdKey: env.TWELVEDATA_API_KEY, oandaToken: chartOandaToken, oandaEnv: chartOandaEnv,
           symbolMap: cfg.symbolMap, providerMap, fetchFn: fetch,
         });
         feed = validateAndClose(result.candles, tfSeconds, Date.now(), 1);
@@ -1966,6 +1982,8 @@ export default {
           setFreeChannel: "Visit /admin/set-free-channel?chat_id=@your_free_channel_username",
           testFreeTeaser: "Visit /admin/test-free-teaser to preview the automated TP1 Win Teaser in the free channel.",
           testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",
+          setOandaToken: "Visit /admin/set-oanda-token?token=<token>&env=practice (or env=live) to configure OANDA feed.",
+          probeOanda: "Visit /admin/probe-oanda?pair=US30 to test real-time candle connectivity to OANDA.",
         },
       });
     }
@@ -2094,6 +2112,104 @@ export default {
         return json({ ok: true, symbol, target: target ?? "default", proxyUrl, proxyResult, results }, 200);
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 200);
+      }
+    }
+
+    if ((url.pathname === "/admin/set-oanda-token" || url.pathname === "/api/set-oanda-token") && (request.method === "GET" || request.method === "POST")) {
+      let token = url.searchParams.get("token") || "";
+      let environment = (url.searchParams.get("env") || url.searchParams.get("environment") || "").toLowerCase();
+      if (!token && request.method === "POST") {
+        try {
+          const body = await request.json() as { token?: string; env?: string; environment?: string };
+          if (body.token) token = body.token;
+          if (body.env || body.environment) environment = (body.env || body.environment || "").toLowerCase();
+        } catch {}
+      }
+      token = token.trim();
+      if (!token) {
+        return json({ ok: false, error: "Missing ?token=<your_oanda_token> query parameter or POST body" }, 400);
+      }
+      const store = makeStore(env.DB);
+      await store.setKv("oanda_api_token", token);
+      if (environment === "practice" || environment === "live" || environment === "auto") {
+        await store.setKv("oanda_environment", environment);
+      }
+
+      const testPair = url.searchParams.get("pair") || "US30";
+      const doFetch = env.fetchFn ?? fetch;
+      const { fetchOanda } = await import("./provider");
+      const cfg = loadConfig(env);
+      let probeResult: any = null;
+      try {
+        const start = Date.now();
+        const candles = await fetchOanda(token, testPair, "30m", 5, cfg.symbolMap, doFetch, (environment as any) || "auto");
+        probeResult = {
+          success: true,
+          pair: testPair,
+          count: candles.length,
+          latestPrice: candles[candles.length - 1]?.c,
+          latencyMs: Date.now() - start,
+        };
+      } catch (probeErr) {
+        probeResult = {
+          success: false,
+          error: probeErr instanceof Error ? probeErr.message : String(probeErr),
+        };
+      }
+
+      const masked = token.length > 8 ? `${token.slice(0, 4)}...${token.slice(-4)}` : "********";
+      return json({
+        ok: true,
+        status: probeResult.success ? "connected" : "saved_with_warning",
+        maskedToken: masked,
+        environment: environment || "auto",
+        probeResult,
+        message: probeResult.success
+          ? `Successfully saved and verified OANDA API token for ${testPair}!`
+          : `OANDA token saved in D1 KV, but probe check failed: ${probeResult.error}`,
+      });
+    }
+
+    if ((url.pathname === "/admin/probe-oanda" || url.pathname === "/api/probe-oanda") && request.method === "GET") {
+      const store = makeStore(env.DB);
+      const kvToken = (await store.getKv("oanda_api_token")) || "";
+      const token = (url.searchParams.get("token") || env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvToken).trim();
+      if (!token) {
+        return json({
+          ok: false,
+          error: "No OANDA API token configured. Set via /admin/set-oanda-token?token=<token> or Cloudflare secret OANDA_API_TOKEN",
+        }, 400);
+      }
+      const pair = url.searchParams.get("pair") || "US30";
+      const tf = url.searchParams.get("tf") || "30m";
+      const kvEnv = (await store.getKv("oanda_environment")) || "auto";
+      const envParam = ((url.searchParams.get("env") || kvEnv) as "practice" | "live" | "auto");
+      const doFetch = env.fetchFn ?? fetch;
+      const { fetchOanda } = await import("./provider");
+      const cfg = loadConfig(env);
+
+      try {
+        const start = Date.now();
+        const candles = await fetchOanda(token, pair, tf, 5, cfg.symbolMap, doFetch, envParam);
+        return json({
+          ok: true,
+          connected: true,
+          pair,
+          tf,
+          environment: envParam,
+          candleCount: candles.length,
+          latestPrice: candles[candles.length - 1]?.c,
+          latestTimestamp: new Date(candles[candles.length - 1]?.t).toISOString(),
+          latencyMs: Date.now() - start,
+        });
+      } catch (err) {
+        return json({
+          ok: false,
+          connected: false,
+          pair,
+          tf,
+          error: err instanceof Error ? err.message : String(err),
+        }, 200);
       }
     }
 

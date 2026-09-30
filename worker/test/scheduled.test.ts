@@ -4,7 +4,7 @@
  *  outage. Synthetic fixtures only — logic verification, not performance
  *  evidence. */
 import { describe, expect, it } from "vitest";
-import { scanAll, watchEventFresh, type Env } from "../src/index";
+import worker, { scanAll, watchEventFresh, type Env } from "../src/index";
 import { notifyAlert, notifyWatch } from "../src/notify";
 import { MemStore } from "../src/store";
 import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
@@ -583,4 +583,39 @@ describe("scheduled scan cycle", () => {
     // Tick 5: Boundary complete
     const tick5 = await scanAll(env, { now: baseTime + 240_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
     expect(tick5.pairs).toEqual([]);
+  });
+
+  it("supports /admin/set-oanda-token and /admin/probe-oanda endpoints", async () => {
+    const env = makeEnv();
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const fakeFetch = makeFakeFetch(calls);
+    env.fetchFn = fakeFetch;
+
+    // 1. Set token via /admin/set-oanda-token
+    const setReq = new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice", {
+      method: "GET",
+    });
+    const setResp = await worker.fetch(setReq, env, {} as any);
+    expect(setResp.status).toBe(200);
+    const setData = (await setResp.json()) as any;
+    expect(setData.ok).toBe(true);
+    expect(setData.status).toBe("connected");
+    expect(setData.maskedToken).toBe("TEST...OKEN");
+
+    // 2. Probe OANDA via /admin/probe-oanda
+    const probeReq = new Request("https://worker.test/admin/probe-oanda?pair=US30", {
+      method: "GET",
+    });
+    const probeResp = await worker.fetch(probeReq, env, {} as any);
+    expect(probeResp.status).toBe(200);
+    const probeData = (await probeResp.json()) as any;
+    expect(probeData.ok).toBe(true);
+    expect(probeData.connected).toBe(true);
+    expect(probeData.pair).toBe("US30");
+
+    // 3. Health endpoint reflects oandaConfigured
+    const healthReq = new Request("https://worker.test/health");
+    const healthResp = await worker.fetch(healthReq, env, {} as any);
+    const healthData = (await healthResp.json()) as any;
+    expect(healthData.oandaConfigured).toBe(true);
   });
