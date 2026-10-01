@@ -110,6 +110,12 @@ export interface Alert {
   phase: string;
   htfAlignment: string;
   originKeyLevel: number;
+  /** Origin level's source candle open time (ms epoch). Powers the
+   *  store-level identity guard, which matches duplicates across ID
+   *  formats on (pair, timeframe, direction, level kind, origin time).
+   *  When absent, the guard falls back to the origin time embedded in the
+   *  setup ID (both legacy and current formats carry it). */
+  originTime?: number;
   keyLevelType: string;
   keyLevelBounds: [number, number];
   keyLevelTested: boolean;

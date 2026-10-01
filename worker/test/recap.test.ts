@@ -85,6 +85,8 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(stats.periodSl).toBe(0);
     expect(stats.periodWinRate).toBe(100);
     expect(stats.periodNetR).toBe(5.75); // 3.25 + 2.50
+    // best decided trade of the period (highest R)
+    expect(stats.bestTrade).toEqual({ pair: "XAUUSD", direction: "SHORT", timeframe: "30m", r: 3.25 });
     // All-time includes the EURUSD loss 3 days ago: 3 closed, 2 TP, 1 SL
     expect(stats.allTimeSetups).toBe(3);
     expect(stats.allTimeTp).toBe(2);
@@ -157,19 +159,31 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(synthStats.allTimeSetups).toBe(2);
   });
 
-  it("formats high-conversion institutional recap card with proprietary SLK branding", () => {
+  it("formats the exact daily institutional recap card (win rate + net R + best trade)", () => {
     const stats = computeRecapStats(sampleRows, "institutional", "daily", baseTime);
     const card = formatPerformanceRecap(stats);
 
-    expect(card).toContain("📊 [SLK RADAR] — DAILY PERFORMANCE RECAP");
-    expect(card).toContain("Market: Institutional (Forex · Indices · Metals)");
-    expect(card).toContain("• Setups Closed: 2");
-    expect(card).toContain("• Outcomes: 2 TP Hit | 0 SL Hit");
-    expect(card).toContain("• Net Return: +5.75R");
-    expect(card).toContain("• Target Floor: 2.50R - 4.50R Asymmetric Expansion");
-    expect(card).toContain("🔗 Track Record: https://slk-radar.pages.dev");
-    expect(card).toContain("whop.com/slk-radar/slk-radar-vip-signals");
-    expect(card).toContain("SLK Model · Structure · Liquidity · Key Levels");
+    expect(card).toBe([
+      "📊 SLK RADAR — DAILY PERFORMANCE RECAP",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "🏛️ Institutional (Forex · Indices · Metals)",
+      "📅 New York Close · 2026-09-30",
+      "",
+      "📈 TODAY'S RESULTS",
+      "Win Rate: 100.0%   ·   Net Return: +5.75R",
+      "Setups: 2 closed (2 TP · 0 SL)",
+      "Best trade: XAUUSD SHORT 30m +3.25R",
+      "",
+      "🏆 ALL-TIME LEDGER",
+      "+4.75R · 66.7% decided win rate (2 TP · 1 SL)",
+      "🔗 Verified on the public ledger: https://slk-radar.pages.dev",
+      "",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "SLK Model (Structure · Liquidity · Key Levels)",
+      "Paper simulation — research only. Not financial advice.",
+    ].join("\n"));
+    // branding guardrails
     expect(card).not.toContain("ICT");
     expect(card).not.toContain("SMC");
   });
@@ -178,9 +192,51 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const stats = computeRecapStats([], "institutional", "daily", baseTime);
     const card = formatPerformanceRecap(stats);
 
-    expect(card).toContain("• Setups Triggered: 0 (Strict Discipline)");
-    expect(card).toContain("Capital preserved. Zero low-probability setups forced during non-expansion conditions.");
-    expect(card).toContain("whop.com/slk-radar/slk-radar-vip-signals");
+    expect(card).toBe([
+      "📊 SLK RADAR — DAILY PERFORMANCE RECAP",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "🏛️ Institutional (Forex · Indices · Metals)",
+      "📅 New York Close · 2026-09-30",
+      "",
+      "📈 TODAY'S RESULTS",
+      "No setups closed — capital preserved.",
+      "We only act on the highest-conviction SLK confirmations.",
+      "",
+      "🏆 ALL-TIME LEDGER",
+      "+0.00R · N/A decided win rate (0 TP · 0 SL)",
+      "🔗 Verified on the public ledger: https://slk-radar.pages.dev",
+      "",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "SLK Model (Structure · Liquidity · Key Levels)",
+      "Paper simulation — research only. Not financial advice.",
+    ].join("\n"));
+  });
+
+  it("formats the exact weekly synthetics recap card", () => {
+    const stats = computeRecapStats(sampleRows, "synthetics", "weekly", baseTime);
+    const card = formatPerformanceRecap(stats);
+
+    expect(card).toBe([
+      "📊 SLK RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "⚡ Continuous Synthetics (V75 · V100 · V50 · V25 · V10)",
+      "📅 Week Ending Friday · 2026-09-30",
+      "",
+      "📈 THIS WEEK'S RESULTS",
+      "Win Rate: 50.0%   ·   Net Return: +1.80R",
+      "Setups: 2 closed (1 TP · 1 SL)",
+      "Best trade: V75 LONG 1h +2.80R",
+      "",
+      "🏆 ALL-TIME LEDGER",
+      "+1.80R · 50.0% decided win rate (1 TP · 1 SL)",
+      "🔗 Verified on the public ledger: https://slk-radar.pages.dev?segment=synthetics",
+      "",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "SLK Model (Structure · Liquidity · Key Levels)",
+      "Paper simulation — research only. Not financial advice.",
+    ].join("\n"));
   });
 
   it("sendPerformanceRecap dispatches institutional recaps strictly to TELEGRAM_FREE_CHAT_ID", async () => {

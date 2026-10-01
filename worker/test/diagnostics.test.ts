@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LIFECYCLE_STATES, emptyScanDiagnostics } from "../src/diagnostics";
+import { LIFECYCLE_STATES, buildEnginePulse, emptyEnginePulse, emptyScanDiagnostics } from "../src/diagnostics";
 import { scanAll, type Env } from "../src/index";
 import { D1Store, MemStore, type D1Like, type ScanLogRow } from "../src/store";
 import { T0, makeFakeFetch } from "./fixtures";
@@ -108,5 +108,71 @@ describe("D1 scan diagnostics serialization", () => {
     await store.insertScanLog(row);
     expect(bind).toHaveBeenLastCalledWith(row.ts, "30m", "EURUSD", 0, 0, "", 42, "ok", null);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Engine Pulse aggregation (buildEnginePulse)", () => {
+  const NOW = T0 + 8 * 3600_000;
+  const HOUR = 3600_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  function diag(overrides: { recorded?: Record<string, number>; risk?: [number, number, number]; target?: number } = {}) {
+    const d = emptyScanDiagnostics();
+    for (const [k, v] of Object.entries(overrides.recorded ?? {})) (d.recorded as any)[k] = v;
+    if (overrides.risk) d.replay.riskRejectReasons = { nonPositiveRisk: overrides.risk[0], belowMinRiskAtr: overrides.risk[1], aboveMaxStopAtr: overrides.risk[2] };
+    if (overrides.target) d.replay.targetRejects = overrides.target;
+    return d;
+  }
+
+  it("returns zeros for an empty window", () => {
+    expect(buildEnginePulse([], NOW)).toEqual(emptyEnginePulse(24));
+  });
+
+  it("aggregates recorded counters, rejections, coverage, and last-scan time", () => {
+    const rows = [
+      // in-window, JSON-serialized diagnostics (D1 shape)
+      { ts: iso(NOW - 1 * HOUR), pairs: "EURUSD,GBPUSD", diagnostics_json: JSON.stringify(diag({
+        recorded: { MAP: 5, TOUCH: 2, SWEEP: 1, SHIFT: 1, RETEST: 3, confirmedAlerts: 1 },
+        risk: [1, 2, 0], target: 4,
+      })) },
+      // in-window, in-memory diagnostics object (MemStore shape)
+      { ts: iso(NOW - 2 * HOUR), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 2, RETEST: 1 } }) },
+      // out-of-window → excluded entirely
+      { ts: iso(NOW - 25 * HOUR), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 50, RETEST: 50 } }) },
+      // idle scan — empty pairs: counted as a scan, diagnostics ignored
+      { ts: iso(NOW - 3 * HOUR), pairs: "", diagnostics: diag({ recorded: { MAP: 99, RETEST: 99 } }) },
+      // malformed diagnostics_json → counted as active, no crash, no counts
+      { ts: iso(NOW - 4 * HOUR), pairs: "XAUUSD", diagnostics_json: "{not json" },
+      // wrong version → ignored
+      { ts: iso(NOW - 5 * HOUR), pairs: "XAUUSD", diagnostics: { ...diag({ recorded: { MAP: 7 } }), version: 2 } },
+    ];
+    const p = buildEnginePulse(rows as any[], NOW);
+    expect(p.scans).toBe(5);            // idle + malformed + version rows included; 25h row excluded
+    expect(p.activeScans).toBe(4);      // every non-idle row covered pairs (even w/ unparseable diag)
+    expect(p.pairs).toEqual(["EURUSD", "GBPUSD", "XAUUSD"]);
+    expect(p.pairsCovered).toBe(3);
+    expect(p.evaluated).toBe(7);        // 5 + 2 MAP
+    expect(p.chains).toEqual({ TOUCH: 2, SWEEP: 1, SHIFT: 1, RETEST: 4 });
+    expect(p.confirmed).toBe(1);
+    expect(p.rejections).toEqual({ nonPositiveRisk: 1, belowMinRiskAtr: 2, aboveMaxStopAtr: 0, targetFloor: 4 });
+    expect(p.lastScanTs).toBe(iso(NOW - 1 * HOUR));
+    expect(p.windowHours).toBe(24);
+  });
+
+  it("applies the window cutoff strictly (24h default, overridable)", () => {
+    const rowAtCutoff = { ts: iso(NOW - 24 * HOUR), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 3 } }) };
+    // exactly at the cutoff → inside the rolling window
+    expect(buildEnginePulse([rowAtCutoff] as any[], NOW).evaluated).toBe(3);
+    const rowJustOutside = { ts: iso(NOW - 24 * HOUR - 1), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 3 } }) };
+    expect(buildEnginePulse([rowJustOutside] as any[], NOW).evaluated).toBe(0);
+    // narrower window excludes the older of two in-window rows
+    const two = [
+      { ts: iso(NOW - 30 * 60_000), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 1 } }) },
+      { ts: iso(NOW - 90 * 60_000), pairs: "EURUSD", diagnostics: diag({ recorded: { MAP: 2 } }) },
+    ];
+    const p1h = buildEnginePulse(two as any[], NOW, 1);
+    expect(p1h.scans).toBe(1);
+    expect(p1h.evaluated).toBe(1);
+    expect(p1h.windowHours).toBe(1);
   });
 });

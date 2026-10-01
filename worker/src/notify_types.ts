@@ -46,6 +46,8 @@ export interface PerformanceRecapStats {
   periodBe: number;
   periodWinRate: number | null; // e.g. 75.0 (percentage), or null if 0 setups
   periodNetR: number; // sum of r_multiple in period
+  /** Best decided trade of the period (by R), or null when nothing closed. */
+  bestTrade: { pair: string; direction: string; timeframe: string; r: number } | null;
   allTimeSetups: number;
   allTimeTp: number;
   allTimeSl: number;

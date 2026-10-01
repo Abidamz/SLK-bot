@@ -15,7 +15,7 @@
  *  provider keys and channel credentials live as Worker secrets only. */
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair } from "./config";
 import { scanEntry } from "./engine";
-import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
+import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
@@ -82,6 +82,12 @@ export interface ScanOptions {
   fetchFn?: typeof fetch;
   force?: boolean; // scan regardless of candle boundaries (POST /scan-now)
   storeOverride?: Store; // tests inject the in-memory store here
+  /** Replay-hygiene horizon for slk_events writes (default 3 days). A replayed
+   *  transition whose candle closed older than this is NOT written to the
+   *  event tape — except when the setup has an active (OPEN) alert row.
+   *  Set 0 to disable the filter (A/B parity tests). Never affects the
+   *  alert freshness gate or alert insertion. */
+  eventReplayMaxAgeMs?: number;
 }
 
 export interface ScanSummary {
@@ -245,6 +251,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const diagnostics = emptyScanDiagnostics();
   const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
+  const eventReplayMaxAgeMs = opts.eventReplayMaxAgeMs ?? EVENT_REPLAY_MAX_AGE_MS;
 
   // which entry TFs closed a candle since the previous successful scan?
   // 1. Real-time intrabar outcome resolution: check all open trades every minute
@@ -541,6 +548,15 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         const isFirstScan = lastRawIsEmpty(lastBefore);
 
         for (const ev of events) {
+          // Replay hygiene: a stale replayed transition (candle closed >3 days
+          // ago) is not written to the event tape — a pure write reduction.
+          // EXCEPT when the setup has an active (OPEN) alert row, whose event
+          // trail must stay complete. Entry/alert behavior is untouched: this
+          // only gates the slk_events insert, and stale events would already
+          // fail the watch freshness gate (2×TF << 3 days).
+          if (!(await shouldRecordReplayEvent(store, ev, now, eventReplayMaxAgeMs))) {
+            continue;
+          }
           const inserted = await store.insertEvent(ev);
           if (!inserted) continue; // already-known transition (dedupe)
           eventCount++;
@@ -677,6 +693,29 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
  *  provide high-probability context;
  *  RETEST has its own full confirmed entry alert. */
 const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
+
+/** Replay hygiene: the stateless engine re-walks up to `setupWindow` candles
+ *  on every scan, so a cold start can surface transitions whose candles
+ *  closed days ago. Those stale rows add no value to the live event tape
+ *  (the tape is a live feed, not an archive) and are skipped at INSERT time —
+ *  a pure write reduction. The freshness GATES (alertEventFresh /
+ *  watchEventFresh) are untouched; alert insertion is untouched. */
+export const EVENT_REPLAY_MAX_AGE_MS = 3 * 86400_000;
+
+/** Pure staleness decision for a replayed transition. */
+export function isReplayEventStale(ev: { candleTime: number }, now: number, maxAgeMs: number): boolean {
+  return maxAgeMs > 0 && now - ev.candleTime > maxAgeMs;
+}
+
+/** Full decision: stale replay events are recorded only when the setup has an
+ *  active (OPEN) alert row — the evidence trail of a live trade stays
+ *  complete. Fresh (or filter-disabled) events are always recorded. */
+export async function shouldRecordReplayEvent(
+  store: Store, ev: { setupId: string; candleTime: number }, now: number, maxAgeMs: number,
+): Promise<boolean> {
+  if (!isReplayEventStale(ev, now, maxAgeMs)) return true;
+  return store.hasActiveAlert(ev.setupId);
+}
 
 /** Watch events are transient heads-ups, not durable alerts. Only notify when
  * the source candle closed recently; this prevents isolate cold-start replay
@@ -989,6 +1028,7 @@ export default {
       (url.pathname === "/api/waitlist" && request.method === "POST") ||
       url.pathname === "/api/monte-carlo" ||
       url.pathname === "/api/recent-events" ||
+      url.pathname === "/api/engine-pulse" ||
       url.pathname === "/api/whop-webhook";
     if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/") || (url.pathname.startsWith("/api/") && !isPublicApi)) && !authed(request, env)) {
       return json({ error: "unauthorized" }, 401);
@@ -1289,6 +1329,19 @@ export default {
       }));
       const cursor = items.length ? items[items.length - 1].id : Math.floor(sinceRaw);
       return json({ ok: true, cursor, items });
+    }
+
+    if (url.pathname === "/api/engine-pulse" && request.method === "GET") {
+      // Engine Pulse: read-only 24h aggregate of the engine's recorded
+      // activity from slk_scan_log.diagnostics_json. No engine writes, no
+      // secrets — one bounded D1 read plus small per-row JSON parses.
+      const nowMs = Date.now();
+      const windowHours = 24;
+      const sinceIso = new Date(nowMs - windowHours * 3600_000).toISOString();
+      // 24h of once-a-minute cron logs ≤ ~1440 rows; the cap is a safety net.
+      const rows = await makeStore(env.DB).scanLogsSince(sinceIso, 2000);
+      const pulse = buildEnginePulse(rows as unknown as EnginePulseRow[], nowMs, windowHours);
+      return json({ ok: true, ...pulse, asof: new Date(nowMs).toISOString() });
     }
 
     if (url.pathname === "/alerts" && request.method === "GET") {
@@ -1935,20 +1988,18 @@ export default {
       }
       const { sendTelegram, toBold } = await import("./notify");
       const boldV75 = toBold("Volatility 75 Index");
+      // Free-channel preview only: pair / timeframe / result — no levels.
       const teaser = [
         `🎯 TP1 HIT — 🌟【 ${boldV75} 】🌟 LONG (+3.12R)`,
         "",
         `📍 Pair      : 🌟【 ${boldV75} 】🌟 (V75)`,
         "• Timeframe : 30m",
         "• Direction : LONG 🟢",
-        "• Entry     : 450,320.00",
-        "• Target 1  : 451,550.00 (+3.12R) ✅",
-        "• Target 2  : Running risk-free toward external liquidity",
+        "• Result    : TP1 reached at +3.12R ✅",
         "",
-        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "VIP members received this live alert with exact entry, stop floor, and targets.",
         "",
-        "Stop missing the moves.",
-        "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
         "👉 Live Verified Journal: https://slk-radar.pages.dev",
       ].join("\n");
       try {
@@ -2161,20 +2212,18 @@ export default {
       }
       const { sendTelegram, toBold } = await import("./notify");
       const boldGold = toBold("XAUUSD");
+      // Free-channel preview only: pair / timeframe / result — no levels.
       const teaser = [
-        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 Short (+2.57R)`,
+        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 SHORT (+2.57R)`,
         "",
         `📍 Pair      : 🌟【 ${boldGold} 】🌟`,
         "• Timeframe : 30m",
         "• Direction : SHORT 🔴",
-        "• Entry     : 4,331.370",
-        "• Target 1  : 4,297.933 (+2.57R) ✅",
-        "• Target 2  : Running risk-free toward external liquidity",
+        "• Result    : TP1 reached at +2.57R ✅",
         "",
-        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "VIP members received this live alert with exact entry, stop floor, and targets.",
         "",
-        "Stop missing the moves.",
-        "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
         "👉 Live Verified Journal: https://slk-radar.pages.dev",
       ].join("\n");
       try {

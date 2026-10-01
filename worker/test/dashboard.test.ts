@@ -335,6 +335,7 @@ describe("dashboard replay evidence endpoint", () => {
         "/health",
         "/scan-log",
         "/api/recent-events",
+        "/api/engine-pulse",
         "/api/monte-carlo",
         `/dashboard/signals/${encodeURIComponent(setupId)}/chart?timeframe=30m`,
         "/terms.html",
