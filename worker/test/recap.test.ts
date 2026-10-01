@@ -117,6 +117,46 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(stats.allTimeNetR).toBe(1.80);
   });
 
+  it("strictly ignores SUPPRESSED alerts in recap stats even if closed with TP or SL", () => {
+    const rowsWithSuppressed: AlertRowish[] = [
+      ...sampleRows,
+      {
+        setup_id: "suppressed:EURUSD:30m:SHORT:V:supp1",
+        canonical_symbol: "EURUSD",
+        entry_timeframe: "30m",
+        direction: "SHORT",
+        entry: 1.0800,
+        status: "TP_HIT",
+        alert_status: "SUPPRESSED",
+        exit_time: "2026-09-30T15:00:00.000Z",
+        candle_close_time: "2026-09-30T13:00:00.000Z",
+        r_multiple: 10.0,
+      },
+      {
+        setup_id: "suppressed:V75:1h:LONG:A:supp2",
+        canonical_symbol: "V75",
+        entry_timeframe: "1h",
+        direction: "LONG",
+        entry: 45000,
+        status: "SL_HIT",
+        alert_status: "SUPPRESSED",
+        exit_time: "2026-09-30T15:00:00.000Z",
+        candle_close_time: "2026-09-30T13:00:00.000Z",
+        r_multiple: -5.0,
+      },
+    ];
+
+    const instStats = computeRecapStats(rowsWithSuppressed, "institutional", "daily", baseTime);
+    expect(instStats.periodSetups).toBe(2);
+    expect(instStats.periodNetR).toBe(5.75);
+    expect(instStats.allTimeSetups).toBe(3);
+
+    const synthStats = computeRecapStats(rowsWithSuppressed, "synthetics", "daily", baseTime);
+    expect(synthStats.periodSetups).toBe(1);
+    expect(synthStats.periodNetR).toBe(2.80);
+    expect(synthStats.allTimeSetups).toBe(2);
+  });
+
   it("formats high-conversion institutional recap card with proprietary SLK branding", () => {
     const stats = computeRecapStats(sampleRows, "institutional", "daily", baseTime);
     const card = formatPerformanceRecap(stats);
