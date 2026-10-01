@@ -187,7 +187,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span style="font-size:16px;">📡</span>
         <div>
           <span>Market Feeds</span>
-          <strong>Dukascopy (FX) · Deriv 24/7 (Synth)</strong>
+          <strong id="opFeeds">OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -1161,6 +1161,11 @@ function renderHealth(h) {
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${isPaper ? 'PAPER PIPELINE' : esc(String(h.mode || 'PAPER').toUpperCase())})\`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
+  if ($('opFeeds')) {
+    $('opFeeds').textContent = h.oandaConfigured
+      ? 'OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
+      : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
+  }
   if (h.pairs && h.pairs.length) {
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');

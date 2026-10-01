@@ -285,6 +285,11 @@ function renderHealth(h) {
     $('healthPill').textContent = h.ok ? 'Worker Online' : 'Degraded';
     $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
   }
+  if ($('opFeeds')) {
+    $('opFeeds').textContent = h.oandaConfigured
+      ? 'OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
+      : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
+  }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML = `
       <div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>
