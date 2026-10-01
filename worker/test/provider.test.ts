@@ -17,6 +17,16 @@ describe("provider routing", () => {
     expect(providerForPair("JAPAN225")).toBe("dukascopy");
   });
 
+  it("routes metals to OANDA when its token exists (broker-aligned gold), TD otherwise", () => {
+    expect(providerForPair("XAUUSD", {}, true)).toBe("oanda");
+    expect(providerForPair("XAGUSD", {}, true)).toBe("oanda");
+    expect(providerForPair("XAUUSD", {}, false)).toBe("twelvedata");
+    // forex majors stay on Twelve Data for provider diversification
+    expect(providerForPair("EURUSD", {}, true)).toBe("twelvedata");
+    // indices keep OANDA primary
+    expect(providerForPair("US30", {}, true)).toBe("oanda");
+  });
+
   it("routes Deriv synthetics to deriv provider", () => {
     expect(providerForPair("V75")).toBe("deriv");
     expect(providerForPair("R_75")).toBe("deriv");
@@ -42,7 +52,8 @@ describe("provider routing", () => {
     expect(providerForPair("US30", {}, true)).toBe("oanda");
     expect(providerForPair("JAPAN225", {}, true)).toBe("oanda");
     expect(providerForPair("US30", {}, false, false)).toBe("twelvedata"); // no automated routing to yahoo
-    expect(providerForPair("XAUUSD", {}, true)).toBe("twelvedata"); // metals are NOT indices
+    expect(providerForPair("XAUUSD", {}, true)).toBe("oanda"); // metals prefer OANDA when its token exists (broker-aligned gold)
+    expect(providerForPair("XAUUSD", {}, false)).toBe("twelvedata"); // no token → Twelve Data stays primary
     expect(providerForPair("XAUUSD", { XAUUSD: "oanda" }, true)).toBe("oanda"); // explicit single-source option
   });
 

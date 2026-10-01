@@ -287,7 +287,7 @@ function renderHealth(h) {
   }
   if ($('opFeeds')) {
     $('opFeeds').textContent = h.oandaConfigured
-      ? 'OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
+      ? 'OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
       : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
   }
   if ($('healthDetails')) {
@@ -1109,3 +1109,65 @@ function renderMcFan(d) {
 }
 
 if ($('mcRun')) $('mcRun').addEventListener('click', runMonteCarloUI);
+
+// ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
+const liveDesk = { cursor: 0, timer: null, chime: false, audio: null };
+function liveDeskBeep(freq) {
+  if (!liveDesk.chime) return;
+  try {
+    if (!liveDesk.audio) liveDesk.audio = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = liveDesk.audio, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq || 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.4);
+  } catch (e) { /* audio unavailable */ }
+}
+function liveDeskRow(ev) {
+  const li = document.createElement('li');
+  li.className = 'live-row live-' + String(ev.state).toLowerCase();
+  const t = String(ev.createdUtc || ev.candleTime || '').slice(11, 16);
+  li.innerHTML = '<span class="live-time">' + esc(t) + ' UTC</span>'
+    + '<span class="live-state">' + esc(ev.state) + '</span>'
+    + '<span class="live-pair">' + esc(ev.pair) + '</span>'
+    + '<span class="live-reason">' + esc(ev.reason || '') + '</span>';
+  return li;
+}
+async function liveDeskPoll(initial) {
+  try {
+    const d = await api('/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
+    const items = d.items || [];
+    if (!items.length) return;
+    liveDesk.cursor = d.cursor;
+    const tape = $('liveTape');
+    if (!tape) return;
+    if (initial) {
+      tape.innerHTML = '';
+      items.slice().reverse().slice(0, 12).forEach(ev => tape.appendChild(liveDeskRow(ev)));
+      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded yet — the tape fills as scans run.</li>';
+      return;
+    }
+    if (tape.querySelector('.live-empty')) tape.innerHTML = '';
+    items.slice().reverse().forEach(ev => tape.insertBefore(liveDeskRow(ev), tape.firstChild));
+    while (tape.children.length > 30) tape.removeChild(tape.lastChild);
+    liveDeskBeep(items.some(ev => ev.state === 'RETEST' || ev.state === 'SHIFT') ? 1046 : 784);
+    const desk = $('liveDesk');
+    if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
+  } catch (e) { /* silent retry on next tick */ }
+}
+function liveDeskStart() {
+  if (liveDesk.timer || !$('liveTape')) return;
+  liveDeskPoll(true);
+  liveDesk.timer = setInterval(() => { if (!document.hidden) liveDeskPoll(false); }, 15000);
+}
+if ($('liveChimeToggle')) $('liveChimeToggle').addEventListener('click', () => {
+  liveDesk.chime = !liveDesk.chime;
+  $('liveChimeToggle').textContent = liveDesk.chime ? '🔔 Chime on' : '🔕 Chime off';
+  if (liveDesk.chime) liveDeskBeep(880); // user gesture unlocks browser audio
+});
+liveDeskStart();

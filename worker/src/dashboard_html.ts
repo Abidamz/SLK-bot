@@ -129,6 +129,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
 .checklist-item small{color:var(--muted);font-size:11px;display:block;margin-top:2px}
 
 .replay-bar{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.replay-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.replay-step{margin-left:auto;color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace}.replay-stages{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.replay-stages span{padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace}.replay-stages span.done{border-color:#153126;background:#153126;color:#8cf0c6}.replay-stages span.now{border-color:#78531a;background:#1c150b;color:#f6c66d}.replay-narration{margin:10px 0 0;color:#c7d0dd;font-size:13px}.risk-calc{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.risk-calc h3{margin:0 0 10px;font-size:14px}.risk-inputs{display:flex;gap:12px;flex-wrap:wrap}.risk-inputs label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}.risk-inputs input{width:150px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:#0b111a;color:#e8edf4;font-family:'JetBrains Mono',monospace}.risk-outputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}.risk-outputs div{padding:8px 10px;border-radius:10px;background:#0b111a;border:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--muted)}.risk-outputs strong{display:block;color:#e8edf4;font-size:14px;font-family:'JetBrains Mono',monospace;margin-top:2px}
+.live-tape{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}.live-row{display:grid;grid-template-columns:86px 74px 92px 1fr;gap:10px;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:#0b111a;font-size:12px;color:var(--muted)}.live-time{font-family:'JetBrains Mono',monospace;color:#8793a7}.live-state{font-family:'JetBrains Mono',monospace;font-weight:700}.live-retest .live-state{color:#8cf0c6}.live-shift .live-state{color:#b093ff}.live-sweep .live-state{color:#38bdf8}.live-touch .live-state{color:#f6c66d}.live-map .live-state{color:#8793a7}.live-pair{color:#e8edf4;font-weight:600}.live-reason{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live-empty{color:#8793a7;font-size:12px;padding:8px 4px;list-style:none}.live-flash{animation:liveflash .9s ease}@keyframes liveflash{0%{box-shadow:0 0 0 0 rgba(140,240,198,.45)}100%{box-shadow:0 0 0 14px rgba(140,240,198,0)}}
 </style>
 </head>
 <body>
@@ -187,7 +188,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span style="font-size:16px;">📡</span>
         <div>
           <span>Market Feeds</span>
-          <strong id="opFeeds">OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
+          <strong id="opFeeds">OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -797,6 +798,18 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </article>
     </section>
 
+    <section class="panel live-desk" id="liveDesk">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">LIVE DESK MODE</p>
+          <h2>📡 Real-Time Event Tape</h2>
+          <p class="muted-copy">Cursor-polled every 15s — structure events (TOUCH / SWEEP / SHIFT / RETEST) appear the moment a scan records them. Zero spam, ~1ms per poll.</p>
+        </div>
+        <button id="liveChimeToggle" class="secondary">🔕 Chime off</button>
+      </div>
+      <ul id="liveTape" class="live-tape"><li class="live-empty">Loading tape…</li></ul>
+    </section>
+
     <section class="panel" id="quantLab">
       <div class="panel-head">
         <div>
@@ -1163,7 +1176,7 @@ function renderHealth(h) {
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
   if ($('opFeeds')) {
     $('opFeeds').textContent = h.oandaConfigured
-      ? 'OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
+      ? 'OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
       : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
   }
   if (h.pairs && h.pairs.length) {
@@ -1998,6 +2011,68 @@ function renderMcFan(d) {
 }
 
 if ($('mcRun')) $('mcRun').addEventListener('click', runMonteCarloUI);
+
+// ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
+const liveDesk = { cursor: 0, timer: null, chime: false, audio: null };
+function liveDeskBeep(freq) {
+  if (!liveDesk.chime) return;
+  try {
+    if (!liveDesk.audio) liveDesk.audio = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = liveDesk.audio, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq || 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.4);
+  } catch (e) { /* audio unavailable */ }
+}
+function liveDeskRow(ev) {
+  const li = document.createElement('li');
+  li.className = 'live-row live-' + String(ev.state).toLowerCase();
+  const t = String(ev.createdUtc || ev.candleTime || '').slice(11, 16);
+  li.innerHTML = '<span class="live-time">' + esc(t) + ' UTC</span>'
+    + '<span class="live-state">' + esc(ev.state) + '</span>'
+    + '<span class="live-pair">' + esc(ev.pair) + '</span>'
+    + '<span class="live-reason">' + esc(ev.reason || '') + '</span>';
+  return li;
+}
+async function liveDeskPoll(initial) {
+  try {
+    const d = await api('/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
+    const items = d.items || [];
+    if (!items.length) return;
+    liveDesk.cursor = d.cursor;
+    const tape = $('liveTape');
+    if (!tape) return;
+    if (initial) {
+      tape.innerHTML = '';
+      items.slice().reverse().slice(0, 12).forEach(ev => tape.appendChild(liveDeskRow(ev)));
+      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded yet — the tape fills as scans run.</li>';
+      return;
+    }
+    if (tape.querySelector('.live-empty')) tape.innerHTML = '';
+    items.slice().reverse().forEach(ev => tape.insertBefore(liveDeskRow(ev), tape.firstChild));
+    while (tape.children.length > 30) tape.removeChild(tape.lastChild);
+    liveDeskBeep(items.some(ev => ev.state === 'RETEST' || ev.state === 'SHIFT') ? 1046 : 784);
+    const desk = $('liveDesk');
+    if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
+  } catch (e) { /* silent retry on next tick */ }
+}
+function liveDeskStart() {
+  if (liveDesk.timer || !$('liveTape')) return;
+  liveDeskPoll(true);
+  liveDesk.timer = setInterval(() => { if (!document.hidden) liveDeskPoll(false); }, 15000);
+}
+if ($('liveChimeToggle')) $('liveChimeToggle').addEventListener('click', () => {
+  liveDesk.chime = !liveDesk.chime;
+  $('liveChimeToggle').textContent = liveDesk.chime ? '🔔 Chime on' : '🔕 Chime off';
+  if (liveDesk.chime) liveDeskBeep(880); // user gesture unlocks browser audio
+});
+liveDeskStart();
 </script>
 </body>
 </html>

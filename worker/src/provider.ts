@@ -893,6 +893,8 @@ export async function testDerivEndpoints(symbol = "R_75", requestedTarget?: stri
   return results;
 }
 
+export const METAL_PAIRS = new Set(["XAUUSD", "XAGUSD"]);
+
 export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
@@ -916,6 +918,14 @@ export function providerForPair(
   if (isIndexCfd) {
     if (oandaTokenPresent) return "oanda";
     return dukascopyEnabled ? "dukascopy" : "twelvedata";
+  }
+  // Metals (XAUUSD/XAGUSD): OANDA primary when its token exists — broker-aligned
+  // gold pricing (matches retail/prop MT5 within 1-2 points), 120 req/min with
+  // 99.99% uptime, and it shields the Twelve Data daily-credit pool. Without a
+  // token Twelve Data stays primary; both chains keep Dukascopy failover.
+  if (METAL_PAIRS.has(p)) {
+    if (oandaTokenPresent) return "oanda";
+    return "twelvedata";
   }
   return "twelvedata";
 }

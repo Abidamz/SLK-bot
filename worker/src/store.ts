@@ -53,6 +53,7 @@ export interface Store {
   recentAlerts(limit: number): Promise<AlertRow[]>;
   queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
+  eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]>;
   recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
@@ -305,6 +306,14 @@ export class D1Store implements Store {
     return res.results;
   }
 
+  async eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT * FROM slk_events WHERE id > ? ORDER BY id ASC LIMIT ?")
+      .bind(cursorId, limit)
+      .all();
+    return res.results;
+  }
+
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
     const res = await this.db
       .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY ts DESC, id DESC LIMIT ?")
@@ -393,6 +402,7 @@ export class MemStore implements Store {
   kv = new Map<string, string>();
   scanLog: ScanLogRow[] = [];
   private eventKeys = new Set<string>();
+  private eventSeq = 0;
   preferences: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
   preferenceAudit: Record<string, unknown>[] = [];
   waitlist = new Map<string, WaitlistEntry>();
@@ -424,8 +434,13 @@ export class MemStore implements Store {
     const key = `${ev.setupId}|${ev.state}|${iso(ev.candleTime)}`;
     if (this.eventKeys.has(key)) return false;
     this.eventKeys.add(key);
-    this.events.push({ setup_id: ev.setupId, pair: ev.pair, state: ev.state, candle_time: iso(ev.candleTime), reason: ev.reason, price: ev.price });
+    this.eventSeq += 1;
+    this.events.push({ id: this.eventSeq, setup_id: ev.setupId, pair: ev.pair, state: ev.state, candle_time: iso(ev.candleTime), reason: ev.reason, price: ev.price, created_utc: new Date().toISOString() });
     return true;
+  }
+
+  async eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]> {
+    return this.events.filter((e) => Number(e.id ?? 0) > cursorId).slice(0, limit);
   }
 
   async openAlerts(pair?: string, tf?: string): Promise<AlertRow[]> {

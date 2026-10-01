@@ -62,7 +62,7 @@
         <span style="font-size:16px;">📡</span>
         <div>
           <span>Market Feeds</span>
-          <strong id="opFeeds">OANDA v3 (Indices) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
+          <strong id="opFeeds">OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -667,6 +667,18 @@
           </button>
         </div>
       </article>
+    </section>
+
+    <section class="panel live-desk" id="liveDesk">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">LIVE DESK MODE</p>
+          <h2>📡 Real-Time Event Tape</h2>
+          <p class="muted-copy">Cursor-polled every 15s — structure events (TOUCH / SWEEP / SHIFT / RETEST) appear the moment a scan records them. Zero spam, ~1ms per poll.</p>
+        </div>
+        <button id="liveChimeToggle" class="secondary">🔕 Chime off</button>
+      </div>
+      <ul id="liveTape" class="live-tape"><li class="live-empty">Loading tape…</li></ul>
     </section>
 
     <section class="panel" id="quantLab">

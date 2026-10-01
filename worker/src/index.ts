@@ -1245,6 +1245,28 @@ export default {
       return json({ ok: true, ...result });
     }
 
+    if (url.pathname === "/api/recent-events" && request.method === "GET") {
+      // Live Desk Mode: cursor-based event tape (smart-polling SSE alternative).
+      // Monotonic slk_events.id cursor → zero duplicate/dropped events, ~1ms CPU.
+      const sinceRaw = Number(url.searchParams.get("since") ?? 0);
+      const limitRaw = Number(url.searchParams.get("limit") ?? 50);
+      if (!Number.isFinite(sinceRaw) || sinceRaw < 0) return json({ error: "since must be a non-negative integer cursor" }, 400);
+      if (!Number.isFinite(limitRaw) || limitRaw < 1 || limitRaw > 200) return json({ error: "limit must be between 1 and 200" }, 400);
+      const rows = await makeStore(env.DB).eventsSince(Math.floor(sinceRaw), Math.floor(limitRaw));
+      const items = rows.map((r) => ({
+        id: Number(r.id),
+        setupId: String(r.setup_id),
+        pair: String(r.pair ?? ""),
+        state: String(r.state),
+        reason: String(r.reason ?? ""),
+        price: r.price == null ? null : Number(r.price),
+        candleTime: String(r.candle_time ?? ""),
+        createdUtc: String(r.created_utc ?? ""),
+      }));
+      const cursor = items.length ? items[items.length - 1].id : Math.floor(sinceRaw);
+      return json({ ok: true, cursor, items });
+    }
+
     if (url.pathname === "/alerts" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;

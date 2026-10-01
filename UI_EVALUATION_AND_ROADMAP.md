@@ -145,7 +145,7 @@ Directly embedded into the dashboard:
   - Output: Exact lot size / contract size, dollar risk, and dollar target payout based on the signal's precise entry, stop, and TP levels.
 - **Member Utility:** Eliminates manual calculation errors for VIP subscribers during volatile entry executions.
 
-### Priority 3: Server-Sent Events (SSE) Live Feed Stream (Mid-Term)
+### Priority 3: Server-Sent Events (SSE) Live Feed Stream (Mid-Term) ✅ SHIPPED AS LIVE DESK MODE (smart polling; true SSE deferred to Workers Paid)
 - **Concept:** Replace the current client-side polling interval with a lightweight Cloudflare Worker Server-Sent Events stream (`GET /api/stream`).
 - **Functionality:** Real-time push notifications of state transitions (`TOUCH`, `SWEEP`, `CONFIRMED`) directly to the browser UI with an audio chime and visual ping.
 - **Technical Advantage:** Reduces edge CPU requests while delivering sub-second updates to active desk operators.
@@ -166,7 +166,7 @@ Directly embedded into the dashboard:
 
 | Check | Tool / Standard | Result | Status |
 | :--- | :--- | :--- | :---: |
-| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 182 passed across 14 test suites | PASS |
+| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 186 passed across 15 test suites | PASS |
 | **TypeScript Typecheck** | `tsc --noEmit` | 0 errors | PASS |
 | **Client Script Syntax** | `node --check dashboard/app.js` | Valid ES6+ syntax | PASS |
 | **Asset Consistency** | HTML/CSS parity (`dashboard/` vs `dashboard_html.ts`) | Synchronized | PASS |
