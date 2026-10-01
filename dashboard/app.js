@@ -544,7 +544,8 @@ function alertParams() {
 async function loadAlerts() {
   try {
     const result = await api(`/alerts?${alertParams()}`);
-    state.alerts = Array.isArray(result) ? result : (result.items || []);
+    const rawAlerts = Array.isArray(result) ? result : (result.items || []);
+    state.alerts = rawAlerts.filter(a => a.alertStatus !== 'SUPPRESSED');
     state.alertTotal = result.total ?? state.alerts.length;
     if ($('alertTotal')) $('alertTotal').textContent = `${state.alertTotal} setups recorded`;
     if ($('alertPage')) $('alertPage').textContent = `Page ${state.alertPage}`;
@@ -598,7 +599,7 @@ function renderAlerts() {
       statusLabel = 'BREAKEVEN 🛡️ (0.00R)';
       statusClass = 'state';
     } else if (a.status === 'OPEN') {
-      statusLabel = a.alertStatus === 'SUPPRESSED' ? 'OPEN · AUDIT' : 'ACTIVE IN MARKET';
+      statusLabel = 'ACTIVE IN MARKET';
       statusClass = 'state';
     } else if (a.status === 'EXPIRED') {
       statusLabel = 'EXPIRED ⌛';
@@ -905,7 +906,7 @@ async function fetchLedgerRows() {
   const rows = [];
   for (let page = 1; page <= 6; page++) {
     const res = await api(`/alerts?pageSize=200&page=${page}&sort=candleCloseTime&order=desc`);
-    const items = res.items || [];
+    const items = (res.items || []).filter(r => r.alertStatus !== 'SUPPRESSED');
     rows.push(...items);
     if (items.length < 200) break;
   }
