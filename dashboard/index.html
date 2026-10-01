@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
   <header class="topbar">
@@ -686,20 +686,52 @@
         <div>
           <p class="eyebrow">QUANT LAB</p>
           <h2>🎲 Monte Carlo Drawdown Stress Test</h2>
-          <p class="muted-copy">Bootstraps the verified closed-trade R distribution into thousands of simulated futures. Research stress-test — not a performance promise.</p>
+          <p class="muted-copy">Explore how different possible outcomes could affect an account, using verified closed-trade history. This is a research stress test, not a forecast or performance promise.</p>
         </div>
       </div>
-      <div class="risk-inputs">
-        <label>Iterations<input id="mcIterations" type="number" min="100" max="10000" step="100" value="2000"></label>
-        <label>Trades per path<input id="mcHorizon" type="number" min="10" max="500" step="10" value="100"></label>
-        <label>Risk per trade (%)<input id="mcRisk" type="number" min="0.1" max="5" step="0.1" value="1"></label>
-        <label>Seed<input id="mcSeed" type="number" min="1" step="1" value="42"></label>
-        <button id="mcRun" class="secondary">▶ Run simulation</button>
+      <details class="mc-explainer">
+        <summary>How does this stress test work?</summary>
+        <div class="mc-explainer-content">
+          <p>The test repeatedly picks a result from the verified, closed trades and uses it as a stand-in for a future trade. A past result can be picked more than once, creating many different possible paths.</p>
+          <ul>
+            <li>Each path starts at the same 100% balance. The risk percentage is applied to the current simulated balance on every trade, so gains and losses compound.</li>
+            <li>Use the same <strong>Shuffle code</strong>, settings, and trade history to reproduce the same run.</li>
+            <li>On the chart, 1.00× means no change from the starting balance; 1.10× means 10% higher and 0.90× means 10% lower. The shaded band covers the middle 90% of simulated paths.</li>
+          </ul>
+          <p class="mc-explainer-caveat">This assumes future results resemble the historical sample. Real trading costs, slippage, and market changes are not modeled, and outcomes can be better or worse.</p>
+        </div>
+      </details>
+      <div class="risk-inputs mc-controls">
+        <label class="mc-input">
+          <span>Simulations</span>
+          <input id="mcIterations" type="number" min="100" max="10000" step="100" value="2000">
+          <small>Number of possible paths to compare.</small>
+        </label>
+        <label class="mc-input">
+          <span>Future trades ahead</span>
+          <input id="mcHorizon" type="number" min="10" max="500" step="10" value="100">
+          <small>How many trades each path contains.</small>
+        </label>
+        <label class="mc-input">
+          <span>Risk per trade (%)</span>
+          <input id="mcRisk" type="number" min="0.1" max="5" step="0.1" value="1">
+          <small>Percent of the current balance at risk per trade.</small>
+        </label>
+        <label class="mc-input">
+          <span>Shuffle code</span>
+          <input id="mcSeed" type="number" min="1" step="1" value="42">
+          <small>Keep the same code to repeat a run.</small>
+        </label>
+        <button id="mcRun" class="secondary">▶ Run stress test</button>
       </div>
-      <div id="mcStatus" class="muted-copy"></div>
-      <div id="mcCards" class="risk-outputs"></div>
-      <div class="chart-wrap"><svg id="mcFan" viewBox="0 0 1000 380" role="img" aria-label="Monte Carlo equity fan"></svg></div>
-      <p class="chart-disclaimer">Simulated from the historical R distribution only. Past results never guarantee future performance.</p>
+      <div id="mcStatus" class="muted-copy mc-status" role="status" aria-live="polite" aria-atomic="true">Set your assumptions, then run the stress test.</div>
+      <div id="mcCards" class="risk-outputs mc-cards" aria-live="polite"></div>
+      <div class="chart-wrap"><svg id="mcFan" viewBox="0 0 1000 380" role="img" aria-label="Simulated account balance range from the start through future trades"></svg></div>
+      <div class="mc-chart-legend" aria-label="Chart legend">
+        <span><i class="mc-legend-typical"></i>Typical path (middle result)</span>
+        <span><i class="mc-legend-range"></i>Middle 90% of simulated paths</span>
+      </div>
+      <p class="chart-disclaimer">Historical outcomes do not guarantee future performance. Real costs, execution differences, and changing markets can make results differ.</p>
     </section>
 
     <div id="chartModal" class="modal" hidden>
