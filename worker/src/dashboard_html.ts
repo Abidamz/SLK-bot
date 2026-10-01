@@ -165,6 +165,14 @@ body:not(.operator-mode) .operator-only{display:none!important}
 @media(max-width:600px){.mc-input{flex-basis:calc(50% - 8px)}.mc-controls button{width:100%}.mc-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.mc-input{flex-basis:100%}.mc-cards{grid-template-columns:1fr}}
 
+/* Engine Pulse (24h read-only scan-diagnostics aggregate) */
+.engine-pulse .engine-pulse-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.engine-pulse-stat{border:1px solid var(--line);background:#0e151f;border-radius:13px;padding:13px 14px}
+.engine-pulse-stat span{display:block;color:var(--muted);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.engine-pulse-stat strong{display:block;margin-top:6px;font-size:24px;letter-spacing:-.04em;color:#f1f5f9;font-family:'JetBrains Mono',monospace}
+.engine-pulse-stat:nth-child(6) strong{color:var(--accent)}
+@media(max-width:800px){.engine-pulse .engine-pulse-grid{grid-template-columns:repeat(2,1fr)}}
+
 </style>
 </head>
 <body>
@@ -246,7 +254,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div>
         <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
         <h1>Algorithmic Confirmation Engine & Research Ledger</h1>
-        <p class="lede">Deterministic point-in-time paper outcomes from key-level liquidity sweeps, market structure shifts (BOS), and confirmation entries across 20 institutional & continuous synthetic markets.</p>
+          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 20 institutional and 24/7 synthetic markets.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -391,7 +399,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <div class="panel-head">
             <div>
               <p class="eyebrow">SLK CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
-              <h2>7-Stage Execution Lifecycle & Invalidation Architecture</h2>
+              <h2>7-Stage Execution Lifecycle</h2>
             </div>
             <span class="pill amber">Deterministic rules</span>
           </div>
@@ -505,6 +513,30 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </dl>
         </article>
       </div>
+
+      <!-- Engine Pulse: read-only 24h aggregate of recorded scan diagnostics -->
+      <article class="panel engine-pulse" id="enginePulse">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">LIVE ENGINE ACTIVITY · LAST 24H</p>
+            <h2>Engine Pulse</h2>
+          </div>
+          <span class="pill green">Read-only</span>
+        </div>
+        <p class="muted-copy" id="enginePulseSummary">Loading 24-hour engine activity…</p>
+        <div class="engine-pulse-grid" id="enginePulseGrid">
+          <div class="engine-pulse-stat"><span>Setups evaluated</span><strong id="epEvaluated">—</strong></div>
+          <div class="engine-pulse-stat"><span>Reached TOUCH</span><strong id="epTouch">—</strong></div>
+          <div class="engine-pulse-stat"><span>Reached SWEEP</span><strong id="epSweep">—</strong></div>
+          <div class="engine-pulse-stat"><span>Reached SHIFT</span><strong id="epShift">—</strong></div>
+          <div class="engine-pulse-stat"><span>Reached RETEST</span><strong id="epRetest">—</strong></div>
+          <div class="engine-pulse-stat"><span>Confirmed entries</span><strong id="epConfirmed">—</strong></div>
+          <div class="engine-pulse-stat"><span>Scans run</span><strong id="epScans">—</strong></div>
+          <div class="engine-pulse-stat"><span>Pairs covered</span><strong id="epPairs">—</strong></div>
+        </div>
+        <p class="muted-copy" id="enginePulseRejections" style="margin:10px 0 0;"></p>
+        <p class="chart-disclaimer">Read-only aggregate of recorded scan diagnostics — no orders, no predictions. Paper simulation — research only.</p>
+      </article>
 
       <!-- Institutional Cohort Waitlist Card -->
       <article class="panel waitlist-card marketing-only" id="waitlistCard">
@@ -1216,18 +1248,59 @@ async function api(path, options = {}) {
 async function loadAll() {
   setStatus('Syncing paper ledger…', 'muted');
   try {
-    const [health, _stats, prefs] = await Promise.all([
+    const [health, _stats, prefs, pulse] = await Promise.all([
       api('/health').catch(() => null),
       loadStats(),
-      api('/dashboard/preferences/notifications').catch(() => null)
+      api('/dashboard/preferences/notifications').catch(() => null),
+      api('/api/engine-pulse').catch(() => null)
     ]);
     if (health) renderHealth(health);
     if (prefs) renderPreferences(prefs);
+    renderEnginePulse(pulse);
     await loadAlerts();
     setStatus('Worker Online · Paper Pipeline', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
+}
+
+// ── Engine Pulse: read-only 24h aggregate of recorded scan diagnostics ──
+function renderEnginePulse(p) {
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const put = (id, v) => { const el = $(id); if (el) el.textContent = (v == null ? '—' : String(v)); };
+  if (!p || p.ok === false) {
+    if ($('enginePulseSummary')) $('enginePulseSummary').textContent = 'Engine pulse unavailable right now — it rebuilds automatically from recorded scan diagnostics.';
+    return;
+  }
+  const evaluated = num(p.evaluated);
+  const touch = num(p.chains && p.chains.TOUCH);
+  const retest = num(p.chains && p.chains.RETEST);
+  const confirmed = num(p.confirmed);
+  const summary = $('enginePulseSummary');
+  if (summary) {
+    const head = \`\${evaluated} setup\${evaluated === 1 ? '' : 's'} evaluated · \${touch} touched · \${retest} reached RETEST · \${confirmed} confirmed\`;
+    summary.textContent = confirmed > 0
+      ? \`\${head} — every entry cleared the strict 2.5R+ floor.\`
+      : \`\${head} — selectivity working: only setups that clear every floor become entries.\`;
+  }
+  put('epEvaluated', evaluated);
+  put('epTouch', touch);
+  put('epSweep', num(p.chains && p.chains.SWEEP));
+  put('epShift', num(p.chains && p.chains.SHIFT));
+  put('epRetest', retest);
+  put('epConfirmed', confirmed);
+  put('epScans', num(p.scans));
+  put('epPairs', num(p.pairsCovered));
+  const rej = p.rejections || {};
+  const bits = [];
+  if (num(rej.belowMinRiskAtr)) bits.push(\`\${num(rej.belowMinRiskAtr)} below the 0.8×ATR risk floor\`);
+  if (num(rej.aboveMaxStopAtr)) bits.push(\`\${num(rej.aboveMaxStopAtr)} above the stop ceiling\`);
+  if (num(rej.nonPositiveRisk)) bits.push(\`\${num(rej.nonPositiveRisk)} non-positive risk\`);
+  if (num(rej.targetFloor)) bits.push(\`\${num(rej.targetFloor)} under the 2.5R target floor\`);
+  const rejEl = $('enginePulseRejections');
+  if (rejEl) rejEl.textContent = bits.length
+    ? \`Rejected on discipline: \${bits.join(' · ')}.\`
+    : 'No rejections recorded in this window — every candidate met the floors.';
 }
 
 async function loadStats() {

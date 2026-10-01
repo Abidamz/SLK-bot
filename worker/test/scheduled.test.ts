@@ -68,7 +68,8 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Direction   : SHORT");
     expect(msg).toContain("RETEST → CONFIRMED");
     expect(msg).toContain("Research signal only. No order was placed.");
-    expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
+    // New identity format: provider-free, tick-rounded price (FX tick 0.005)
+    expect(msg).toContain("Setup ID    : EURUSD:30m:SHORT:V:104.200000:");
 
     const alert = [...store.alerts.values()][0];
     // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so TP1 is bounded
@@ -109,8 +110,8 @@ describe("scheduled scan cycle", () => {
     expect(yahoo.every((u) => u.includes("%5EDJI"))).toBe(true);
     expect((calls.dataCalls ?? []).some((u) => u.includes("api.twelvedata.com"))).toBe(true);
     expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
-    // alert carries the winning provider in its setup id
-    expect(calls.telegram[0]).toContain("twelvedata:EURUSD");
+    // setup id is provider-free (provider stays a stored column, not identity)
+    expect(calls.telegram[0]).toContain("EURUSD:30m:SHORT:V:104.200000:");
   });
 
   it("default index CFD route is the Dukascopy public feed (no token needed)", async () => {

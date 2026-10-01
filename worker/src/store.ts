@@ -42,6 +42,12 @@ export interface AlertRow extends Record<string, unknown> {
 
 export interface Store {
   insertAlert(a: Alert, provider: string): Promise<boolean>; // false = duplicate
+  /** True if any alert row matches (pair, timeframe, direction, level kind,
+   *  origin time) — regardless of the setup-ID format (legacy
+   *  provider-prefixed or current). Used as a migration guard so an
+   *  old-format row can never be re-alerted under a new-format ID. */
+  hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean>;
+  hasActiveAlert(setupId: string): Promise<boolean>;
   updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void>;
   insertEvent(ev: EngineEvent): Promise<boolean>;            // false = duplicate
   openAlerts(pair?: string, tf?: string): Promise<AlertRow[]>;
@@ -55,6 +61,9 @@ export interface Store {
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
   eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]>;
   recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
+  /** Scan-log rows within [sinceIso, +∞) for the Engine Pulse aggregate,
+   *  including diagnostics_json (D1) / diagnostics (Mem). Newest first. */
+  scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
@@ -124,12 +133,30 @@ function iso(ms: number): string {
   return new Date(ms).toISOString();
 }
 
+/** Trailing ISO origin time embedded in a setup ID. Both the legacy
+ *  provider-prefixed format (`provider:pair:tf:dir:kind:price:ISO`) and the
+ *  current format (`pair:tf:dir:kind:price:ISO`) end with the origin level's
+ *  ISO timestamp; unrecognized IDs yield null (guard stays permissive). */
+const ORIGIN_TIME_RE = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
+export function originTimeFromSetupId(setupId: string): string | null {
+  const m = ORIGIN_TIME_RE.exec(setupId);
+  return m ? m[1] : null;
+}
+
 // ------------------------------------------------------------------ D1 impl
 
 export class D1Store implements Store {
   constructor(private db: D1Like) {}
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
+    // Migration guard: the same logical setup — (pair, timeframe, direction,
+    // level kind, origin time) — must never produce a second alert row, even
+    // when the stored row carries a legacy provider-prefixed setup ID and the
+    // new scan mints a current-format ID.
+    if (a.originTime != null && Number.isFinite(a.originTime)
+        && await this.hasIdentityMatch(a.pair, a.entryTf, a.direction, a.keyLevelType, a.originTime)) {
+      return false;
+    }
     const res = await this.db
       .prepare(
         `INSERT OR IGNORE INTO slk_alerts (
@@ -161,6 +188,28 @@ export class D1Store implements Store {
       )
       .run();
     return res.meta.changes > 0;
+  }
+
+  async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
+    const targetIso = new Date(originTimeMs).toISOString();
+    const res = await this.db
+      .prepare("SELECT setup_id FROM slk_alerts WHERE canonical_symbol=? AND entry_timeframe=? AND direction=? AND key_level_type=?")
+      .bind(pair, entryTf, direction, keyLevelType)
+      .all();
+    for (const row of res.results) {
+      if (originTimeFromSetupId(String(row.setup_id)) === targetIso) return true;
+    }
+    return false;
+  }
+
+  /** True when the setup has a live (OPEN) alert row — its event trail stays
+   *  fully recorded even for stale replays (see EVENT_REPLAY_MAX_AGE_MS). */
+  async hasActiveAlert(setupId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare("SELECT 1 AS x FROM slk_alerts WHERE setup_id=? AND status='OPEN'")
+      .bind(setupId)
+      .first();
+    return row !== null;
   }
 
   async updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void> {
@@ -332,6 +381,14 @@ export class D1Store implements Store {
     return res.results;
   }
 
+  async scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note, diagnostics_json FROM slk_scan_log WHERE ts >= ? ORDER BY ts DESC, id DESC LIMIT ?")
+      .bind(sinceIso, limit)
+      .all();
+    return res.results;
+  }
+
   async expireOpenAlerts(): Promise<number> {
     const res = await this.db
       .prepare("UPDATE slk_alerts SET status='EXPIRED', r_multiple=0, exit_time=? WHERE status='OPEN'")
@@ -446,6 +503,13 @@ export class MemStore implements Store {
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
     if (this.alerts.has(a.setupId)) return false;
+    // Migration guard (parity with D1Store): an existing row for the same
+    // (pair, timeframe, direction, level kind, origin time) — in ANY setup-ID
+    // format — blocks the insert as a duplicate.
+    if (a.originTime != null && Number.isFinite(a.originTime)
+        && await this.hasIdentityMatch(a.pair, a.entryTf, a.direction, a.keyLevelType, a.originTime)) {
+      return false;
+    }
     this.alerts.set(a.setupId, {
       setup_id: a.setupId, provider, canonical_symbol: a.pair,
       map_timeframe: a.mapTf, entry_timeframe: a.entryTf,
@@ -457,6 +521,21 @@ export class MemStore implements Store {
       alert_status: a.alertStatus, status: "OPEN",
     });
     return true;
+  }
+
+  async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
+    const targetIso = new Date(originTimeMs).toISOString();
+    for (const row of this.alerts.values()) {
+      if (row.canonical_symbol !== pair || row.entry_timeframe !== entryTf
+        || row.direction !== direction || row.key_level_type !== keyLevelType) continue;
+      if (originTimeFromSetupId(row.setup_id) === targetIso) return true;
+    }
+    return false;
+  }
+
+  async hasActiveAlert(setupId: string): Promise<boolean> {
+    const row = this.alerts.get(setupId);
+    return row !== undefined && row.status === "OPEN";
   }
 
   async updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void> {
@@ -555,6 +634,13 @@ export class MemStore implements Store {
 
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
     return this.scanLog.slice(-limit).reverse() as unknown as Record<string, unknown>[];
+  }
+
+  async scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]> {
+    // In-memory rows carry the `diagnostics` object directly (D1 rows carry
+    // `diagnostics_json`); the pulse aggregator accepts either shape.
+    const rows = this.scanLog.filter((r) => r.ts >= sinceIso).slice(-limit);
+    return rows.slice().reverse() as unknown as Record<string, unknown>[];
   }
 
   async expireOpenAlerts(): Promise<number> {

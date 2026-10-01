@@ -248,18 +248,59 @@ async function api(path, options = {}) {
 async function loadAll() {
   setStatus('Syncing paper ledger…', 'muted');
   try {
-    const [health, _stats, prefs] = await Promise.all([
+    const [health, _stats, prefs, pulse] = await Promise.all([
       api('/health').catch(() => null),
       loadStats(),
-      api('/dashboard/preferences/notifications').catch(() => null)
+      api('/dashboard/preferences/notifications').catch(() => null),
+      api('/api/engine-pulse').catch(() => null)
     ]);
     if (health) renderHealth(health);
     if (prefs) renderPreferences(prefs);
+    renderEnginePulse(pulse);
     await loadAlerts();
     setStatus('Worker Online · Pipeline Healthy', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
+}
+
+// ── Engine Pulse: read-only 24h aggregate of recorded scan diagnostics ──
+function renderEnginePulse(p) {
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const put = (id, v) => { const el = $(id); if (el) el.textContent = (v == null ? '—' : String(v)); };
+  if (!p || p.ok === false) {
+    if ($('enginePulseSummary')) $('enginePulseSummary').textContent = 'Engine pulse unavailable right now — it rebuilds automatically from recorded scan diagnostics.';
+    return;
+  }
+  const evaluated = num(p.evaluated);
+  const touch = num(p.chains && p.chains.TOUCH);
+  const retest = num(p.chains && p.chains.RETEST);
+  const confirmed = num(p.confirmed);
+  const summary = $('enginePulseSummary');
+  if (summary) {
+    const head = `${evaluated} setup${evaluated === 1 ? '' : 's'} evaluated · ${touch} touched · ${retest} reached RETEST · ${confirmed} confirmed`;
+    summary.textContent = confirmed > 0
+      ? `${head} — every entry cleared the strict 2.5R+ floor.`
+      : `${head} — selectivity working: only setups that clear every floor become entries.`;
+  }
+  put('epEvaluated', evaluated);
+  put('epTouch', touch);
+  put('epSweep', num(p.chains && p.chains.SWEEP));
+  put('epShift', num(p.chains && p.chains.SHIFT));
+  put('epRetest', retest);
+  put('epConfirmed', confirmed);
+  put('epScans', num(p.scans));
+  put('epPairs', num(p.pairsCovered));
+  const rej = p.rejections || {};
+  const bits = [];
+  if (num(rej.belowMinRiskAtr)) bits.push(`${num(rej.belowMinRiskAtr)} below the 0.8×ATR risk floor`);
+  if (num(rej.aboveMaxStopAtr)) bits.push(`${num(rej.aboveMaxStopAtr)} above the stop ceiling`);
+  if (num(rej.nonPositiveRisk)) bits.push(`${num(rej.nonPositiveRisk)} non-positive risk`);
+  if (num(rej.targetFloor)) bits.push(`${num(rej.targetFloor)} under the 2.5R target floor`);
+  const rejEl = $('enginePulseRejections');
+  if (rejEl) rejEl.textContent = bits.length
+    ? `Rejected on discipline: ${bits.join(' · ')}.`
+    : 'No rejections recorded in this window — every candidate met the floors.';
 }
 
 async function loadStats() {
