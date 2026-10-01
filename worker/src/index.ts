@@ -942,8 +942,8 @@ function json(body: unknown, status = 200): Response {
     headers: {
       "content-type": "application/json",
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "Authorization, Content-Type",
-      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Authorization, Content-Type, X-Admin-Key",
+      "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
     },
   });
 }
@@ -985,6 +985,15 @@ export default {
 
     if (request.method === "OPTIONS") return json({ ok: true });
 
+    const isPublicApi =
+      (url.pathname === "/api/waitlist" && request.method === "POST") ||
+      url.pathname === "/api/monte-carlo" ||
+      url.pathname === "/api/recent-events" ||
+      url.pathname === "/api/whop-webhook";
+    if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/") || (url.pathname.startsWith("/api/") && !isPublicApi)) && !authed(request, env)) {
+      return json({ error: "unauthorized" }, 401);
+    }
+
     if (url.pathname === "/health") {
       const cfg = loadConfig(env);
       const store = makeStore(env.DB);
@@ -1023,7 +1032,7 @@ export default {
       });
     }
 
-    if (url.pathname === "/terms" && request.method === "GET") {
+    if ((url.pathname === "/terms" || url.pathname === "/terms.html") && request.method === "GET") {
       const { TERMS_HTML } = await import("./terms_html");
       return new Response(TERMS_HTML, {
         headers: {
@@ -1294,7 +1303,13 @@ export default {
       if (bad) return json({ error: bad }, 400);
       if ((from && !Number.isFinite(fromMs)) || (to && !Number.isFinite(toMs))) return json({ error: "from and to must be valid ISO UTC dates" }, 400);
       if (fromMs !== null && toMs !== null && fromMs > toMs) return json({ error: "from must be earlier than or equal to to" }, 400);
-      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize, includeSuppressed: url.searchParams.get("includeSuppressed") === "true" };
+      const requestedIncludeSuppressed =
+        url.searchParams.get("includeSuppressed") === "true" ||
+        url.searchParams.get("includeSuppressed") === "1" ||
+        url.searchParams.get("include_suppressed") === "true" ||
+        url.searchParams.get("include_suppressed") === "1";
+      const includeSuppressed = requestedIncludeSuppressed && authed(request, env);
+      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize, includeSuppressed };
       const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
       return json({ items: rows.map((r) => ({

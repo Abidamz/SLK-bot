@@ -223,4 +223,184 @@ describe("dashboard replay evidence endpoint", () => {
     const getDeleteData = (await getDeleteResp.json()) as any;
     expect(getDeleteData.ok).toBe(true);
   });
+
+  it("all /admin/* routes return 401 without ADMIN_KEY and non-401 with ADMIN_KEY", async () => {
+    const store = makeStore(undefined);
+    await store.resetAllAlerts();
+    await store.setKv("last_boundary:30m", String(Date.now() + 3600_000));
+
+    const fastFetch = (async () =>
+      new Response(JSON.stringify({ ok: true, result: [], candles: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fastFetch);
+    try {
+      const env: Env = {
+        TWELVEDATA_API_KEY: "K",
+        ADMIN_KEY: "test-admin-secret",
+        PAIRS: "EURUSD",
+        ENTRY_TFS: "30m",
+        fetchFn: fastFetch,
+      };
+
+      const adminRoutes: Array<{ method: string; path: string }> = [
+        { method: "GET", path: "/admin/waitlist" },
+        { method: "GET", path: "/admin/expire-open" },
+        { method: "POST", path: "/admin/confirmed-only" },
+        { method: "POST", path: "/admin/enable-watch" },
+        { method: "POST", path: "/admin/test-silent" },
+        { method: "GET", path: "/admin/connect-dm" },
+        { method: "GET", path: "/admin/connect-free-channel" },
+        { method: "GET", path: "/admin/connect-deriv-channel" },
+        { method: "GET", path: "/admin/set-deriv-channel" },
+        { method: "GET", path: "/admin/connect-deriv-free-channel" },
+        { method: "GET", path: "/admin/set-deriv-free-channel" },
+        { method: "POST", path: "/admin/test-deriv-free-teaser" },
+        { method: "POST", path: "/admin/test-deriv" },
+        { method: "GET", path: "/admin/set-dm" },
+        { method: "POST", path: "/admin/test-dm" },
+        { method: "GET", path: "/admin/set-free-channel" },
+        { method: "POST", path: "/admin/test-free-teaser" },
+        { method: "POST", path: "/admin/test-bias" },
+        { method: "POST", path: "/admin/test-free-bias" },
+        { method: "POST", path: "/admin/test-be" },
+        { method: "GET", path: "/admin/preview-recap" },
+        { method: "POST", path: "/admin/trigger-recap" },
+        { method: "POST", path: "/admin/test-recap" },
+        { method: "GET", path: "/admin/telegram-status" },
+        { method: "GET", path: "/admin/system-health" },
+        { method: "GET", path: "/admin/set-deriv-proxy" },
+        { method: "GET", path: "/admin/probe-deriv?target=fetch_frontend" },
+        { method: "GET", path: "/admin/set-oanda-token" },
+        { method: "GET", path: "/admin/probe-oanda?pair=EURUSD" },
+        { method: "POST", path: "/admin/trigger-scan" },
+        { method: "POST", path: "/admin/test-telegram" },
+        { method: "POST", path: "/admin/test-loud" },
+        { method: "POST", path: "/admin/clear-synthetics" },
+        { method: "POST", path: "/admin/reset-journal" },
+        { method: "POST", path: "/admin/delete-alert" },
+        { method: "POST", path: "/admin/trades" },
+        { method: "GET", path: "/admin/whop-member" },
+        { method: "POST", path: "/admin/generate-invite" },
+        { method: "POST", path: "/admin/test-whop" },
+        { method: "GET", path: "/admin/test-chart" },
+        { method: "GET", path: "/admin/set-chart-key" },
+        { method: "GET", path: "/admin/probe-chart-img" },
+      ];
+
+      for (const route of adminRoutes) {
+        const unauthResp = await worker.fetch(
+          new Request(`https://w.test${route.path}`, { method: route.method }),
+          env,
+          {} as any,
+        );
+        expect(unauthResp.status, `Expected 401 without key for ${route.method} ${route.path}`).toBe(401);
+
+        const authedResp = await worker.fetch(
+          new Request(`https://w.test${route.path}`, {
+            method: route.method,
+            headers: { "x-admin-key": "test-admin-secret" },
+          }),
+          env,
+          {} as any,
+        );
+        expect(authedResp.status, `Expected non-401 with key for ${route.method} ${route.path}`).not.toBe(401);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("public endpoints return 200 without an admin key", async () => {
+    const store = makeStore(undefined);
+    await store.resetAllAlerts();
+
+    const setupId = "td:EURUSD:30m:SHORT:V:public:1";
+    await store.insertAlert(mkAlert(setupId), "twelvedata");
+
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    vi.stubGlobal("fetch", makeFakeFetch(calls));
+    vi.setSystemTime(new Date(NOW + 5 * 60_000));
+    try {
+      const env: Env = {
+        TWELVEDATA_API_KEY: "K",
+        ADMIN_KEY: "test-admin-secret",
+      };
+
+      const publicPaths = [
+        "/",
+        "/stats",
+        "/alerts",
+        "/health",
+        "/scan-log",
+        "/api/recent-events",
+        "/api/monte-carlo",
+        `/dashboard/signals/${encodeURIComponent(setupId)}/chart?timeframe=30m`,
+        "/terms.html",
+        "/alerts?pageSize=200&page=1&sort=candleCloseTime&order=desc",
+      ];
+
+      for (const path of publicPaths) {
+        const resp = await worker.fetch(new Request(`https://w.test${path}`), env, {} as any);
+        expect(resp.status, `Expected 200 on public path ${path}`).toBe(200);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("/alerts?includeSuppressed=true ignores flag without admin key and honors it with admin key", async () => {
+    const store = makeStore(undefined);
+    await store.resetAllAlerts();
+
+    const deliveredAlert = mkAlert("td:EURUSD:30m:SHORT:V:audit-delivered:1");
+    deliveredAlert.alertStatus = "SENT";
+    await store.insertAlert(deliveredAlert, "twelvedata");
+
+    const suppressedAlert = mkAlert("td:EURUSD:30m:SHORT:V:audit-suppressed:2");
+    suppressedAlert.alertStatus = "SUPPRESSED";
+    suppressedAlert.suppressReason = "HTF conflict gate";
+    await store.insertAlert(suppressedAlert, "twelvedata");
+
+    const env: Env = {
+      TWELVEDATA_API_KEY: "K",
+      ADMIN_KEY: "test-admin-secret",
+    };
+
+    // 1. Without key: 200 OK, zero SUPPRESSED rows (both includeSuppressed=true and include_suppressed=1)
+    const unauthResp1 = await worker.fetch(
+      new Request("https://w.test/alerts?includeSuppressed=true"),
+      env,
+      {} as any,
+    );
+    expect(unauthResp1.status).toBe(200);
+    const unauthData1 = (await unauthResp1.json()) as any;
+    expect(unauthData1.items.filter((r: any) => r.alertStatus === "SUPPRESSED")).toHaveLength(0);
+    expect(unauthData1.total).toBe(1);
+
+    const unauthResp2 = await worker.fetch(
+      new Request("https://w.test/alerts?include_suppressed=1"),
+      env,
+      {} as any,
+    );
+    expect(unauthResp2.status).toBe(200);
+    const unauthData2 = (await unauthResp2.json()) as any;
+    expect(unauthData2.items.filter((r: any) => r.alertStatus === "SUPPRESSED")).toHaveLength(0);
+    expect(unauthData2.total).toBe(1);
+
+    // 2. With key: 200 OK, includes SUPPRESSED rows
+    const authedResp = await worker.fetch(
+      new Request("https://w.test/alerts?includeSuppressed=true", {
+        headers: { "x-admin-key": "test-admin-secret" },
+      }),
+      env,
+      {} as any,
+    );
+    expect(authedResp.status).toBe(200);
+    const authedData = (await authedResp.json()) as any;
+    expect(authedData.total).toBe(2);
+    expect(authedData.items.some((r: any) => r.alertStatus === "SUPPRESSED")).toBe(true);
+  });
 });

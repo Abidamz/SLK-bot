@@ -4,7 +4,7 @@ const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.
 
 const state = {
   url: DEFAULT_URL,
-  adminKey: sessionStorage.getItem('slkAdminKey') || '',
+  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('slkAdminKey')) || '',
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
@@ -200,24 +200,49 @@ if ($('clearSyntheticsBtn')) {
   });
 }
 
+function clearAdminKey() {
+  state.adminKey = '';
+  try { localStorage.removeItem('slkAdminKey'); } catch (_) {}
+}
+
+async function getAdminKey(forcePrompt = false) {
+  if (forcePrompt) clearAdminKey();
+  if (!state.adminKey) {
+    try { state.adminKey = localStorage.getItem('slkAdminKey') || ''; } catch (_) {}
+  }
+  if (state.adminKey) return state.adminKey;
+  const key = window.prompt('Enter Admin Key:');
+  if (key && key.trim()) {
+    state.adminKey = key.trim();
+    try { localStorage.setItem('slkAdminKey', state.adminKey); } catch (_) {}
+  }
+  return state.adminKey;
+}
+
 async function api(path, options = {}) {
+  const isAdmin = Boolean(options.admin || path.startsWith('/admin/'));
+  if (isAdmin) {
+    const key = await getAdminKey();
+    if (!key) throw new Error('Admin key required.');
+  }
   const headers = {
-    ...(options.admin && state.adminKey ? { Authorization: `Bearer ${state.adminKey}` } : {}),
+    ...(options.headers || {}),
+    ...(isAdmin && state.adminKey ? { 'x-admin-key': state.adminKey, Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
   const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
+  if (r.status === 401 && isAdmin) {
+    clearAdminKey();
+    if (!options._retried) {
+      const retryKey = await getAdminKey(true);
+      if (retryKey) {
+        return api(path, { ...options, _retried: true });
+      }
+    }
+    throw new Error('401 Unauthorized — invalid admin key.');
+  }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
-}
-
-async function getAdminKey() {
-  if (state.adminKey) return state.adminKey;
-  const key = window.prompt("Enter Admin Key:");
-  if (key) {
-    state.adminKey = key.trim();
-    sessionStorage.setItem('slkAdminKey', state.adminKey);
-  }
-  return state.adminKey;
 }
 
 async function loadAll() {

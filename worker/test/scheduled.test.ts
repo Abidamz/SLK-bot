@@ -590,14 +590,23 @@ describe("scheduled scan cycle", () => {
   });
 
   it("supports /admin/set-oanda-token and /admin/probe-oanda endpoints", async () => {
-    const env = makeEnv();
+    const env = makeEnv({ ADMIN_KEY: "test-admin-key" });
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const fakeFetch = makeFakeFetch(calls);
     env.fetchFn = fakeFetch;
 
+    // 0. Unauthenticated requests must be rejected with 401
+    const unauthSetResp = await worker.fetch(
+      new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice"),
+      env,
+      {} as any,
+    );
+    expect(unauthSetResp.status).toBe(401);
+
     // 1. Set token via /admin/set-oanda-token
     const setReq = new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice", {
       method: "GET",
+      headers: { "x-admin-key": "test-admin-key" },
     });
     const setResp = await worker.fetch(setReq, env, {} as any);
     expect(setResp.status).toBe(200);
@@ -609,6 +618,7 @@ describe("scheduled scan cycle", () => {
     // 2. Probe OANDA via /admin/probe-oanda
     const probeReq = new Request("https://worker.test/admin/probe-oanda?pair=US30", {
       method: "GET",
+      headers: { "x-admin-key": "test-admin-key" },
     });
     const probeResp = await worker.fetch(probeReq, env, {} as any);
     expect(probeResp.status).toBe(200);
