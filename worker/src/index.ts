@@ -151,7 +151,9 @@ export async function checkAndDispatchScheduledRecaps(
   const weekNumber = Math.ceil(d.getUTCDate() / 7);
   const weekKey = `${d.getUTCFullYear()}-W${weekNumber}`;
 
-  const allRows = await store.recentAlerts(1000);
+  const allRows = (await store.recentAlerts(1000)).filter(
+    (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+  );
 
   // Hydrate Telegram channel IDs from KV if not bound in worker env vars
   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
@@ -909,10 +911,22 @@ export function isIndexCfdIdleWindow(pair: string, now: number): boolean {
 
 function authed(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return false;
+  const expectedKey = env.ADMIN_KEY.trim();
   const auth = request.headers.get("authorization");
-  if (!auth) return false;
-  const match = auth.match(/^Bearer\s+(.+)$/i);
-  return Boolean(match && match[1].trim() === env.ADMIN_KEY.trim());
+  if (auth) {
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    if (match && match[1].trim() === expectedKey) return true;
+  }
+  const xKey = request.headers.get("x-admin-key");
+  if (xKey && xKey.trim() === expectedKey) return true;
+  try {
+    const url = new URL(request.url);
+    const key = url.searchParams.get("key") || url.searchParams.get("admin_key");
+    if (key && key.trim() === expectedKey) return true;
+  } catch {
+    // ignore malformed URLs
+  }
+  return false;
 }
 
 function readAuthed(_request: Request, _env: Env): boolean {
@@ -1165,7 +1179,7 @@ export default {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const setupId = decodeURIComponent(chartMatch[1]);
       const row = (await makeStore(env.DB).recentAlerts(500)).find((r) => r.setup_id === setupId);
-      if (!row) return json({ error: "signal not found" }, 404);
+      if (!row || row.alert_status === "SUPPRESSED") return json({ error: "signal not found" }, 404);
       const cfg = loadConfig(env);
       const rawTf = (url.searchParams.get("timeframe") ?? row.entry_timeframe).toLowerCase();
       const tf = rawTf === "h1" ? "1h" : rawTf === "h4" ? "4h" : rawTf;
@@ -1228,6 +1242,7 @@ export default {
       // Seeded → deterministic; iteration×horizon capped to protect Free-tier CPU.
       const store = makeStore(env.DB);
       const rows = (await store.recentAlerts(1000))
+        .filter((r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED")
         .filter((r) => ["TP_HIT", "SL_HIT", "BE_HIT", "EXPIRED"].includes(String(r.status)) && Number.isFinite(Number(r.r_multiple)));
       rows.sort((a, b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
       const rSeries = rows.map((r) => Number(r.r_multiple));
@@ -1279,7 +1294,7 @@ export default {
       if (bad) return json({ error: bad }, 400);
       if ((from && !Number.isFinite(fromMs)) || (to && !Number.isFinite(toMs))) return json({ error: "from and to must be valid ISO UTC dates" }, 400);
       if (fromMs !== null && toMs !== null && fromMs > toMs) return json({ error: "from must be earlier than or equal to to" }, 400);
-      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize };
+      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize, includeSuppressed: url.searchParams.get("includeSuppressed") === "true" };
       const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
       return json({ items: rows.map((r) => ({
@@ -1299,7 +1314,9 @@ export default {
     if (url.pathname === "/stats" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
-      const allRows = await store.recentAlerts(1000);
+      const allRows = (await store.recentAlerts(1000)).filter(
+        (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+      );
 
       const period = url.searchParams.get("period");
       const fromParam = url.searchParams.get("from");
@@ -2292,7 +2309,9 @@ export default {
       const store = makeStore(env.DB);
       const period = (url.searchParams.get("period") || "daily").toLowerCase() as "daily" | "weekly";
       const segment = (url.searchParams.get("segment") || "institutional").toLowerCase() as "institutional" | "synthetics";
-      const allRows = await store.recentAlerts(1000);
+      const allRows = (await store.recentAlerts(1000)).filter(
+        (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+      );
       const stats = computeRecapStats(allRows as AlertRowish[], segment, period);
       const card = formatPerformanceRecap(stats);
       return json({ ok: true, period, segment, stats, card });
@@ -2354,6 +2373,7 @@ export default {
         instructions: {
           previewRecap: "Visit /admin/preview-recap?period=daily&segment=institutional (or segment=synthetics) to inspect the automated performance recap card.",
           triggerRecap: "Visit /admin/trigger-recap?period=daily&segment=both to instantly dispatch the performance recaps to the respective free channels.",
+          deleteAlert: "Visit /admin/delete-alert?setup_id=<setup_id> to delete a specific alert from the journal.",
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
           connectDerivChannel: "1. Add bot as Admin to Synthetics VIP channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",
@@ -2709,6 +2729,29 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/delete-alert" || url.pathname === "/api/delete-alert") && (request.method === "POST" || request.method === "DELETE" || request.method === "GET")) {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      let body: Record<string, unknown> = {};
+      if (request.method === "POST" || request.method === "DELETE") {
+        try { body = (await request.json()) as Record<string, unknown>; } catch { /* allow empty */ }
+      }
+      const setupId = String(body.setup_id || body.setupId || body.id || url.searchParams.get("setup_id") || url.searchParams.get("id") || url.searchParams.get("setupId") || "").trim();
+      if (!setupId) {
+        return json({ ok: false, error: "setup_id parameter required (e.g. /admin/delete-alert?setup_id=...)" }, 400);
+      }
+      const store = makeStore(env.DB);
+      const deleted = await store.deleteAlert(setupId);
+      if (!deleted) {
+        return json({ ok: false, error: "alert not found" }, 404);
+      }
+      return json({
+        ok: true,
+        action: "delete_alert",
+        setup_id: setupId,
+        message: `Successfully deleted alert ${setupId}`,
+      });
+    }
+
     if (url.pathname === "/admin/trades" && request.method === "POST") {
       let body: Record<string, unknown> = {};
       try { body = await request.json() as Record<string, unknown>; } catch { /* allow empty */ }
@@ -2726,7 +2769,15 @@ export default {
         await store.resetAllAlerts();
         return json({ ok: true, action: "reset_all", message: "Successfully reset all signals, events, and logs." });
       }
-      return json({ error: "invalid action, must be expire_open, clear_synthetics, or reset_all" }, 400);
+      if (action === "delete_alert" || action === "delete") {
+        if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+        const setupId = String(body.setup_id || body.setupId || body.id || url.searchParams.get("setup_id") || url.searchParams.get("id") || url.searchParams.get("setupId") || "").trim();
+        if (!setupId) return json({ ok: false, error: "setup_id parameter required" }, 400);
+        const deleted = await store.deleteAlert(setupId);
+        if (!deleted) return json({ ok: false, error: "alert not found" }, 404);
+        return json({ ok: true, action: "delete_alert", setup_id: setupId, message: `Successfully deleted alert ${setupId}` });
+      }
+      return json({ error: "invalid action, must be expire_open, clear_synthetics, reset_all, or delete_alert" }, 400);
     }
 
     if (url.pathname === "/provider-webhook") {

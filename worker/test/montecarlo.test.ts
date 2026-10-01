@@ -133,4 +133,22 @@ describe("/api/monte-carlo endpoint", () => {
     expect(data.ok).toBe(true);
     expect(data.iterations * data.horizon).toBeLessThanOrEqual(600_000);
   });
+
+  it("strictly excludes SUPPRESSED alerts from the Monte Carlo trade pool", async () => {
+    const store = makeStore(undefined);
+    // Insert a SUPPRESSED alert with an outlier outcome
+    const suppSetupId = "td:EURUSD:30m:SHORT:V:supp:mc";
+    const suppAlert = closedAlert(suppSetupId, T0 + 10 * 3600_000);
+    suppAlert.alertStatus = "SUPPRESSED";
+    await store.insertAlert(suppAlert, "twelvedata");
+    await store.recordOutcome(suppSetupId, { status: "TP_HIT", exitPrice: 104, exitTime: T0 + 10 * 3600_000 + 1800_000, rMultiple: 99.0 });
+
+    const env = {} as Env;
+    const q = "iterations=100&horizon=20&riskPct=1&seed=11";
+    const resp = await worker.fetch(new Request(`https://w.test/api/monte-carlo?${q}`), env, {} as any);
+    const data = (await resp.json()) as any;
+    expect(data.ok).toBe(true);
+    // Still 7 trades from previous test, the suppressed trade was not added to pool
+    expect(data.trades).toBe(7);
+  });
 });

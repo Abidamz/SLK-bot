@@ -109,4 +109,118 @@ describe("dashboard replay evidence endpoint", () => {
     );
     expect(resp.status).toBe(404);
   });
+
+  it("hides never-delivered (SUPPRESSED) signals from /alerts journal and /stats", async () => {
+    const store = makeStore(undefined);
+    await store.resetAllAlerts();
+
+    const deliveredAlert = mkAlert("td:EURUSD:30m:SHORT:V:delivered:1");
+    deliveredAlert.alertStatus = "SENT";
+    await store.insertAlert(deliveredAlert, "twelvedata");
+    await store.recordOutcome(deliveredAlert.setupId, {
+      status: "TP_HIT", exitPrice: 104.0, exitTime: NOW + 1800_000, rMultiple: 3.0,
+    });
+
+    const suppressedAlert = mkAlert("td:EURUSD:30m:SHORT:V:suppressed:2");
+    suppressedAlert.alertStatus = "SUPPRESSED";
+    suppressedAlert.suppressReason = "first scan boot gate — record-only";
+    await store.insertAlert(suppressedAlert, "twelvedata");
+    await store.recordOutcome(suppressedAlert.setupId, {
+      status: "TP_HIT", exitPrice: 104.0, exitTime: NOW + 1800_000, rMultiple: 15.0,
+    });
+
+    const env = { TWELVEDATA_API_KEY: "K" } as unknown as Env;
+
+    // 1. Verify GET /alerts hides suppressed by default
+    const alertsResp = await worker.fetch(new Request("https://w.test/alerts"), env, {} as any);
+    expect(alertsResp.status).toBe(200);
+    const alertsData = (await alertsResp.json()) as any;
+    expect(alertsData.total).toBe(1);
+    expect(alertsData.items).toHaveLength(1);
+    expect(alertsData.items[0].setupId).toBe(deliveredAlert.setupId);
+
+    // 2. Verify GET /stats excludes suppressed from all aggregates
+    const statsResp = await worker.fetch(new Request("https://w.test/stats"), env, {} as any);
+    expect(statsResp.status).toBe(200);
+    const statsData = (await statsResp.json()) as any;
+    expect(statsData.total).toBe(1);
+    expect(statsData.completed).toBe(1);
+    expect(statsData.tp).toBe(1);
+    expect(statsData.netR).toBe(3.0); // Exactly the delivered 3.0R, NOT 18.0R
+  });
+
+  it("admin/delete-alert requires ADMIN_KEY and deletes alerts cleanly", async () => {
+    const store = makeStore(undefined);
+    await store.resetAllAlerts();
+
+    const alertToKeep = mkAlert("td:EURUSD:30m:SHORT:V:keep:1");
+    await store.insertAlert(alertToKeep, "twelvedata");
+
+    const alertToDelete = mkAlert("td:EURUSD:30m:SHORT:V:delete:2");
+    await store.insertAlert(alertToDelete, "twelvedata");
+    await store.insertEvent({
+      setupId: alertToDelete.setupId, pair: "EURUSD", state: "MAP",
+      candleTime: NOW, reason: "armed", price: 105.0,
+    } as any);
+
+    const envWithAdmin = {
+      TWELVEDATA_API_KEY: "K",
+      ADMIN_KEY: "supersecret-admin-key",
+    } as unknown as Env;
+
+    // 1. 401 when unauthorized
+    const unauthReq = new Request("https://w.test/admin/delete-alert?setup_id=" + alertToDelete.setupId, {
+      method: "POST",
+    });
+    const unauthResp = await worker.fetch(unauthReq, envWithAdmin, {} as any);
+    expect(unauthResp.status).toBe(401);
+
+    // 2. 400 when missing setup_id
+    const missingParamReq = new Request("https://w.test/admin/delete-alert", {
+      method: "POST",
+      headers: { Authorization: "Bearer supersecret-admin-key" },
+    });
+    const missingParamResp = await worker.fetch(missingParamReq, envWithAdmin, {} as any);
+    expect(missingParamResp.status).toBe(400);
+
+    // 3. 404 when alert does not exist
+    const notFoundReq = new Request("https://w.test/admin/delete-alert?setup_id=does-not-exist", {
+      method: "POST",
+      headers: { Authorization: "Bearer supersecret-admin-key" },
+    });
+    const notFoundResp = await worker.fetch(notFoundReq, envWithAdmin, {} as any);
+    expect(notFoundResp.status).toBe(404);
+
+    // 4. Successful delete via Bearer token
+    const deleteReq = new Request("https://w.test/admin/delete-alert", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer supersecret-admin-key",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ setup_id: alertToDelete.setupId }),
+    });
+    const deleteResp = await worker.fetch(deleteReq, envWithAdmin, {} as any);
+    expect(deleteResp.status).toBe(200);
+    const deleteData = (await deleteResp.json()) as any;
+    expect(deleteData.ok).toBe(true);
+    expect(deleteData.action).toBe("delete_alert");
+    expect(deleteData.setup_id).toBe(alertToDelete.setupId);
+
+    // Verify only the kept alert remains in the journal
+    const remainingAlerts = await store.recentAlerts(10);
+    expect(remainingAlerts).toHaveLength(1);
+    expect(remainingAlerts[0].setup_id).toBe(alertToKeep.setupId);
+
+    // 5. Successful delete via query param ?key= (GET method)
+    const alertToDelete2 = mkAlert("td:EURUSD:30m:SHORT:V:delete:3");
+    await store.insertAlert(alertToDelete2, "twelvedata");
+    const getDeleteReq = new Request(`https://w.test/admin/delete-alert?setup_id=${alertToDelete2.setupId}&key=supersecret-admin-key`, {
+      method: "GET",
+    });
+    const getDeleteResp = await worker.fetch(getDeleteReq, envWithAdmin, {} as any);
+    expect(getDeleteResp.status).toBe(200);
+    const getDeleteData = (await getDeleteResp.json()) as any;
+    expect(getDeleteData.ok).toBe(true);
+  });
 });
