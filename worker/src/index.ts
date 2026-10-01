@@ -17,6 +17,7 @@ import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair
 import { scanEntry } from "./engine";
 import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime } from "./outcomes";
+import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
 import type { AlertRowish, OutcomeLike } from "./notify_types";
@@ -1220,6 +1221,28 @@ export default {
         },
         dataHealth: { freshnessSeconds: Math.max(0, Math.round((Date.now() - feed[feed.length - 1].t - tfSeconds * 1000) / 1000)), missingCandles: 0, isMarketIdle: false, historyComplete: selected.length >= Math.min(before, feed.length) },
       });
+    }
+
+    if (url.pathname === "/api/monte-carlo" && request.method === "GET") {
+      // Quant Lab: bootstrap stress-test over the verified closed-trade R series.
+      // Seeded → deterministic; iteration×horizon capped to protect Free-tier CPU.
+      const store = makeStore(env.DB);
+      const rows = (await store.recentAlerts(1000))
+        .filter((r) => ["TP_HIT", "SL_HIT", "BE_HIT", "EXPIRED"].includes(String(r.status)) && Number.isFinite(Number(r.r_multiple)));
+      rows.sort((a, b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
+      const rSeries = rows.map((r) => Number(r.r_multiple));
+      const clampNum = (v: number, lo: number, hi: number, dflt: number) => (Number.isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : dflt);
+      let iterations = Math.floor(clampNum(Number(url.searchParams.get("iterations")), 100, 10000, 2000));
+      const horizon = Math.floor(clampNum(Number(url.searchParams.get("horizon")), 10, 500, 100));
+      const riskPct = clampNum(Number(url.searchParams.get("riskPct")), 0.1, 5, 1);
+      const seedRaw = Number(url.searchParams.get("seed"));
+      const seed = Number.isFinite(seedRaw) && seedRaw > 0 ? Math.floor(seedRaw) >>> 0 : 42;
+      if (iterations * horizon > 600_000) iterations = Math.max(100, Math.floor(600_000 / horizon));
+      if (rSeries.length < 5) {
+        return json({ ok: false, error: "INSUFFICIENT_HISTORY", closedTrades: rSeries.length, message: "At least 5 closed trades are required before the stress test becomes meaningful." }, 200);
+      }
+      const result = runMonteCarlo({ rSeries, iterations, horizon, riskPct, seed });
+      return json({ ok: true, ...result });
     }
 
     if (url.pathname === "/alerts" && request.method === "GET") {

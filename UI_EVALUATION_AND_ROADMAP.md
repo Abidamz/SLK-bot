@@ -155,7 +155,7 @@ Directly embedded into the dashboard:
 - **Fields Included:** `Setup ID`, `Pair`, `Timeframe`, `Direction`, `Entry Price`, `Stop Loss`, `Take Profit 1`, `Target R:R`, `Outcome (TP/SL/Expired)`, `Net R`, `MFE (Max Favorable Excursion)`, `MAE (Max Adverse Excursion)`, `Bars Held`, `Timestamp Opened`, `Timestamp Resolved`.
 - **Strategic Impact:** Enables members to provide institutional-grade proof-of-strategy compliance for prop firm evaluations and private investor audits.
 
-### Priority 5: Monte Carlo Simulation & Drawdown Stress Testing (Long-Term)
+### Priority 5: Monte Carlo Simulation & Drawdown Stress Testing (Long-Term) ✅ COMPLETED
 - **Concept:** An interactive quantitative forecasting tab modeling 10,000 randomized iterations of the strategy's historical distribution.
 - **Features:** 95% confidence intervals, probability of consecutive losses, maximum drawdown distribution, and expected compound growth rate.
 - **Branding Impact:** Cementing SLK Radar's positioning as a professional quantitative desk rather than an amateur Telegram signal channel.
@@ -166,7 +166,7 @@ Directly embedded into the dashboard:
 
 | Check | Tool / Standard | Result | Status |
 | :--- | :--- | :--- | :---: |
-| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 172 passed across 13 test suites | PASS |
+| **Unit & Integration Tests** | Vitest (`worker/test/*.test.ts`) | 182 passed across 14 test suites | PASS |
 | **TypeScript Typecheck** | `tsc --noEmit` | 0 errors | PASS |
 | **Client Script Syntax** | `node --check dashboard/app.js` | Valid ES6+ syntax | PASS |
 | **Asset Consistency** | HTML/CSS parity (`dashboard/` vs `dashboard_html.ts`) | Synchronized | PASS |

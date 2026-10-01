@@ -1037,3 +1037,70 @@ if (document.readyState === 'loading') {
   setupWaitlist();
   loadAll();
 }
+
+// ── Functionality #10: Monte Carlo Quant Lab ─────────────────────────────
+async function runMonteCarloUI() {
+  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan');
+  if (!status) return;
+  status.textContent = 'Simulating…';
+  try {
+    const val = id => (($('#' + id.slice(1)) || $(id) || {}).value);
+    const q = 'iterations=' + encodeURIComponent(val('mcIterations') || 2000)
+      + '&horizon=' + encodeURIComponent(val('mcHorizon') || 100)
+      + '&riskPct=' + encodeURIComponent(val('mcRisk') || 1)
+      + '&seed=' + encodeURIComponent(val('mcSeed') || 42);
+    const d = await api('/api/monte-carlo?' + q);
+    if (!d.ok) {
+      status.textContent = (d.error || 'UNAVAILABLE') + ': ' + (d.message || 'Monte Carlo needs at least 5 closed trades in the verified ledger.');
+      if (cards) cards.innerHTML = '';
+      if (svg) svg.innerHTML = '';
+      return;
+    }
+    status.textContent = d.iterations.toLocaleString() + ' paths × ' + d.horizon + ' trades · seed ' + d.seed
+      + ' · pool ' + d.trades + ' closed trades (win ' + Math.round(d.histWinRate * 100) + '%, expectancy '
+      + Number(d.histExpectancyR).toFixed(2) + 'R)';
+    const g = d.finalGrowth;
+    const pct = x => (x >= 1 ? '+' : '') + ((x - 1) * 100).toFixed(1) + '%';
+    cards.innerHTML =
+      '<div>Median growth<strong>' + pct(g.p50) + '</strong></div>' +
+      '<div>5th percentile<strong>' + pct(g.p5) + '</strong></div>' +
+      '<div>95th percentile<strong>' + pct(g.p95) + '</strong></div>' +
+      '<div>P(net loss)<strong>' + (d.probNetLoss * 100).toFixed(1) + '%</strong></div>' +
+      '<div>P(DD ≥ 10%)<strong>' + (d.probDd10 * 100).toFixed(1) + '%</strong></div>' +
+      '<div>P(DD ≥ 20%)<strong>' + (d.probDd20 * 100).toFixed(1) + '%</strong></div>' +
+      '<div>DD 95th percentile<strong>' + Number(d.maxDrawdownPct.p95).toFixed(1) + '%</strong></div>' +
+      '<div>Loss streak 95th<strong>' + d.consecLoss.p95 + ' trades</strong></div>';
+    renderMcFan(d);
+  } catch (e) {
+    status.textContent = 'Simulation failed: ' + e.message;
+  }
+}
+
+function renderMcFan(d) {
+  const svg = $('mcFan');
+  if (!svg) return;
+  const W = 1000, H = 380, pad = { l: 62, r: 24, t: 18, b: 40 };
+  const all = d.bands.p5.concat(d.bands.p95, [1]);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const margin = (hi - lo) * 0.08 || 0.2;
+  lo -= margin;
+  hi += margin;
+  const x = i => pad.l + i * (W - pad.l - pad.r) / Math.max(1, d.horizon);
+  const y = v => pad.t + (hi - v) * (H - pad.t - pad.b) / (hi - lo);
+  let out = `<rect x="0" y="0" width="${W}" height="${H}" rx="14" fill="#0b111a"/>`;
+  for (let i = 0; i < 5; i++) {
+    const v = hi - (hi - lo) * i / 4;
+    out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#253044"/><text x="8" y="${y(v) + 4}" fill="#8793a7" font-size="11">${v.toFixed(2)}×</text>`;
+  }
+  let fan = '';
+  for (let i = 0; i <= d.horizon; i++) fan += x(i) + ',' + y(d.bands.p95[i]) + ' ';
+  for (let i = d.horizon; i >= 0; i--) fan += x(i) + ',' + y(d.bands.p5[i]) + ' ';
+  out += `<polygon points="${fan}" fill="#38bdf8" opacity="0.16"/>`;
+  out += `<polyline points="${d.bands.p50.map((v, i) => x(i) + ',' + y(v)).join(' ')}" fill="none" stroke="#8cf0c6" stroke-width="2.4"/>`;
+  out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(1)}" y2="${y(1)}" stroke="#f6c66d" stroke-dasharray="6 5"/>`;
+  out += `<text x="${W - pad.r - 4}" y="${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting equity 1.00×</text>`;
+  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">trade 0</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">trade ${d.horizon}</text>`;
+  svg.innerHTML = out;
+}
+
+if ($('mcRun')) $('mcRun').addEventListener('click', runMonteCarloUI);
