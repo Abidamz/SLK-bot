@@ -1015,7 +1015,11 @@ export function computeRecapStats(
     return segment === "synthetics" ? isSynth : !isSynth;
   };
 
-  const segmentRows = rows.filter((r) => isTargetSegment(String(r.canonical_symbol ?? "")));
+  const segmentRows = rows.filter(
+    (r) =>
+      isTargetSegment(String(r.canonical_symbol ?? "")) &&
+      String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+  );
 
   // Window for period: daily = past 24 hours; weekly = past 7 days
   const windowMs = period === "daily" ? 24 * 3600 * 1000 : 7 * 86400 * 1000;

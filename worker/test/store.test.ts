@@ -117,6 +117,45 @@ describe("MemStore", () => {
     expect(s.scanLog).toHaveLength(0);
   });
 
+  it("filters out SUPPRESSED alerts by default in queryAlerts", async () => {
+    const s = new MemStore();
+    const a = mkAlert("a1"); a.alertStatus = "PAPER"; await s.insertAlert(a, "td");
+    const b = mkAlert("a2"); b.alertStatus = "SUPPRESSED"; await s.insertAlert(b, "td");
+    const resDefault = await s.queryAlerts({ page: 1, pageSize: 10 });
+    expect(resDefault.total).toBe(1);
+    expect(resDefault.rows).toHaveLength(1);
+    expect(resDefault.rows[0].setup_id).toBe("a1");
+
+    const resWithSuppressed = await s.queryAlerts({ page: 1, pageSize: 10, includeSuppressed: true });
+    expect(resWithSuppressed.total).toBe(2);
+    expect(resWithSuppressed.rows).toHaveLength(2);
+  });
+
+  it("deletes a single alert and its associated events via deleteAlert", async () => {
+    const s = new MemStore();
+    await s.insertAlert(mkAlert("del1"), "td");
+    await s.insertEvent({ setupId: "del1", pair: "EURUSD", state: "MAP", candleTime: BASE, reason: "armed", price: 105 });
+    await s.insertAlert(mkAlert("keep2"), "td");
+    await s.insertEvent({ setupId: "keep2", pair: "EURUSD", state: "MAP", candleTime: BASE, reason: "armed", price: 105 });
+
+    expect(await s.recentAlerts(10)).toHaveLength(2);
+    expect(await s.recentEvents(10)).toHaveLength(2);
+
+    const deletedUnknown = await s.deleteAlert("non-existent-setup");
+    expect(deletedUnknown).toBe(false);
+
+    const deleted = await s.deleteAlert("del1");
+    expect(deleted).toBe(true);
+
+    const remainingAlerts = await s.recentAlerts(10);
+    expect(remainingAlerts).toHaveLength(1);
+    expect(remainingAlerts[0].setup_id).toBe("keep2");
+
+    const remainingEvents = await s.recentEvents(10);
+    expect(remainingEvents).toHaveLength(1);
+    expect(remainingEvents[0].setupId || remainingEvents[0].setup_id).toBe("keep2");
+  });
+
   it("handles waitlist registration, deduplication, and retrieval", async () => {
     const s = new MemStore();
     const res1 = await s.insertWaitlist({ email: "trader1@example.com", telegram: "@trader1", segmentInterest: "all" });

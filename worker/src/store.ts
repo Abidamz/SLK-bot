@@ -59,6 +59,7 @@ export interface Store {
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
   expireOpenAlerts(): Promise<number>;
+  deleteAlert(setupId: string): Promise<boolean>;
   resetAllAlerts(): Promise<void>;
   clearSyntheticsAlerts(): Promise<number>;
   insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }>;
@@ -89,6 +90,7 @@ export interface AlertQuery {
   from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc";
   segment?: "all" | "institutional" | "synthetics";
   page: number; pageSize: number;
+  includeSuppressed?: boolean;
 }
 export interface AlertQueryResult { rows: AlertRow[]; total: number; }
 
@@ -275,7 +277,15 @@ export class D1Store implements Store {
   async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
     const where: string[] = []; const binds: unknown[] = [];
     const add = (sql: string, value: unknown) => { where.push(sql); binds.push(value); };
-    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction); if (q.channel === "WATCH") where.push("1 = 0"); if (q.channel === "CONFIRMED") where.push("alert_status IN ('PAPER','SENT')"); if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
+    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction);
+    if (q.channel === "WATCH") {
+      where.push("1 = 0");
+    } else if (q.channel === "CONFIRMED") {
+      where.push("alert_status IN ('PAPER','SENT')");
+    } else if (!q.includeSuppressed) {
+      where.push("(alert_status IS NULL OR alert_status != 'SUPPRESSED')");
+    }
+    if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
     if (q.segment === "synthetics") {
       where.push("(canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%')");
     } else if (q.segment === "institutional") {
@@ -328,6 +338,33 @@ export class D1Store implements Store {
       .bind(new Date().toISOString())
       .run();
     return Number(res.meta?.changes ?? 0);
+  }
+
+  async deleteAlert(setupId: string): Promise<boolean> {
+    const isNum = /^\d+$/.test(setupId.trim());
+    let canonicalSetupId = setupId.trim();
+    if (isNum) {
+      const row = await this.db
+        .prepare("SELECT setup_id FROM slk_alerts WHERE id = ?")
+        .bind(Number(setupId.trim()))
+        .first();
+      if (row && typeof row.setup_id === "string") {
+        canonicalSetupId = row.setup_id;
+      }
+    }
+    const res = await this.db
+      .prepare("DELETE FROM slk_alerts WHERE setup_id = ? OR id = ?")
+      .bind(canonicalSetupId, isNum ? Number(setupId.trim()) : -1)
+      .run();
+    const changes = Number(res.meta?.changes ?? 0);
+    if (changes > 0) {
+      await this.db
+        .prepare("DELETE FROM slk_events WHERE setup_id = ?")
+        .bind(canonicalSetupId)
+        .run();
+      return true;
+    }
+    return false;
   }
 
   async resetAllAlerts(): Promise<void> {
@@ -497,7 +534,13 @@ export class MemStore implements Store {
     rows = rows.filter(r => {
       if (q.segment === "synthetics" && !isDerivPair(r.canonical_symbol)) return false;
       if (q.segment === "institutional" && isDerivPair(r.canonical_symbol)) return false;
-      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && (q.channel !== "WATCH") && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
+      if (q.channel === "WATCH") return false;
+      if (q.channel === "CONFIRMED") {
+        if (r.alert_status !== "PAPER" && r.alert_status !== "SENT") return false;
+      } else if (!q.includeSuppressed) {
+        if (String(r.alert_status ?? "").toUpperCase() === "SUPPRESSED") return false;
+      }
+      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
     });
     const total=rows.length; rows=rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize); return { rows, total };
   }
@@ -526,6 +569,27 @@ export class MemStore implements Store {
       }
     }
     return count;
+  }
+
+  async deleteAlert(setupId: string): Promise<boolean> {
+    const isNum = /^\d+$/.test(setupId.trim());
+    let targetKey: string | null = null;
+    if (this.alerts.has(setupId.trim())) {
+      targetKey = setupId.trim();
+    } else {
+      for (const [key, alert] of this.alerts.entries()) {
+        if (key === setupId.trim() || (isNum && alert.id === Number(setupId.trim()))) {
+          targetKey = key;
+          break;
+        }
+      }
+    }
+    if (targetKey && this.alerts.has(targetKey)) {
+      this.alerts.delete(targetKey);
+      this.events = this.events.filter((e) => e.setupId !== targetKey && e.setup_id !== targetKey);
+      return true;
+    }
+    return false;
   }
 
   async resetAllAlerts(): Promise<void> {
