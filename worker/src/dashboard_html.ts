@@ -130,6 +130,41 @@ body:not(.operator-mode) .operator-only{display:none!important}
 
 .replay-bar{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.replay-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.replay-step{margin-left:auto;color:var(--muted);font-size:12px;font-family:'JetBrains Mono',monospace}.replay-stages{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.replay-stages span{padding:3px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.1);color:var(--muted);font-size:11px;font-family:'JetBrains Mono',monospace}.replay-stages span.done{border-color:#153126;background:#153126;color:#8cf0c6}.replay-stages span.now{border-color:#78531a;background:#1c150b;color:#f6c66d}.replay-narration{margin:10px 0 0;color:#c7d0dd;font-size:13px}.risk-calc{margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0c121b}.risk-calc h3{margin:0 0 10px;font-size:14px}.risk-inputs{display:flex;gap:12px;flex-wrap:wrap}.risk-inputs label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}.risk-inputs input{width:150px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:#0b111a;color:#e8edf4;font-family:'JetBrains Mono',monospace}.risk-outputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}.risk-outputs div{padding:8px 10px;border-radius:10px;background:#0b111a;border:1px solid rgba(255,255,255,.06);font-size:12px;color:var(--muted)}.risk-outputs strong{display:block;color:#e8edf4;font-size:14px;font-family:'JetBrains Mono',monospace;margin-top:2px}
 .live-tape{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}.live-row{display:grid;grid-template-columns:86px 74px 92px 1fr;gap:10px;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,.07);border-radius:10px;background:#0b111a;font-size:12px;color:var(--muted)}.live-time{font-family:'JetBrains Mono',monospace;color:#8793a7}.live-state{font-family:'JetBrains Mono',monospace;font-weight:700}.live-retest .live-state{color:#8cf0c6}.live-shift .live-state{color:#b093ff}.live-sweep .live-state{color:#38bdf8}.live-touch .live-state{color:#f6c66d}.live-map .live-state{color:#8793a7}.live-pair{color:#e8edf4;font-weight:600}.live-reason{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live-empty{color:#8793a7;font-size:12px;padding:8px 4px;list-style:none}.live-flash{animation:liveflash .9s ease}@keyframes liveflash{0%{box-shadow:0 0 0 0 rgba(140,240,198,.45)}100%{box-shadow:0 0 0 14px rgba(140,240,198,0)}}
+
+
+/* Plain-English Monte Carlo stress-test controls, explainer, and result cards */
+.mc-explainer{margin:0 0 18px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:#0c121b;overflow:hidden}
+.mc-explainer summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;color:#d5deea;font-size:13px;font-weight:700;cursor:pointer;list-style:none}
+.mc-explainer summary::-webkit-details-marker{display:none}
+.mc-explainer summary::after{content:"+";display:grid;place-items:center;width:22px;height:22px;flex:0 0 22px;border:1px solid rgba(140,240,198,.28);border-radius:50%;color:var(--accent);font-size:16px;line-height:1}
+.mc-explainer[open] summary::after{content:"−"}
+.mc-explainer summary:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;border-radius:10px}
+.mc-explainer-content{padding:12px 15px 14px;border-top:1px solid rgba(255,255,255,.07);color:var(--muted);font-size:12px;line-height:1.6}
+.mc-explainer-content p{margin:0!important;color:inherit}
+.mc-explainer-content ul{margin:8px 0;padding-left:19px}
+.mc-explainer-content li{margin:5px 0}
+.mc-explainer-content strong{color:#d5deea}
+.mc-explainer-caveat{padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+.mc-controls{align-items:flex-end}
+.mc-input{flex:1 1 155px;min-width:135px}
+.mc-input>span{color:#e0e7ef;font-weight:650}
+.mc-input input{width:100%;max-width:190px}
+.mc-input small{max-width:210px;color:#8793a7;font-size:11px;line-height:1.4}
+.mc-controls button{align-self:flex-end;white-space:nowrap}
+.mc-status{min-height:18px}
+.mc-cards{grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px}
+.mc-cards .mc-card{min-height:118px;padding:12px 13px}
+.mc-card-label{display:block;color:#bac6d5;font-size:12px;font-weight:700;line-height:1.35}
+.mc-cards .mc-card strong.mc-card-value{display:block;margin-top:7px;color:#eef3fb;font-size:21px;font-family:'JetBrains Mono',monospace;line-height:1.15;letter-spacing:-.03em}
+.mc-card-note{display:block;margin-top:7px;color:#8793a7;font-size:11px;line-height:1.4}
+.mc-chart-legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;color:#94a3b8;font-size:11px}
+.mc-chart-legend span{display:inline-flex;align-items:center;gap:7px}
+.mc-chart-legend i{display:inline-block;width:17px;height:8px;border-radius:2px}
+.mc-legend-typical{height:2px!important;background:#8cf0c6}
+.mc-legend-range{background:rgba(56,189,248,.25);border:1px solid rgba(56,189,248,.45)}
+@media(max-width:600px){.mc-input{flex-basis:calc(50% - 8px)}.mc-controls button{width:100%}.mc-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.mc-input{flex-basis:100%}.mc-cards{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -815,20 +850,52 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <div>
           <p class="eyebrow">QUANT LAB</p>
           <h2>🎲 Monte Carlo Drawdown Stress Test</h2>
-          <p class="muted-copy">Bootstraps the verified closed-trade R distribution into thousands of simulated futures. Research stress-test — not a performance promise.</p>
+          <p class="muted-copy">Explore how different possible outcomes could affect an account, using verified closed-trade history. This is a research stress test, not a forecast or performance promise.</p>
         </div>
       </div>
-      <div class="risk-inputs">
-        <label>Iterations<input id="mcIterations" type="number" min="100" max="10000" step="100" value="2000"></label>
-        <label>Trades per path<input id="mcHorizon" type="number" min="10" max="500" step="10" value="100"></label>
-        <label>Risk per trade (%)<input id="mcRisk" type="number" min="0.1" max="5" step="0.1" value="1"></label>
-        <label>Seed<input id="mcSeed" type="number" min="1" step="1" value="42"></label>
-        <button id="mcRun" class="secondary">▶ Run simulation</button>
+      <details class="mc-explainer">
+        <summary>How does this stress test work?</summary>
+        <div class="mc-explainer-content">
+          <p>The test repeatedly picks a result from the verified, closed trades and uses it as a stand-in for a future trade. A past result can be picked more than once, creating many different possible paths.</p>
+          <ul>
+            <li>Each path starts at the same 100% balance. The risk percentage is applied to the current simulated balance on every trade, so gains and losses compound.</li>
+            <li>Use the same <strong>Shuffle code</strong>, settings, and trade history to reproduce the same run.</li>
+            <li>On the chart, 1.00× means no change from the starting balance; 1.10× means 10% higher and 0.90× means 10% lower. The shaded band covers the middle 90% of simulated paths.</li>
+          </ul>
+          <p class="mc-explainer-caveat">This assumes future results resemble the historical sample. Real trading costs, slippage, and market changes are not modeled, and outcomes can be better or worse.</p>
+        </div>
+      </details>
+      <div class="risk-inputs mc-controls">
+        <label class="mc-input">
+          <span>Simulations</span>
+          <input id="mcIterations" type="number" min="100" max="10000" step="100" value="2000">
+          <small>Number of possible paths to compare.</small>
+        </label>
+        <label class="mc-input">
+          <span>Future trades ahead</span>
+          <input id="mcHorizon" type="number" min="10" max="500" step="10" value="100">
+          <small>How many trades each path contains.</small>
+        </label>
+        <label class="mc-input">
+          <span>Risk per trade (%)</span>
+          <input id="mcRisk" type="number" min="0.1" max="5" step="0.1" value="1">
+          <small>Percent of the current balance at risk per trade.</small>
+        </label>
+        <label class="mc-input">
+          <span>Shuffle code</span>
+          <input id="mcSeed" type="number" min="1" step="1" value="42">
+          <small>Keep the same code to repeat a run.</small>
+        </label>
+        <button id="mcRun" class="secondary">▶ Run stress test</button>
       </div>
-      <div id="mcStatus" class="muted-copy"></div>
-      <div id="mcCards" class="risk-outputs"></div>
-      <div class="chart-wrap"><svg id="mcFan" viewBox="0 0 1000 380" role="img" aria-label="Monte Carlo equity fan"></svg></div>
-      <p class="chart-disclaimer">Simulated from the historical R distribution only. Past results never guarantee future performance.</p>
+      <div id="mcStatus" class="muted-copy mc-status" role="status" aria-live="polite" aria-atomic="true">Set your assumptions, then run the stress test.</div>
+      <div id="mcCards" class="risk-outputs mc-cards" aria-live="polite"></div>
+      <div class="chart-wrap"><svg id="mcFan" viewBox="0 0 1000 380" role="img" aria-label="Simulated account balance range from the start through future trades"></svg></div>
+      <div class="mc-chart-legend" aria-label="Chart legend">
+        <span><i class="mc-legend-typical"></i>Typical path (middle result)</span>
+        <span><i class="mc-legend-range"></i>Middle 90% of simulated paths</span>
+      </div>
+      <p class="chart-disclaimer">Historical outcomes do not guarantee future performance. Real costs, execution differences, and changing markets can make results differ.</p>
     </section>
 
     <div id="chartModal" class="modal" hidden>
@@ -1948,9 +2015,16 @@ if (document.readyState === 'loading') {
 
 // ── Functionality #10: Monte Carlo Quant Lab ─────────────────────────────
 async function runMonteCarloUI() {
-  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan');
-  if (!status) return;
-  status.textContent = 'Simulating…';
+  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan'), runButton = $('mcRun');
+  if (!status || (runButton && runButton.disabled)) return;
+  status.textContent = 'Building possible outcomes…';
+  status.setAttribute('aria-busy', 'true');
+  if (cards) cards.innerHTML = '';
+  if (svg) svg.innerHTML = '';
+  if (runButton) {
+    runButton.disabled = true;
+    runButton.textContent = 'Running…';
+  }
   try {
     const val = id => (($('#' + id.slice(1)) || $(id) || {}).value);
     const q = 'iterations=' + encodeURIComponent(val('mcIterations') || 2000)
@@ -1959,28 +2033,43 @@ async function runMonteCarloUI() {
       + '&seed=' + encodeURIComponent(val('mcSeed') || 42);
     const d = await api('/api/monte-carlo?' + q);
     if (!d.ok) {
-      status.textContent = (d.error || 'UNAVAILABLE') + ': ' + (d.message || 'Monte Carlo needs at least 5 closed trades in the verified ledger.');
-      if (cards) cards.innerHTML = '';
-      if (svg) svg.innerHTML = '';
+      status.textContent = d.error === 'INSUFFICIENT_HISTORY'
+        ? 'At least 5 verified closed trades are needed before this stress test can run.'
+        : 'The stress test could not be run. Please try again in a moment.';
       return;
     }
-    status.textContent = d.iterations.toLocaleString() + ' paths × ' + d.horizon + ' trades · seed ' + d.seed
-      + ' · pool ' + d.trades + ' closed trades (win ' + Math.round(d.histWinRate * 100) + '%, expectancy '
-      + Number(d.histExpectancyR).toFixed(2) + 'R)';
+    const tradeCount = Number(d.trades);
+    status.textContent = Number(d.iterations).toLocaleString() + ' simulations · '
+      + Number(d.horizon).toLocaleString() + ' future trades ahead per simulation · shuffle code ' + d.seed
+      + ' · based on ' + tradeCount.toLocaleString() + ' verified closed ' + (tradeCount === 1 ? 'trade.' : 'trades.');
     const g = d.finalGrowth;
-    const pct = x => (x >= 1 ? '+' : '') + ((x - 1) * 100).toFixed(1) + '%';
-    cards.innerHTML =
-      '<div>Median growth<strong>' + pct(g.p50) + '</strong></div>' +
-      '<div>5th percentile<strong>' + pct(g.p5) + '</strong></div>' +
-      '<div>95th percentile<strong>' + pct(g.p95) + '</strong></div>' +
-      '<div>P(net loss)<strong>' + (d.probNetLoss * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 10%)<strong>' + (d.probDd10 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 20%)<strong>' + (d.probDd20 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>DD 95th percentile<strong>' + Number(d.maxDrawdownPct.p95).toFixed(1) + '%</strong></div>' +
-      '<div>Loss streak 95th<strong>' + d.consecLoss.p95 + ' trades</strong></div>';
+    const growth = x => {
+      const change = (Number(x) - 1) * 100;
+      return (change > 0 ? '+' : '') + change.toFixed(1) + '%';
+    };
+    const chance = x => (Number(x) * 100).toFixed(1) + '%';
+    const card = (label, value, note) => '<div class="mc-card"><span class="mc-card-label">' + label
+      + '</span><strong class="mc-card-value">' + value + '</strong><small class="mc-card-note">' + note + '</small></div>';
+    const losingRun = Math.ceil(Number(d.consecLoss.p95));
+    if (cards) cards.innerHTML = [
+      card('Typical Growth', growth(g.p50), 'The middle result across all simulated paths.'),
+      card('Unlucky Scenario', growth(g.p5), '5% of simulated paths finished lower.'),
+      card('Lucky Scenario', growth(g.p95), '5% of simulated paths finished higher.'),
+      card('Chance of Ending Down', chance(d.probNetLoss), 'Finished below the starting balance.'),
+      card('Chance of a 10% Dip', chance(d.probDd10), 'Fell 10% or more from a past high, at least once.'),
+      card('Chance of a 20% Dip', chance(d.probDd20), 'Fell 20% or more from a past high, at least once.'),
+      card('Worst Realistic Dip', Number(d.maxDrawdownPct.p95).toFixed(1) + '%', '95% of paths had a dip this size or smaller.'),
+      card('Longest Losing Run', losingRun + (losingRun === 1 ? ' trade' : ' trades'), '95% of paths had a run this long or shorter.')
+    ].join('');
     renderMcFan(d);
   } catch (e) {
-    status.textContent = 'Simulation failed: ' + e.message;
+    status.textContent = 'The stress test could not be completed. Please try again.';
+  } finally {
+    status.removeAttribute('aria-busy');
+    if (runButton) {
+      runButton.disabled = false;
+      runButton.textContent = '▶ Run stress test';
+    }
   }
 }
 
@@ -2006,8 +2095,8 @@ function renderMcFan(d) {
   out += \`<polygon points="\${fan}" fill="#38bdf8" opacity="0.16"/>\`;
   out += \`<polyline points="\${d.bands.p50.map((v, i) => x(i) + ',' + y(v)).join(' ')}" fill="none" stroke="#8cf0c6" stroke-width="2.4"/>\`;
   out += \`<line x1="\${pad.l}" x2="\${W - pad.r}" y1="\${y(1)}" y2="\${y(1)}" stroke="#f6c66d" stroke-dasharray="6 5"/>\`;
-  out += \`<text x="\${W - pad.r - 4}" y="\${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting equity 1.00×</text>\`;
-  out += \`<text x="\${pad.l}" y="\${H - 12}" fill="#8793a7" font-size="11">trade 0</text><text x="\${W - pad.r}" y="\${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">trade \${d.horizon}</text>\`;
+  out += \`<text x="\${W - pad.r - 4}" y="\${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting balance 1.00×</text>\`;
+  out += \`<text x="\${pad.l}" y="\${H - 12}" fill="#8793a7" font-size="11">Start</text><text x="\${W - pad.r}" y="\${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">After \${d.horizon} trades</text>\`;
   svg.innerHTML = out;
 }
 

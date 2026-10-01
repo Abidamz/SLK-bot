@@ -1046,9 +1046,16 @@ if (document.readyState === 'loading') {
 
 // ── Functionality #10: Monte Carlo Quant Lab ─────────────────────────────
 async function runMonteCarloUI() {
-  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan');
-  if (!status) return;
-  status.textContent = 'Simulating…';
+  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan'), runButton = $('mcRun');
+  if (!status || (runButton && runButton.disabled)) return;
+  status.textContent = 'Building possible outcomes…';
+  status.setAttribute('aria-busy', 'true');
+  if (cards) cards.innerHTML = '';
+  if (svg) svg.innerHTML = '';
+  if (runButton) {
+    runButton.disabled = true;
+    runButton.textContent = 'Running…';
+  }
   try {
     const val = id => (($('#' + id.slice(1)) || $(id) || {}).value);
     const q = 'iterations=' + encodeURIComponent(val('mcIterations') || 2000)
@@ -1057,28 +1064,43 @@ async function runMonteCarloUI() {
       + '&seed=' + encodeURIComponent(val('mcSeed') || 42);
     const d = await api('/api/monte-carlo?' + q);
     if (!d.ok) {
-      status.textContent = (d.error || 'UNAVAILABLE') + ': ' + (d.message || 'Monte Carlo needs at least 5 closed trades in the verified ledger.');
-      if (cards) cards.innerHTML = '';
-      if (svg) svg.innerHTML = '';
+      status.textContent = d.error === 'INSUFFICIENT_HISTORY'
+        ? 'At least 5 verified closed trades are needed before this stress test can run.'
+        : 'The stress test could not be run. Please try again in a moment.';
       return;
     }
-    status.textContent = d.iterations.toLocaleString() + ' paths × ' + d.horizon + ' trades · seed ' + d.seed
-      + ' · pool ' + d.trades + ' closed trades (win ' + Math.round(d.histWinRate * 100) + '%, expectancy '
-      + Number(d.histExpectancyR).toFixed(2) + 'R)';
+    const tradeCount = Number(d.trades);
+    status.textContent = Number(d.iterations).toLocaleString() + ' simulations · '
+      + Number(d.horizon).toLocaleString() + ' future trades ahead per simulation · shuffle code ' + d.seed
+      + ' · based on ' + tradeCount.toLocaleString() + ' verified closed ' + (tradeCount === 1 ? 'trade.' : 'trades.');
     const g = d.finalGrowth;
-    const pct = x => (x >= 1 ? '+' : '') + ((x - 1) * 100).toFixed(1) + '%';
-    cards.innerHTML =
-      '<div>Median growth<strong>' + pct(g.p50) + '</strong></div>' +
-      '<div>5th percentile<strong>' + pct(g.p5) + '</strong></div>' +
-      '<div>95th percentile<strong>' + pct(g.p95) + '</strong></div>' +
-      '<div>P(net loss)<strong>' + (d.probNetLoss * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 10%)<strong>' + (d.probDd10 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 20%)<strong>' + (d.probDd20 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>DD 95th percentile<strong>' + Number(d.maxDrawdownPct.p95).toFixed(1) + '%</strong></div>' +
-      '<div>Loss streak 95th<strong>' + d.consecLoss.p95 + ' trades</strong></div>';
+    const growth = x => {
+      const change = (Number(x) - 1) * 100;
+      return (change > 0 ? '+' : '') + change.toFixed(1) + '%';
+    };
+    const chance = x => (Number(x) * 100).toFixed(1) + '%';
+    const card = (label, value, note) => '<div class="mc-card"><span class="mc-card-label">' + label
+      + '</span><strong class="mc-card-value">' + value + '</strong><small class="mc-card-note">' + note + '</small></div>';
+    const losingRun = Math.ceil(Number(d.consecLoss.p95));
+    if (cards) cards.innerHTML = [
+      card('Typical Growth', growth(g.p50), 'The middle result across all simulated paths.'),
+      card('Unlucky Scenario', growth(g.p5), '5% of simulated paths finished lower.'),
+      card('Lucky Scenario', growth(g.p95), '5% of simulated paths finished higher.'),
+      card('Chance of Ending Down', chance(d.probNetLoss), 'Finished below the starting balance.'),
+      card('Chance of a 10% Dip', chance(d.probDd10), 'Fell 10% or more from a past high, at least once.'),
+      card('Chance of a 20% Dip', chance(d.probDd20), 'Fell 20% or more from a past high, at least once.'),
+      card('Worst Realistic Dip', Number(d.maxDrawdownPct.p95).toFixed(1) + '%', '95% of paths had a dip this size or smaller.'),
+      card('Longest Losing Run', losingRun + (losingRun === 1 ? ' trade' : ' trades'), '95% of paths had a run this long or shorter.')
+    ].join('');
     renderMcFan(d);
   } catch (e) {
-    status.textContent = 'Simulation failed: ' + e.message;
+    status.textContent = 'The stress test could not be completed. Please try again.';
+  } finally {
+    status.removeAttribute('aria-busy');
+    if (runButton) {
+      runButton.disabled = false;
+      runButton.textContent = '▶ Run stress test';
+    }
   }
 }
 
@@ -1104,8 +1126,8 @@ function renderMcFan(d) {
   out += `<polygon points="${fan}" fill="#38bdf8" opacity="0.16"/>`;
   out += `<polyline points="${d.bands.p50.map((v, i) => x(i) + ',' + y(v)).join(' ')}" fill="none" stroke="#8cf0c6" stroke-width="2.4"/>`;
   out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(1)}" y2="${y(1)}" stroke="#f6c66d" stroke-dasharray="6 5"/>`;
-  out += `<text x="${W - pad.r - 4}" y="${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting equity 1.00×</text>`;
-  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">trade 0</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">trade ${d.horizon}</text>`;
+  out += `<text x="${W - pad.r - 4}" y="${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting balance 1.00×</text>`;
+  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">Start</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">After ${d.horizon} trades</text>`;
   svg.innerHTML = out;
 }
 
