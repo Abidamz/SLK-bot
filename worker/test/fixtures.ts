@@ -297,9 +297,45 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
         dukaJson(dayFile ? dayFlatFeed() : yahooFlatFeed(), dayFile ? 86400_000 : 1800_000),
       ), { status: 200 });
     }
+    if (url.includes("derivws.com") || url.includes("binaryws.com")) {
+      (calls.dataCalls ??= []).push(url);
+      if (opts.failData) throw new Error("network down (simulated)");
+      const mockWs = {
+        closed: false,
+        listeners: {} as Record<string, ((...args: any[]) => void)[]>,
+        addEventListener(type: string, cb: (...args: any[]) => void) {
+          (this.listeners[type] ??= []).push(cb);
+        },
+        send(data: string) {
+          const req = JSON.parse(data);
+          setTimeout(() => {
+            const feed = req.granularity >= 86400 ? dailyFeed() : baseFeed();
+            const msg = {
+              msg_type: "candles",
+              candles: feed.map((c) => ({
+                epoch: Math.floor(c.t / 1000),
+                open: c.o,
+                high: c.h,
+                low: c.l,
+                close: c.c,
+              })),
+            };
+            this.listeners["message"]?.forEach((cb) => cb({ data: JSON.stringify(msg) }));
+          }, 5);
+        },
+        accept() {},
+        close() { this.closed = true; },
+      };
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    }
     if (url.includes("api.telegram.org")) {
+      if (url.includes("/pinChatMessage")) {
+        return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+      }
       calls.telegram.push(JSON.parse(String(init?.body ?? "{}")).text ?? "");
-      return new Response(JSON.stringify({ ok: true, result: {} }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 101 } }), { status: 200 });
     }
     if (url.includes("discord.com")) {
       calls.discord.push(JSON.parse(String(init?.body ?? "{}")).content ?? "");

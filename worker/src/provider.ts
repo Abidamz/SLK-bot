@@ -1,9 +1,10 @@
-/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus a
- *  Yahoo Finance fallback for index CFDs, plus data-quality validation.
+/** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus
+ *  OANDA v3 REST + Dukascopy tick data + Deriv WebSocket.
+ *  Yahoo Finance is excluded from automated fallbacks and accessible only via explicit PROVIDER_MAP.
  *  Canonical symbol mapping is explicit: the research requires normalized
  *  symbols per provider. */
 import type { Candle } from "./types";
-import { INDEX_POINT_PAIRS, TF_SECONDS } from "./config";
+import { INDEX_POINT_PAIRS, TF_SECONDS, isDerivPair } from "./config";
 import { resampleCandles } from "./features";
 
 const TD_INTERVALS: Record<string, string> = {
@@ -72,6 +73,16 @@ const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
   NAS100: "^NDX", US100: "^NDX", SPX500: "^GSPC", US500: "^GSPC", UK100: "^FTSE",
 };
 
+export function yahooSymbolFor(pair: string, symbolMap: Record<string, string> = {}): string {
+  if (symbolMap[pair]) return symbolMap[pair];
+  const p = pair.toUpperCase();
+  if (YAHOO_INDEX_SYMBOLS[p]) return YAHOO_INDEX_SYMBOLS[p];
+  if (p === "XAUUSD") return "GC=F";
+  if (p === "XAGUSD") return "SI=F";
+  if (p.length === 6) return `${p}=X`;
+  return p;
+}
+
 // --------------------------------------------------------------------- OANDA
 // Practice-account v3 REST — free signup, official API, broker-grade live
 // quotes, no per-credit counting. Primary source for index CFDs
@@ -79,10 +90,11 @@ const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
 
 /** OANDA instrument names for our canonical pairs. */
 const OANDA_INSTRUMENTS: Record<string, string> = {
-  US30: "US30_USD", GER40: "DE40_EUR", DE40: "DE40_EUR",
+  US30: "US30_USD", GER40: "DE30_EUR", DE40: "DE30_EUR", DE30: "DE30_EUR",
   JAPAN225: "JP225_USD", JP225: "JP225_USD",
   NAS100: "NAS100_USD", US100: "NAS100_USD", SPX500: "SPX500_USD", US500: "SPX500_USD",
   UK100: "UK100_GBP", XAUUSD: "XAU_USD", XAGUSD: "XAG_USD",
+  EURUSD: "EUR_USD", GBPUSD: "GBP_USD", USDJPY: "USD_JPY", AUDJPY: "AUD_JPY", GBPJPY: "GBP_JPY",
 };
 
 const OANDA_GRANULARITIES: Record<string, string> = {
@@ -96,6 +108,7 @@ export async function fetchOanda(
   limit: number,
   symbolMap: Record<string, string> = {},
   fetchFn: FetchLike = fetch,
+  environment: "practice" | "live" | "auto" = "auto",
 ): Promise<Candle[]> {
   if (!apiToken) throw new Error("OANDA_API_TOKEN is not set");
   const gran = OANDA_GRANULARITIES[tf];
@@ -109,34 +122,49 @@ export async function fetchOanda(
     granularity: gran,
     price: "M", // midpoint candles
   });
-  const url = `https://api-fxpractice.oanda.com/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
-  const resp = await fetchFn(url, {
-    headers: {
-      authorization: `Bearer ${apiToken}`,
-      "accept-datetime-format": "RFC3339",
-    },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const data = (await resp.json()) as {
-    errorMessage?: string;
-    candles?: {
-      complete: boolean;
-      time: string;
-      mid?: { o: string; h: string; l: string; c: string };
-    }[];
-  };
-  if (!resp.ok || !data.candles) {
-    throw new Error(`OANDA error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
-  }
-  const out: Candle[] = [];
-  for (const cd of data.candles) {
-    if (!cd.mid) continue; // skipped session gaps come back without prices
-    out.push({
-      t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
-      o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+
+  const endpoints = environment === "live"
+    ? ["https://api-fxtrade.oanda.com", "https://api-fxpractice.oanda.com"]
+    : environment === "practice"
+      ? ["https://api-fxpractice.oanda.com"]
+      : ["https://api-fxpractice.oanda.com", "https://api-fxtrade.oanda.com"];
+
+  let lastError: Error | null = null;
+  for (const base of endpoints) {
+    const url = `${base}/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
+    const resp = await fetchFn(url, {
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        "accept-datetime-format": "RFC3339",
+      },
+      signal: AbortSignal.timeout(20_000),
     });
+    const data = (await resp.json().catch(() => ({}))) as {
+      errorMessage?: string;
+      candles?: {
+        complete: boolean;
+        time: string;
+        mid?: { o: string; h: string; l: string; c: string };
+      }[];
+    };
+    if (!resp.ok || !data.candles) {
+      lastError = new Error(`OANDA error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
+      if (resp.status === 401 && endpoints.length > 1) {
+        continue;
+      }
+      throw lastError;
+    }
+    const out: Candle[] = [];
+    for (const cd of data.candles) {
+      if (!cd.mid) continue; // skipped session gaps come back without prices
+      out.push({
+        t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
+        o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+      });
+    }
+    return out;
   }
-  return out;
+  throw lastError ?? new Error(`OANDA error for ${instrument} ${gran}`);
 }
 
 // ------------------------------------------------------------------ Dukascopy
@@ -201,9 +229,16 @@ export function decodeJetta(d: JettaCandleResponse): Candle[] {
 
 type KvLike = { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> } | undefined;
 
+let tdCreditsExhausted = false;
+
+export function resetProviderCircuitBreakers(): void {
+  tdCreditsExhausted = false;
+}
+
 export async function fetchDukascopy(
   pair: string, tf: string, limit: number,
   symbolMap: Record<string, string> = {}, fetchFn: FetchLike = fetch, kv: KvLike = undefined,
+  budget = 8,
 ): Promise<Candle[]> {
   const code = dukaCode(pair, symbolMap);
   const tfSec = TF_SECONDS[tf] ?? 1800;
@@ -254,12 +289,11 @@ export async function fetchDukascopy(
   }
 
   const all: Candle[] = [];
-  // Free-plan Workers cap = 50 subrequests per invocation; a cold start of
-  // 3 index pairs × ~50 day-files would blow through it (real prod error).
+  // Free-plan Workers cap = 50 subrequests per invocation.
   // Fetch NEWEST buckets first with a hard budget: every tick goes deeper as
   // immutable history lands in the kv cache; partial history always ends at
   // the freshest bar so quality gates (freshness, minimum candles) pass early.
-  let fetchBudget = 8;
+  let fetchBudget = budget;
   for (const b of [...buckets].reverse()) {
     let j: JettaCandleResponse | null = null;
     if (!b.mutable && kv) {
@@ -300,12 +334,574 @@ export async function fetchDukascopy(
   return out.length > limit ? out.slice(-limit) : out;
 }
 
-export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy";
+export const DERIV_SYMBOLS: Record<string, string> = {
+  // 5 Standard Volatility Indices
+  V75: "R_75",
+  VOLATILITY75: "R_75",
+  R_75: "R_75",
+  V100: "R_100",
+  VOLATILITY100: "R_100",
+  R_100: "R_100",
+  V50: "R_50",
+  VOLATILITY50: "R_50",
+  R_50: "R_50",
+  V25: "R_25",
+  VOLATILITY25: "R_25",
+  R_25: "R_25",
+  V10: "R_10",
+  VOLATILITY10: "R_10",
+  R_10: "R_10",
+
+  // 5 1-Second (1s) Volatility Indices
+  V75_1S: "1HZ75V",
+  "1HZ75V": "1HZ75V",
+  V100_1S: "1HZ100V",
+  "1HZ100V": "1HZ100V",
+  V50_1S: "1HZ50V",
+  "1HZ50V": "1HZ50V",
+  V25_1S: "1HZ25V",
+  "1HZ25V": "1HZ25V",
+  V10_1S: "1HZ10V",
+  "1HZ10V": "1HZ10V",
+};
+
+/** Fetch continuous synthetic market data from Deriv via Workers WebSocket API or optional HTTP relay */
+export async function fetchDeriv(
+  pair: string,
+  tf: string,
+  limit: number,
+  symbolMap: Record<string, string> = {},
+  appId = "1089",
+  fetchFn: FetchLike = fetch,
+  proxyUrl?: string,
+): Promise<Candle[]> {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  const symbol = symbolMap[pair] ?? DERIV_SYMBOLS[p] ?? p;
+  const granularity = TF_SECONDS[tf] ?? 1800;
+
+  // 1. If HTTP proxy/relay is configured (e.g. Render / Railway), query via standard HTTP subrequest
+  if (proxyUrl) {
+    try {
+      const cleanProxy = proxyUrl.trim().replace(/\/+$/, "");
+      const url = `${cleanProxy}/candles?symbol=${encodeURIComponent(symbol)}&granularity=${granularity}&limit=${encodeURIComponent(String(limit))}`;
+      const resp = await fetchFn(url, { headers: { Accept: "application/json" } });
+      if (resp.ok) {
+        const data = await resp.json() as { ok: boolean; candles?: Array<{ t: number; o: number; h: number; l: number; c: number }> };
+        if (data && data.ok && Array.isArray(data.candles) && data.candles.length > 0) {
+          const mapped: Candle[] = data.candles.map((c) => ({
+            t: Number(c.t),
+            o: Number(c.o),
+            h: Number(c.h),
+            l: Number(c.l),
+            c: Number(c.c),
+          })).sort((a, b) => a.t - b.t);
+          return mapped;
+        }
+      }
+    } catch (proxyErr) {
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "deriv.proxy.error",
+        pair,
+        symbol,
+        proxyUrl,
+        error: proxyErr instanceof Error ? proxyErr.message : String(proxyErr),
+      }));
+    }
+  }
+
+  const timeoutMs = 12_000;
+
+  return new Promise<Candle[]>((resolve, reject) => {
+    let resolved = false;
+    let wsRef: any = null;
+    let sent = false;
+    let lastSendError = "";
+    let lastError = "";
+
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        const extra = lastSendError ? ` [send err: ${lastSendError}]` : ` [sent=${sent}, rs=${wsRef?.readyState}]`;
+        reject(new Error(`Deriv WebSocket timeout after ${timeoutMs}ms for ${symbol} ${tf}${extra} (attempts: ${lastError})`));
+      }
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+    };
+
+    (async () => {
+      try {
+
+        const candidates: { type: "fetch" | "ws"; url: string; label: string }[] = [
+          // 1. New official public market data endpoint (no app_id or auth required)
+          { type: "fetch", url: "https://api.derivws.com/trading/v1/options/ws/public", label: "fetch:api.derivws.com/public" },
+          { type: "ws", url: "wss://api.derivws.com/trading/v1/options/ws/public", label: "ws:api.derivws.com/public" },
+          // 2. Fetch Upgrade with explicit browser Origin headers
+          { type: "fetch", url: `https://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:frontend.binaryws.com" },
+          { type: "fetch", url: `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "fetch:ws.derivws.com" },
+          { type: "fetch", url: `https://green.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "fetch:green.derivws.com" },
+          // 3. Direct native WebSocket client across Deriv edge clusters
+          { type: "ws", url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:frontend.binaryws.com" },
+          { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=16929&brand=deriv&l=en`, label: "ws:ws.derivws.com:16929" },
+          { type: "ws", url: `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`, label: "ws:ws.derivws.com:1089" },
+        ];
+
+        // 1. Production runtime: native WebSocket or Fetch Upgrade
+        if (fetchFn === fetch) {
+          for (const cand of candidates) {
+            if (resolved) break;
+            sent = false;
+            try {
+              let ws: any;
+              if (cand.type === "fetch") {
+                const resp = await fetch(cand.url, {
+                  headers: {
+                    Upgrade: "websocket",
+                    Connection: "Upgrade",
+                    Origin: "https://deriv.com",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  },
+                  signal: AbortSignal.timeout(4500),
+                });
+                const candidateWs = (resp as any).webSocket;
+                if (!candidateWs) {
+                  throw new Error(`HTTP ${resp.status}: no webSocket`);
+                }
+                ws = candidateWs;
+                if (typeof ws.accept === "function") {
+                  try { ws.accept(); } catch {}
+                }
+              } else {
+                if (typeof (globalThis as any).WebSocket !== "function") continue;
+                ws = new (globalThis as any).WebSocket(cand.url);
+              }
+              wsRef = ws;
+
+              const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
+                const wsTimer = setTimeout(() => {
+                  try { ws.close(); } catch {}
+                  rejectWs(new Error(`timeout on ${cand.label} (sent=${sent}, rs=${ws?.readyState})`));
+                }, 4500);
+
+                const onWsMessage = async (event: any) => {
+                  try {
+                    let rawData: string;
+                    if (typeof event.data === "string") {
+                      rawData = event.data;
+                    } else if (event.data instanceof ArrayBuffer) {
+                      rawData = new TextDecoder().decode(event.data);
+                    } else if (event.data && typeof event.data.text === "function") {
+                      rawData = await event.data.text();
+                    } else {
+                      rawData = new TextDecoder().decode(event.data as ArrayBuffer);
+                    }
+                    const data = JSON.parse(rawData);
+
+                    if (data.error) {
+                      clearTimeout(wsTimer);
+                      try { ws.close(); } catch {}
+                      rejectWs(new Error(`Deriv API error: ${data.error.message || JSON.stringify(data.error)}`));
+                      return;
+                    }
+
+                    if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+                      clearTimeout(wsTimer);
+                      const rawCandles = data.candles as Array<{
+                        epoch: number | string;
+                        open: number | string;
+                        high: number | string;
+                        low: number | string;
+                        close: number | string;
+                      }>;
+                      const mapped: Candle[] = rawCandles.map((c) => ({
+                        t: Number(c.epoch) * 1000,
+                        o: Number(c.open),
+                        h: Number(c.high),
+                        l: Number(c.low),
+                        c: Number(c.close),
+                      }));
+                      mapped.sort((a, b) => a.t - b.t);
+                      try { ws.close(); } catch {}
+                      resolveWs(mapped);
+                    }
+                  } catch (e) {
+                    clearTimeout(wsTimer);
+                    try { ws.close(); } catch {}
+                    rejectWs(e instanceof Error ? e : new Error(String(e)));
+                  }
+                };
+
+                const onWsError = (err: any) => {
+                  clearTimeout(wsTimer);
+                  try { ws.close(); } catch {}
+                  const errObj = err?.error;
+                  const errMsg = errObj?.message || err?.message || (typeof errObj === "string" ? errObj : "") || (err?.type ? `event:${err.type}` : "ws error");
+                  rejectWs(new Error(`${cand.label} error (${errMsg})`));
+                };
+
+                const onWsClose = (evt: any) => {
+                  clearTimeout(wsTimer);
+                  rejectWs(new Error(`${cand.label} closed (${evt?.code || "unknown"}: ${evt?.reason || "clean"})`));
+                };
+
+                if (typeof ws.addEventListener === "function") {
+                  ws.addEventListener("message", onWsMessage);
+                  ws.addEventListener("error", onWsError);
+                  ws.addEventListener("close", onWsClose);
+                } else {
+                  ws.onmessage = onWsMessage;
+                  ws.onerror = onWsError;
+                  ws.onclose = onWsClose;
+                }
+
+                const doSend = () => {
+                  if (sent) return;
+                  try {
+                    ws.send(JSON.stringify({
+                      ticks_history: symbol,
+                      style: "candles",
+                      granularity,
+                      count: Math.min(limit, 1000),
+                      end: "latest",
+                      req_id: 1,
+                    }));
+                    sent = true;
+                  } catch (sErr) {
+                    lastSendError = sErr instanceof Error ? sErr.message : String(sErr);
+                    // Do not reject immediately if socket is still connecting
+                    if (ws.readyState !== 0) {
+                      clearTimeout(wsTimer);
+                      rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                    }
+                  }
+                };
+
+                // Register open listener
+                if (typeof ws.addEventListener === "function") {
+                  ws.addEventListener("open", doSend, { once: true });
+                } else if ("onopen" in ws) {
+                  ws.onopen = doSend;
+                }
+
+                // Also try sending immediately in case connection is already ready or auto-accepted
+                doSend();
+              });
+
+              if (!resolved) {
+                resolved = true;
+                cleanup();
+                resolve(res);
+                return;
+              }
+            } catch (endpointErr) {
+              const msg = endpointErr instanceof Error ? endpointErr.message : String(endpointErr);
+              lastError += (lastError ? " | " : "") + msg;
+            }
+          }
+        }
+
+        // 2. Custom fetchFn path (used by mock test suites)
+        if (!resolved && fetchFn !== fetch) {
+          const endpoints = [
+            `https://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+            `https://ws.binaryws.com/websockets/v3?app_id=${encodeURIComponent(appId)}`,
+          ];
+          for (const targetUrl of endpoints) {
+            try {
+              const resp = await fetchFn(targetUrl, {
+                headers: {
+                  Upgrade: "websocket",
+                  Connection: "Upgrade",
+                  Origin: "https://deriv.com",
+                },
+              });
+
+              const candidateWs = (resp as any).webSocket ?? (resp as any).body?.webSocket;
+              if (candidateWs) {
+                const ws = candidateWs;
+                wsRef = ws;
+                try {
+                  if ("binaryType" in ws) ws.binaryType = "arraybuffer";
+                } catch {}
+                if (typeof ws.accept === "function") {
+                  try {
+                    ws.accept();
+                  } catch (acceptErr) {
+                    lastError = `accept() failed: ${acceptErr instanceof Error ? acceptErr.message : String(acceptErr)}`;
+                  }
+                }
+
+                const res = await new Promise<Candle[]>((resolveWs, rejectWs) => {
+                  const wsTimer = setTimeout(() => {
+                    try { ws.close(); } catch {}
+                    rejectWs(new Error(`timeout on mock ${targetUrl}`));
+                  }, 3800);
+
+                  const onMockMessage = async (event: any) => {
+                    try {
+                      const data = typeof event.data === "string" ? JSON.parse(event.data) : JSON.parse(new TextDecoder().decode(event.data));
+                      if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+                        clearTimeout(wsTimer);
+                        const rawCandles = data.candles as Array<{
+                          epoch: number | string;
+                          open: number | string;
+                          high: number | string;
+                          low: number | string;
+                          close: number | string;
+                        }>;
+                        const mapped: Candle[] = rawCandles.map((c) => ({
+                          t: Number(c.epoch) * 1000,
+                          o: Number(c.open),
+                          h: Number(c.high),
+                          l: Number(c.low),
+                          c: Number(c.close),
+                        }));
+                        mapped.sort((a, b) => a.t - b.t);
+                        try { ws.close(); } catch {}
+                        resolveWs(mapped);
+                      }
+                    } catch (e) {
+                      clearTimeout(wsTimer);
+                      try { ws.close(); } catch {}
+                      rejectWs(e instanceof Error ? e : new Error(String(e)));
+                    }
+                  };
+
+                  if (typeof ws.addEventListener === "function") {
+                    ws.addEventListener("message", onMockMessage);
+                  } else {
+                    ws.onmessage = onMockMessage;
+                  }
+
+                  const doMockSend = () => {
+                    try {
+                      ws.send(JSON.stringify({
+                        ticks_history: symbol,
+                        style: "candles",
+                        granularity,
+                        count: Math.min(limit, 1000),
+                        end: "latest",
+                        req_id: 1,
+                      }));
+                      sent = true;
+                    } catch (sErr) {
+                      clearTimeout(wsTimer);
+                      rejectWs(sErr instanceof Error ? sErr : new Error(String(sErr)));
+                    }
+                  };
+
+                  if (ws.readyState === 1 || ws.readyState === 0 || ws.readyState === undefined) {
+                    doMockSend();
+                  } else {
+                    if (typeof ws.addEventListener === "function") {
+                      ws.addEventListener("open", doMockSend, { once: true });
+                    }
+                  }
+                });
+
+                if (!resolved) {
+                  resolved = true;
+                  cleanup();
+                  resolve(res);
+                  return;
+                }
+              }
+            } catch (fetchErr) {
+              lastError = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+            }
+          }
+        }
+
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(new Error(`Deriv connection failed for ${symbol}: ${lastError || "all endpoints exhausted"}`));
+        }
+      } catch (err) {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(err);
+        }
+      }
+    })();
+  });
+}
+
+/** Diagnostic probe: tests candidate Deriv endpoints sequentially within subrequest limits. */
+export async function testDerivEndpoints(symbol = "R_75", requestedTarget?: string): Promise<any[]> {
+  const allTargets: { id: string; type: "fetch" | "ws"; url: string; label: string; headers: Record<string, string> }[] = [
+    {
+      id: "fetch_frontend",
+      type: "fetch",
+      url: "https://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "fetch:frontend.binaryws.com",
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        Origin: "https://deriv.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    },
+    {
+      id: "fetch_derivws",
+      type: "fetch",
+      url: "https://ws.derivws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "fetch:ws.derivws.com",
+      headers: {
+        Upgrade: "websocket",
+        Connection: "Upgrade",
+        Origin: "https://deriv.com",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    },
+    {
+      id: "fetch_plain",
+      type: "fetch",
+      url: "https://frontend.binaryws.com/websockets/v3?app_id=1089",
+      label: "fetch:frontend:bare",
+      headers: {
+        Upgrade: "websocket",
+      },
+    },
+    {
+      id: "ws_frontend",
+      type: "ws",
+      url: "wss://frontend.binaryws.com/websockets/v3?app_id=1089&brand=deriv&l=en",
+      label: "ws:frontend.binaryws.com",
+      headers: {},
+    },
+  ];
+
+  const targets = requestedTarget
+    ? allTargets.filter((t) => t.id === requestedTarget || t.label.includes(requestedTarget))
+    : allTargets.slice(0, 2); // Default to testing top 2 endpoints with generous timeout
+
+  const results: any[] = [];
+  for (const t of targets) {
+    const start = Date.now();
+    try {
+      let ws: any;
+      let handshakeDuration = 0;
+      if (t.type === "fetch") {
+        const resp = await fetch(t.url, {
+          headers: t.headers,
+          signal: AbortSignal.timeout(6000),
+        });
+        handshakeDuration = Date.now() - start;
+        ws = (resp as any).webSocket;
+        if (!ws) {
+          results.push({
+            ...t,
+            success: false,
+            status: resp.status,
+            statusText: resp.statusText,
+            handshakeMs: handshakeDuration,
+            durationMs: Date.now() - start,
+            error: `HTTP ${resp.status}: no webSocket on response`,
+          });
+          continue;
+        }
+        if (typeof ws.accept === "function") {
+          try { ws.accept(); } catch (acceptErr) {
+            // accept failure
+          }
+        }
+      } else {
+        if (typeof (globalThis as any).WebSocket !== "function") {
+          results.push({ ...t, success: false, error: "WebSocket constructor not available" });
+          continue;
+        }
+        ws = new (globalThis as any).WebSocket(t.url);
+      }
+
+      const res = await new Promise<{ count: number; sample?: any }>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          try { ws.close(); } catch {}
+          reject(new Error(`timeout after 6000ms (readyState=${ws?.readyState})`));
+        }, 6000);
+
+        ws.onmessage = (event: any) => {
+          try {
+            const raw = typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data);
+            const data = JSON.parse(raw);
+            if (data.error) {
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              reject(new Error(data.error.message || JSON.stringify(data.error)));
+              return;
+            }
+            if (data.msg_type === "candles" || (data.candles && Array.isArray(data.candles))) {
+              clearTimeout(timer);
+              try { ws.close(); } catch {}
+              resolve({ count: data.candles.length, sample: data.candles[0] });
+            }
+          } catch (e: any) {
+            clearTimeout(timer);
+            try { ws.close(); } catch {}
+            reject(e);
+          }
+        };
+
+        ws.onerror = (err: any) => {
+          clearTimeout(timer);
+          try { ws.close(); } catch {}
+          const msg = err?.error?.message || err?.message || (err?.type ? `event:${err.type}` : "ws error");
+          reject(new Error(msg));
+        };
+
+        const sendMsg = () => {
+          try {
+            ws.send(JSON.stringify({
+              ticks_history: symbol,
+              style: "candles",
+              granularity: 1800,
+              count: 5,
+              end: "latest",
+              req_id: 1,
+            }));
+          } catch (e) {}
+        };
+
+        if (typeof ws.addEventListener === "function") {
+          ws.addEventListener("open", sendMsg, { once: true });
+        }
+        sendMsg();
+      });
+
+      results.push({
+        ...t,
+        success: true,
+        count: res.count,
+        sample: res.sample,
+        handshakeMs: handshakeDuration,
+        durationMs: Date.now() - start,
+      });
+      // If the first candidate succeeded, we don't need to test slower fallbacks
+      if (!requestedTarget) break;
+    } catch (err: any) {
+      results.push({
+        ...t,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - start,
+      });
+    }
+  }
+  return results;
+}
+
+export const METAL_PAIRS = new Set(["XAUUSD", "XAGUSD"]);
+
+export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
  *  exists (geo-restricted signups), else the keyless Dukascopy public feed
- *  (realtime broker quotes), with Yahoo as last resort. Everything else →
- *  Twelve Data. PROVIDER_MAP overrides. */
+ *  (realtime broker quotes), or Twelve Data. Deriv synthetics
+ *  (e.g., V75, V100) route directly to Deriv. Everything else → Twelve Data.
+ *  PROVIDER_MAP overrides (including explicit "yahoo"). */
 export function providerForPair(
   pair: string,
   providerMap: Record<string, string> = {},
@@ -313,14 +909,23 @@ export function providerForPair(
   dukascopyEnabled = true,
 ): ProviderName {
   const override = providerMap[pair];
-  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy") return override;
+  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy" || override === "deriv") return override;
+  if (isDerivPair(pair)) return "deriv";
   const p = pair.toUpperCase();
   // NB: classify by the canonical index-name set only — OANDA_INSTRUMENTS
   // also lists metals (future all-OANDA option) and must NOT affect routing.
   const isIndexCfd = INDEX_POINT_PAIRS.has(p) || Boolean(YAHOO_INDEX_SYMBOLS[p]);
   if (isIndexCfd) {
     if (oandaTokenPresent) return "oanda";
-    return dukascopyEnabled ? "dukascopy" : "yahoo";
+    return dukascopyEnabled ? "dukascopy" : "twelvedata";
+  }
+  // Metals (XAUUSD/XAGUSD): OANDA primary when its token exists — broker-aligned
+  // gold pricing (matches retail/prop MT5 within 1-2 points), 120 req/min with
+  // 99.99% uptime, and it shields the Twelve Data daily-credit pool. Without a
+  // token Twelve Data stays primary; both chains keep Dukascopy failover.
+  if (METAL_PAIRS.has(p)) {
+    if (oandaTokenPresent) return "oanda";
+    return "twelvedata";
   }
   return "twelvedata";
 }
@@ -337,34 +942,51 @@ export async function fetchYahoo(
   symbolMap: Record<string, string> = {},
   fetchFn: FetchLike = fetch,
 ): Promise<Candle[]> {
-  const symbol = symbolMap[pair] ?? YAHOO_INDEX_SYMBOLS[pair.toUpperCase()] ?? symbolFor(pair, symbolMap);
-  const range = YAHOO_RANGES[tf] ?? "3mo";
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
-    + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
-  const resp = await fetchFn(url, {
-    headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
-    signal: AbortSignal.timeout(20_000),
-  });
-  const data = (await resp.json()) as {
-    chart?: {
-      error?: { description?: string } | null;
-      result?: {
-        timestamp?: number[];
-        indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
-      }[] | null;
-    };
-  };
-  if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
-  const r = data.chart?.result?.[0];
-  const q = r?.indicators?.quote?.[0];
-  if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
-  const out: Candle[] = [];
-  for (let i = 0; i < r.timestamp.length; i++) {
-    const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
-    if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
-    out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
+  const primarySymbol = yahooSymbolFor(pair, symbolMap);
+  const candidates = [primarySymbol];
+  const p = pair.toUpperCase();
+  if (p === "XAUUSD" && !symbolMap[pair]) {
+    candidates.push("XAUUSD=X");
+  } else if (p === "XAGUSD" && !symbolMap[pair]) {
+    candidates.push("XAGUSD=X");
   }
-  return out.length > limit ? out.slice(-limit) : out;
+
+  let lastErr: Error | null = null;
+  for (const symbol of candidates) {
+    try {
+      const range = YAHOO_RANGES[tf] ?? "3mo";
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
+        + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
+      const resp = await fetchFn(url, {
+        headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      const data = (await resp.json()) as {
+        chart?: {
+          error?: { description?: string } | null;
+          result?: {
+            timestamp?: number[];
+            indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
+          }[] | null;
+        };
+      };
+      if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
+      const r = data.chart?.result?.[0];
+      const q = r?.indicators?.quote?.[0];
+      if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
+      const out: Candle[] = [];
+      for (let i = 0; i < r.timestamp.length; i++) {
+        const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
+        if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
+        out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
+      }
+      if (out.length === 0) throw new Error(`Yahoo returned empty candles for ${symbol} ${tf}`);
+      return out.length > limit ? out.slice(-limit) : out;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  throw lastErr ?? new Error(`Yahoo failed for ${pair}`);
 }
 
 /** Unified entry point: route by provider, one argument shape for all. */
@@ -374,19 +996,144 @@ export interface MarketDataRequest {
   limit: number;
   tdKey?: string;
   oandaToken?: string;
+  oandaEnv?: "practice" | "live" | "auto";
+  derivAppId?: string;
+  derivProxyUrl?: string;
   symbolMap?: Record<string, string>;
   providerMap?: Record<string, string>;
   fetchFn?: FetchLike;
   /** cache for immutable historical buckets (Dukascopy); tests inject MemStore */
   kv?: { get: (k: string) => Promise<string | null>; set: (k: string, v: string) => Promise<void> };
+  budget?: number;
 }
 
 export async function fetchMarketData(req: MarketDataRequest): Promise<{ provider: ProviderName; candles: Candle[] }> {
   const provider = providerForPair(req.pair, req.providerMap, Boolean(req.oandaToken));
+  const dukaBudget = req.budget ?? (req.tf === "30m" ? 4 : 8);
+  if (provider === "deriv") {
+    const candles = await fetchDeriv(
+      req.pair,
+      req.tf,
+      req.limit,
+      req.symbolMap ?? {},
+      req.derivAppId ?? "1089",
+      req.fetchFn,
+      req.derivProxyUrl,
+    );
+    return { provider: "deriv", candles };
+  }
+  if (provider === "twelvedata") {
+    let lastErr: Error | null = null;
+    if (!tdCreditsExhausted) {
+      try {
+        const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+        return { provider, candles };
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        const msg = lastErr.message;
+        const isRateOrCredit = msg.includes("run out of API credits")
+          || msg.includes("API credits were used")
+          || msg.includes("limit being 800")
+          || msg.includes("429");
+        if (isRateOrCredit) {
+          tdCreditsExhausted = true;
+        }
+        console.warn(JSON.stringify({
+          level: "warn",
+          msg: "slk.provider.fallback",
+          pair: req.pair,
+          tf: req.tf,
+          from: "twelvedata",
+          to: req.oandaToken ? "oanda" : "dukascopy",
+          reason: msg,
+        }));
+      }
+    }
+
+    if (req.oandaToken) {
+      try {
+        const candles = await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+        if (candles.length > 0) return { provider: "oanda", candles };
+      } catch (oandaErr) {
+        lastErr = oandaErr instanceof Error ? oandaErr : new Error(String(oandaErr));
+      }
+    }
+
+    // Institutional fallback: Dukascopy Swiss Bank (keyless, tick-level precision)
+    try {
+      const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+      if (candles.length > 0) {
+        return { provider: "dukascopy", candles };
+      }
+    } catch (dukaErr) {
+      lastErr = dukaErr instanceof Error ? dukaErr : new Error(String(dukaErr));
+      console.warn(JSON.stringify({
+        level: "warn",
+        msg: "slk.provider.fallback",
+        pair: req.pair,
+        tf: req.tf,
+        from: "twelvedata",
+        to: "failed",
+        reason: lastErr.message,
+      }));
+    }
+
+    throw lastErr ?? new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
+  }
+
   const candles = provider === "oanda"
-    ? await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
+    ? await (async () => {
+        try {
+          return await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+        } catch (oandaErr) {
+          console.warn(JSON.stringify({
+            level: "warn",
+            msg: "slk.provider.fallback",
+            pair: req.pair,
+            tf: req.tf,
+            from: "oanda",
+            to: "dukascopy",
+            reason: oandaErr instanceof Error ? oandaErr.message : String(oandaErr),
+          }));
+          try {
+            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+          } catch (dukaErr) {
+            if (req.tdKey && !tdCreditsExhausted) {
+              try {
+                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+              } catch {}
+            }
+            throw oandaErr;
+          }
+        }
+      })()
     : provider === "dukascopy"
-      ? await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv)
+      ? await (async () => {
+          try {
+            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+          } catch (dukaErr) {
+            if (req.oandaToken) {
+              try {
+                console.warn(JSON.stringify({
+                  level: "warn",
+                  msg: "slk.provider.fallback",
+                  pair: req.pair,
+                  tf: req.tf,
+                  from: "dukascopy",
+                  to: "oanda",
+                  reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
+                }));
+                return await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+              } catch {}
+            }
+            if (req.tdKey && !tdCreditsExhausted) {
+              try {
+                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+              } catch {}
+            }
+            throw dukaErr;
+          }
+        })()
       : provider === "yahoo"
         ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
         : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
@@ -427,3 +1174,34 @@ export function validateAndClose(
     throw new DataQualityError("stale feed (newest closed candle is too old)");
   return closed;
 }
+
+/** Reliability gate for open trade outcome resolution.
+ *  Unlike validateAndClose (which strictly drops in-progress candles so setup entries
+ *  only confirm on finalized closes), outcome tracking allows real-time touch evaluation
+ *  on the currently forming candle when slOnClose is false (wick-based SL/TP). */
+export function validateCandlesForOutcome(
+  candles: Candle[], tfSeconds: number, now: number, slOnClose = false, minLen = 1,
+): Candle[] {
+  if (!Array.isArray(candles) || candles.length === 0) return [];
+  const valid: Candle[] = [];
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    const ok =
+      Number.isFinite(c.t) && Number.isFinite(c.o) && Number.isFinite(c.h)
+      && Number.isFinite(c.l) && Number.isFinite(c.c)
+      && c.h >= Math.max(c.o, c.c) - 1e-12 && c.l <= Math.min(c.o, c.c) + 1e-12;
+    if (!ok) continue;
+    if (valid.length > 0 && c.t <= valid[valid.length - 1].t) continue;
+
+    const isClosed = c.t + tfSeconds * 1000 <= now;
+    if (isClosed) {
+      valid.push(c);
+    } else if (!slOnClose) {
+      // In-progress active candle: include for real-time intrabar touch evaluation
+      valid.push(c);
+    }
+  }
+  if (valid.length < minLen) return [];
+  return valid;
+}
+

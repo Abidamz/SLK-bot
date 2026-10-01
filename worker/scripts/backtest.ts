@@ -32,6 +32,12 @@ const CODES: Record<string, string> = {
 };
 const DEFAULT_PAIRS = ["EURUSD", "GBPUSD", "XAUUSD", "USDZAR", "US30", "GER40", "JAPAN225"];
 
+/** ESTIMATE of typical spread, in price units. Conservative averages, NOT measured. */
+const SPREAD_EST: Record<string, number> = {
+  EURUSD: 0.00002, GBPUSD: 0.00004, XAUUSD: 0.40, USDZAR: 0.0025,
+  US30: 4.0, GER40: 1.2, JAPAN225: 8.0,
+};
+
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };
 
 async function fetchJson(url: string): Promise<unknown | null> {
@@ -92,6 +98,7 @@ interface Trade {
   pair: string; tf: string; setupId: string;
   entryTime: string; entry: number; stop: number; tp: number;
   status: string; exit: number; exitTime: string; r: number;
+  limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
 }
 
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
@@ -116,7 +123,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     const close = m30[i].t + 1_800_000;
     if (close < scanStart || close > now.getTime()) continue;
 
-    const base = m30.filter((c) => c.t + 1_800_000 <= close).slice(-1010); // prod: baseCandlesLimit
+    // m30 is sorted and this loop is chronological; slicing avoids rescanning
+    // the entire history for every production tick.
+    const end = i + 1;
+    const base = m30.slice(Math.max(0, end - 1010), end); // prod: baseCandlesLimit
     if (base.length < 40) continue;                                          // prod: minCandles
     const h4 = dropIncomplete(resampleCandles(base, TF_SECONDS["4h"]), TF_SECONDS["4h"], close);
     if (h4.length < 30) continue;                                            // prod gate
@@ -140,6 +150,17 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
         const tfCandles = tf === "1h" ? h1 : m30;
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
         const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120);
+        // Shadow-only pending limit: origin-zone midpoint, valid for the next
+        // two entry-TF candles. Production alerts remain close-entry alerts.
+        const limitEntry = (a.keyLevelBounds[0] + a.keyLevelBounds[1]) / 2;
+        const limitSideValid = a.direction === "LONG" ? limitEntry <= a.entry : limitEntry >= a.entry;
+        const fillIndex = limitSideValid
+          ? after.slice(0, 2).findIndex((c) => a.direction === "LONG" ? c.l <= limitEntry : c.h >= limitEntry)
+          : -1;
+        const fill = fillIndex >= 0 ? after[fillIndex] : undefined;
+        const limitOc = fill
+          ? evaluateSignal(a.direction, limitEntry, a.stopLoss, a.tpInternal, after.slice(fillIndex), 120)
+          : null;
         trades.push({
           pair, tf, setupId: a.setupId,
           entryTime: new Date(a.candleCloseTime).toISOString().slice(0, 16).replace("T", " "),
@@ -148,6 +169,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
           exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
           exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
           r: oc?.rMultiple ?? NaN,
+          limitStatus: limitOc?.status ?? (fill ? "OPEN" : "EXPIRED"),
+          limitEntry,
+          limitExitTime: limitOc ? new Date(limitOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+          limitR: limitOc?.rMultiple ?? NaN,
         });
       }
     }
@@ -155,25 +180,61 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
   return trades;
 }
 
-function stats(rows: Trade[]) {
-  const tp = rows.filter((r) => r.status === "TP_HIT");
-  const sl = rows.filter((r) => r.status === "SL_HIT");
-  const ex = rows.filter((r) => r.status === "EXPIRED");
+function stats(rows: Trade[], spreadAdj: boolean) {
+  const adj = (t: Trade): Trade => {
+    if (!spreadAdj || t.status === "OPEN" || !Number.isFinite(t.r)) return t;
+    const riskDist = Math.abs(t.entry - t.stop);
+    const spread = SPREAD_EST[t.pair] ?? 0;
+    const costR = riskDist > 0 ? spread / riskDist : 0;
+    return { ...t, r: t.r - 2 * costR };
+  };
+  const rowsA = rows.map(adj);
+  const tp = rowsA.filter((r) => r.status === "TP_HIT");
+  const sl = rowsA.filter((r) => r.status === "SL_HIT");
+  const ex = rowsA.filter((r) => r.status === "EXPIRED");
   const closed = [...tp, ...sl];
   const r = closed.map((t) => t.r);
   const wins = tp.map((t) => t.r);
   const losses = sl.map((t) => Math.abs(t.r));
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   return {
-    alerts: rows.length, tp: tp.length, sl: sl.length, expired: ex.length,
-    open: rows.length - tp.length - sl.length - ex.length,
+    alerts: rowsA.length, tp: tp.length, sl: sl.length, expired: ex.length,
+    open: rowsA.length - tp.length - sl.length - ex.length,
     winrate: closed.length ? (tp.length / closed.length) * 100 : NaN,
     avgR: r.length ? sum(r) / r.length : NaN,
     pf: losses.length && sum(losses) > 0 ? sum(wins) / sum(losses) : NaN,
+    ...rack(rowsA),
   };
 }
 
+/** Closed-trade equity curve, ordered by exit time. */
+function rack(rows: Trade[]) {
+  const closed = rows.filter((t) => t.status !== "OPEN" && Number.isFinite(t.r))
+    .sort((a, b) => (a.exitTime + a.setupId).localeCompare(b.exitTime + b.setupId));
+  let cum = 0, peak = 0, maxDD = 0, ddFrom = "-", ddTo = "-", peakAt: string | null = null;
+  let loss = 0, win = 0, maxLoss = 0, maxWin = 0;
+  for (const t of closed) {
+    cum += t.r;
+    if (cum > peak) { peak = cum; peakAt = t.exitTime; }
+    if (peak - cum > maxDD) { maxDD = peak - cum; ddFrom = peakAt ?? "-"; ddTo = t.exitTime; }
+    if (t.r > 0) { win++; loss = 0; } else { loss++; win = 0; }
+    if (loss > maxLoss) maxLoss = loss;
+    if (win > maxWin) maxWin = win;
+  }
+  return { maxDD, ddFrom, ddTo, lossStreak: maxLoss, winStreak: maxWin, finalR: cum };
+}
+
 const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
+
+function limitShadowRows(rows: Trade[]): Trade[] {
+  return rows.map((t) => ({
+    ...t,
+    entry: t.limitEntry,
+    status: t.limitStatus,
+    exitTime: t.limitExitTime,
+    r: t.limitR,
+  }));
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -182,33 +243,74 @@ async function main() {
   if (args.length && /^[A-Z]/.test(args[0])) { pairs = args[0].split(","); args.shift(); }
   if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
 
-  const strategy = defaultStrategy();   // the SAME gates the live worker uses
+  const requestedMinTpR = Number(process.env.BACKTEST_MIN_TP_R ?? "");
+  const strategy = Number.isFinite(requestedMinTpR) && requestedMinTpR > 0
+    ? { ...defaultStrategy(), minTpR: requestedMinTpR }
+    : defaultStrategy();   // the SAME gates the live worker uses
+  if (strategy.minTpR !== defaultStrategy().minTpR) {
+    console.log(`
+*** BACKTEST OVERRIDE: minTpR=${strategy.minTpR} (research comparison only) ***`);
+  }
+  // scanEntry logs every storyline transition, which is useful in production
+  // but can overwhelm a long replay. Opt in with BACKTEST_VERBOSE=1.
+  const originalInfo = console.info;
+  if (process.env.BACKTEST_VERBOSE !== "1") console.info = () => {};
   const all: Trade[] = [];
-  for (const pair of pairs) all.push(...await replay(pair, days, strategy));
+  try {
+    for (const pair of pairs) all.push(...await replay(pair, days, strategy));
+  } finally {
+    console.info = originalInfo;
+  }
 
-  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF"];
+  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
   let lines = `# SLK walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
-  lines += `| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | profit factor |\n|---|---|---|---|---|---|---|---|---|\n`;
-  for (const pair of pairs) {
-    const rows = all.filter((t) => t.pair === pair);
-    const s = stats(rows);
-    const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
-      f(s.winrate, 1), f(s.avgR), f(s.pf)];
-    console.log(line.map((c) => c.padStart(9)).join(""));
-    lines += `| ${line.join(" | ")} |\n`;
-  }
-  const t = stats(all);
-  const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
-    f(t.winrate, 1), f(t.avgR), f(t.pf)];
-  console.log(tot.map((c) => c.padStart(9)).join(""));
-  lines += `| **${tot.join(" | ")}** |\n\n`;
+  const emit = (spreadAdj: boolean) => {
+    const block: string[] = [];
+    block.push(`| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | PF | maxDD (R) | lose streak |`);
+    block.push(`|---|---|---|---|---|---|---|---|---|---|---|`);
+    for (const pair of pairs) {
+      const rows = all.filter((t) => t.pair === pair);
+      const s = stats(rows, spreadAdj);
+      const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
+        f(s.winrate, 1), f(s.avgR), f(s.pf), f(s.maxDD), String(s.lossStreak)];
+      console.log(line.map((c) => c.padStart(9)).join(""));
+      block.push(`| ${line.join(" | ")} |`);
+    }
+    const t = stats(all, spreadAdj);
+    const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
+      f(t.winrate, 1), f(t.avgR), f(t.pf), f(t.maxDD), String(t.lossStreak)];
+    console.log(tot.map((c) => c.padStart(9)).join(""));
+    block.push(`| **${tot.join(" | ")}** |`);
+    const riskNote = `max drawdown **${f(t.maxDD)}R** (${t.ddFrom} → ${t.ddTo} UTC) · ` +
+      `≈${f(t.maxDD, 1)}% at 1% risk/trade · longest losing streak **${t.lossStreak}** ` +
+      `· longest win streak ${t.winStreak} · net ${f(t.finalR, 1)}R over window`;
+    console.log(`\n${riskNote.replace(/\*\*/g, "")}`);
+    return { block: block.join("\n"), riskNote };
+  };
 
+  const raw = emit(false);
+  const adj = emit(true);
+  lines += `### Raw fills (mid touch)\n\n${raw.block}\n\n`;
+  lines += `### Spread-adjusted (est. per-pair spread cost, 2× round trip)\n\n${adj.block}\n\n`;
+
+  const limitRaw = stats(limitShadowRows(all), false);
+  const limitAdj = stats(limitShadowRows(all), true);
+  const limitNote = (s: ReturnType<typeof stats>) =>
+    `alerts ${s.alerts} · filled ${s.tp + s.sl + (s.open)} · unfilled ${s.expired} · ` +
+    `avg ${f(s.avgR)}R · PF ${f(s.pf)} · maxDD ${f(s.maxDD)}R · net ${f(s.finalR)}R`;
+  console.log(`\nPENDING-LIMIT SHADOW (origin midpoint, 2 candles) raw: ${limitNote(limitRaw)}`);
+  console.log(`PENDING-LIMIT SHADOW (origin midpoint, 2 candles) adj: ${limitNote(limitAdj)}`);
+  lines += `### Pending-limit shadow (origin-zone midpoint, valid for 2 entry-TF candles)\n\n`;
+  lines += `This is a comparison only; production alerts still use retest-close entries.\n\n`;
+  lines += `- raw: ${limitNote(limitRaw)}\n- adj: ${limitNote(limitAdj)}\n\n`;
+  lines += `\n## Risk over time (raw / spread-adjusted)\n\n- raw: ${raw.riskNote}\n- adj: ${adj.riskNote}\n\n`;
   lines += `\n## Trades (pair, tf, entry time UTC, entry → exit, status, R)\n\n`;
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of all) {
     lines += `| ${r.pair} | ${r.tf} | ${r.entryTime} | ${r.entry} | ${r.stop} | ${r.tp} | ${r.status} | ${Number.isFinite(r.exit) ? r.exit : "-"} | ${r.exitTime} | ${Number.isFinite(r.r) ? r.r.toFixed(2) : "-"} |\n`;
   }
+
   const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;
   writeFileSync(name, lines);
   console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|)`);

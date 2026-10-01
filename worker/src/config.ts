@@ -38,6 +38,9 @@ export interface StrategyConfig {
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
+  minStopPips?: number;
+  /** cap synthetic execution targets when a promoted external draw is very far */
+  maxPromotedTpR: number;
   /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
    *  In EURUSD 30m terms that's ≈8–12 pips; on US30 it scales to the
    *  index's own volatility (no universal pip constant across markets). */
@@ -46,11 +49,19 @@ export interface StrategyConfig {
   cooldownMinutes: number;
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;
+  trailingBeEnabled?: boolean;
+  trailingBeTriggerR?: number;
 }
 
 export interface WorkerConfig {
   pairs: string[];
   entryTfs: Record<string, number>; // label -> seconds
+  /** Primary entry timeframes for Deriv synthetic pairs ("Synthetics 1H
+   *  Primary"): confirmed synthetic entries fire only on these TFs while
+   *  institutional pairs keep every entry TF. Non-primary boundaries are
+   *  skipped (and bookkept) so rotation/boundary health is unaffected. */
+  synthEntryTfs: string[];
+  pairBatchSize: number; // number of pairs to scan per cron tick (keeps CPU under 10ms)
   mapTimeframe: string; // "4h" (built from mapSource)
   mapSourceTimeframe: string; // "1h" — derived from base feed (see baseTimeframe)
   baseTimeframe: string; // smallest entry TF — the only intraday fetch per pair
@@ -66,7 +77,11 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
-  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy">;
+  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
+  derivAppId: string;
+  derivProxyUrl?: string;
+  filterHtfConflict: boolean;
+  filterHtfConflictDerivOnly: boolean;
   strategy: StrategyConfig;
 }
 
@@ -82,32 +97,48 @@ export function defaultStrategy(): StrategyConfig {
     levelLookback: 120,
     decisionAtrMult: 1.5,
     flipMarginAtr: 0.5,
-    zoneMaxDistanceAtr: 8.0,
+    zoneMaxDistanceAtr: 3.5,
     fvgLookback: 80,
     touchWindow: 64,
-    sweepWindow: 24,
-    bosWindow: 24,
-    retestWindow: 64,
+    sweepWindow: 16,
+    bosWindow: 16,
+    retestWindow: 20,
     retestToleranceAtr: 0.3,
-    setupWindow: 240,
+    setupWindow: 100,
     slBufferAtr: 0.1,
-    minRiskAtr: 0.1,
+    minRiskAtr: 0.8,  // quarantine structurally tiny stops
+    minStopPips: 10,  // minimum 10-pip stop loss floor for forex pairs
+    maxPromotedTpR: 3.0, // far external liquidity remains context, not TP1
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
-    minTpR: 3.0,     // 1:3 minimum reward:risk
+    minTpR: 2.5,     // 1:2.5 minimum reward:risk
     cooldownMinutes: 240,
     sessionsAllowlist: [],
     mapTfLabel: "4h",
+    trailingBeEnabled: true,  // automatically move stop loss to entry at +1.5R favorable excursion
+    trailingBeTriggerR: 1.5,  // favorable excursion threshold to activate breakeven
   };
 }
 
 interface EnvVars {
   PAIRS?: string;
   ENTRY_TFS?: string;
+  SYNTH_ENTRY_TFS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
+  MIN_RISK_ATR?: string;
+  MIN_STOP_PIPS?: string;
+  MIN_TP_R?: string;
+  SL_BUFFER_ATR?: string;
+  TRAILING_BE_ENABLED?: string;
+  TRAILING_BE_TRIGGER_R?: string;
+  PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
-  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo"
+  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
+  DERIV_APP_ID?: string;
+  DERIV_PROXY_URL?: string;
+  FILTER_HTF_CONFLICT?: string;
+  FILTER_HTF_CONFLICT_DERIV_ONLY?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -130,6 +161,17 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     entryTfs[label] = secs;
   }
 
+  // Synthetics 1H Primary: Deriv synthetic indices confirm entries only on
+  // their primary entry timeframes (default 1h) while institutional pairs keep
+  // every entry TF. Labels are validated against TF_SECONDS; an empty/invalid
+  // override falls back to the full institutional set so a misconfiguration
+  // can never silence synthetics entirely.
+  const synthLabels = (env.SYNTH_ENTRY_TFS ?? "1h")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => Boolean(s) && Boolean(TF_SECONDS[s]) && s !== "1d");
+  const synthEntryTfs = synthLabels.length ? synthLabels : Object.keys(entryTfs);
+
   const mode = (env.MODE ?? "paper").toLowerCase() === "live" ? "live" : "paper";
   const paperNotify = (env.PAPER_NOTIFY ?? "true").toLowerCase() !== "false";
 
@@ -141,7 +183,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
-  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy"> = {};
+  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"> = {};
   if (env.PROVIDER_MAP) {
     try {
       providerMap = JSON.parse(env.PROVIDER_MAP);
@@ -155,13 +197,29 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const baseEntries = Object.entries(entryTfs);
   baseEntries.sort((a, b) => a[1] - b[1]);
   const baseTimeframe = baseEntries.length ? baseEntries[0][0] : "30m";
-  // ~120 H4 bars of runway for the storyline + a buffer
+  // ~120 H4 bars of runway for the storyline + levelLookback historical key levels
   const baseSec = TF_SECONDS[baseTimeframe] ?? 1800;
-  const baseCandlesLimit = Math.min(5000, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50);
+  const baseCandlesLimit = Math.min(2000, Math.max(300, Math.ceil((120 * TF_SECONDS["4h"]) / baseSec) + 50));
+
+  const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
+  const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
+  const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
+  const minTpR = Number(env.MIN_TP_R ?? "");
+  const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
+  const strategy = defaultStrategy();
+  if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
+  if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
+  if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
+  if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
+  if (env.TRAILING_BE_ENABLED !== undefined) strategy.trailingBeEnabled = env.TRAILING_BE_ENABLED.toLowerCase() !== "false";
+  const trailingBeTriggerR = Number(env.TRAILING_BE_TRIGGER_R ?? "");
+  if (Number.isFinite(trailingBeTriggerR) && trailingBeTriggerR > 0) strategy.trailingBeTriggerR = trailingBeTriggerR;
 
   return {
     pairs,
     entryTfs,
+    synthEntryTfs,
+    pairBatchSize,
     mapTimeframe: "4h",
     mapSourceTimeframe: "1h",
     baseTimeframe,
@@ -174,11 +232,15 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     scanDelayMs: 10_000,
     minCandles: 40,
     expireCandles: 120,
-    slOnClose: true,
+    slOnClose: false,
     notifyOutcomes: true,
     symbolMap,
     providerMap,
-    strategy: defaultStrategy(),
+    derivAppId: env.DERIV_APP_ID ?? "1089",
+    derivProxyUrl: env.DERIV_PROXY_URL?.trim() || undefined,
+    filterHtfConflict: (env.FILTER_HTF_CONFLICT ?? "true").toLowerCase() === "true",
+    filterHtfConflictDerivOnly: (env.FILTER_HTF_CONFLICT_DERIV_ONLY ?? "true").toLowerCase() === "true",
+    strategy,
   };
 }
 
@@ -187,20 +249,89 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 /** Instruments that quote in points, not pips (index CFD canonical names). */
 export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
 
+/** Deriv synthetic index instruments (24/7 continuous synthetic volatility). */
+export const DERIV_SYNTHETIC_PAIRS = new Set([
+  // 5 Standard Volatility Indices
+  "V75", "R_75", "VOLATILITY75",
+  "V100", "R_100", "VOLATILITY100",
+  "V50", "R_50", "VOLATILITY50",
+  "V25", "R_25", "VOLATILITY25",
+  "V10", "R_10", "VOLATILITY10",
+  // 5 1-Second (1s) Volatility Indices
+  "V75_1S", "1HZ75V",
+  "V100_1S", "1HZ100V",
+  "V50_1S", "1HZ50V",
+  "V25_1S", "1HZ25V",
+  "V10_1S", "1HZ10V",
+]);
+
+export function isDerivPair(pair?: string | null): boolean {
+  if (!pair) return false;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  return DERIV_SYNTHETIC_PAIRS.has(p) || p.startsWith("R_") || p.startsWith("V1") || p.startsWith("V2") || p.startsWith("V5") || p.startsWith("V7") || p.startsWith("1HZ");
+}
+
+export function isForexPair(pair?: string | null): boolean {
+  if (!pair) return false;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p) || INDEX_POINT_PAIRS.has(p) || p.startsWith("XAU") || p.startsWith("XAG")) return false;
+  return p.length === 6 || p.includes("USD") || p.includes("EUR") || p.includes("GBP") || p.includes("JPY") || p.includes("AUD") || p.includes("NZD") || p.includes("CAD") || p.includes("CHF");
+}
+
+export function strategyForPair(pair: string, base: StrategyConfig): StrategyConfig {
+  if (isDerivPair(pair)) {
+    return {
+      ...base,
+      retestToleranceAtr: 0.50, // accommodate synthetic tick volatility
+      retestWindow: 28,         // allow synthetic pullbacks extra bars to form
+      minTpR: Math.max(2.5, base.minTpR), // strictly enforce minimum 2.5RR target floor
+    };
+  }
+  return base;
+}
+
 export function pipSize(pair: string): number {
-  const p = pair.toUpperCase().replace("/", "").replace("=X", "");
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) return 0.01; // synthetic indices calculate in points/cents
   if (INDEX_POINT_PAIRS.has(p)) return 1.0; // index CFDs quote in points
   if (p.includes("JPY")) return 0.01;
   if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.1;
   return 0.0001;
 }
 
+/** Minimum stop loss floor in absolute price distance to prevent spread and noise stop-outs. */
+export function minStopDistance(pair: string, minStopPips = 10): number {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) {
+    if (p.includes("75")) return Math.max(50.0, minStopPips * 1.0);
+    if (p.includes("100")) return Math.max(25.0, minStopPips * 1.0);
+    if (p.includes("25")) return Math.max(20.0, minStopPips * 0.8);
+    if (p.includes("50")) return Math.max(15.0, minStopPips * 0.6);
+    if (p.includes("10")) return Math.max(10.0, minStopPips * 0.5);
+    return Math.max(15.0, minStopPips * 0.5);
+  }
+  if (p === "US30") return Math.max(30.0, minStopPips * 1.0);
+  if (p === "GER40" || p === "DE40") return Math.max(25.0, minStopPips * 1.0);
+  if (p === "NAS100" || p === "US100") return Math.max(25.0, minStopPips * 1.0);
+  if (p === "JAPAN225" || p === "JP225" || p === "N225") return Math.max(50.0, minStopPips * 1.0);
+  if (INDEX_POINT_PAIRS.has(p)) return Math.max(20.0, minStopPips * 1.0);
+  if (p.startsWith("XAU")) return Math.max(2.5, minStopPips * 0.1);
+  if (p.includes("JPY")) return minStopPips * 0.01;
+  return minStopPips * 0.0001;
+}
+
 export function fmtPrice(pair: string, price: number): string {
+  if (price == null || !Number.isFinite(price)) return "0.00";
+  if (isDerivPair(pair)) {
+    return price.toFixed(2);
+  }
   const ps = pipSize(pair);
   const dec = ps === 1.0 ? 1 : ps === 0.01 ? 3 : ps === 0.1 ? 2 : 5;
   return price.toFixed(dec);
 }
 
 export function fmtPips(pair: string, distance: number): string {
-  return `${(Math.abs(distance) / pipSize(pair)).toFixed(1)} pips`;
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  const unit = (INDEX_POINT_PAIRS.has(p) || isDerivPair(p)) ? "pts" : "pips";
+  return `${(Math.abs(distance) / pipSize(pair)).toFixed(1)} ${unit}`;
 }

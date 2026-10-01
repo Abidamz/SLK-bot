@@ -4,6 +4,8 @@
  *  setup_id, slk_events a UNIQUE (setup_id, state, candle_time) — so Worker
  *  retries and rescans can never double-deliver. */
 import type { Alert, EngineEvent, Outcome } from "./types";
+import type { ScanDiagnostics } from "./diagnostics";
+import { isDerivPair } from "./config";
 
 // A subset of the D1Database API — the real env.DB satisfies this.
 export interface D1Like {
@@ -13,6 +15,9 @@ export interface D1Like {
       first(): Promise<Record<string, unknown> | null>;
       all(): Promise<{ results: Record<string, unknown>[] }>;
     };
+    run?(): Promise<{ meta: { changes: number } }>;
+    first?(): Promise<Record<string, unknown> | null>;
+    all?(): Promise<{ results: Record<string, unknown>[] }>;
   };
 }
 
@@ -46,10 +51,63 @@ export interface Store {
   setKv(key: string, value: string): Promise<void>;
   insertScanLog(row: ScanLogRow): Promise<void>;
   recentAlerts(limit: number): Promise<AlertRow[]>;
+  queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
+  eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]>;
+  recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
+  getNotificationPreferences(): Promise<NotificationPreferences>;
+  saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
+  insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
+  expireOpenAlerts(): Promise<number>;
+  resetAllAlerts(): Promise<void>;
+  clearSyntheticsAlerts(): Promise<number>;
+  insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }>;
+  getWaitlistCount(): Promise<number>;
+  listWaitlist(limit?: number): Promise<WaitlistRow[]>;
 }
 
+export interface WaitlistEntry {
+  email: string;
+  telegram?: string;
+  segmentInterest?: string;
+  createdUtc?: string;
+  source?: string;
+}
+
+export interface WaitlistRow extends Record<string, unknown> {
+  email: string;
+  telegram: string | null;
+  segment_interest: string | null;
+  created_utc: string;
+  source: string | null;
+}
+
+
+
+export interface AlertQuery {
+  pair?: string; timeframe?: string; direction?: string; channel?: string; lifecycle?: string; outcome?: string; provider?: string;
+  from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc";
+  segment?: "all" | "institutional" | "synthetics";
+  page: number; pageSize: number;
+}
+export interface AlertQueryResult { rows: AlertRow[]; total: number; }
+
+export interface NotificationPreferences {
+  primaryConfirmed: true;
+  telegramWatch: boolean;
+  discordWatch: boolean;
+  operationalEnabled: boolean;
+  cooldownMinutes: number;
+  updatedUtc: string;
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  primaryConfirmed: true, telegramWatch: true, discordWatch: true,
+  operationalEnabled: true, cooldownMinutes: 30, updatedUtc: "",
+};
+
 export interface ScanLogRow {
+  diagnostics?: ScanDiagnostics; // absent on legacy callers/rows, not a zero scan
   ts: string;
   timeframes: string;
   pairs: string;
@@ -165,13 +223,71 @@ export class D1Store implements Store {
   }
 
   async insertScanLog(r: ScanLogRow): Promise<void> {
-    await this.db
-      .prepare(
-        `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note)
-         VALUES (?,?,?,?,?,?,?,?)`,
-      )
-      .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note)
-      .run();
+    try {
+      await this.db
+        .prepare(
+          `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note, diagnostics_json)
+           VALUES (?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note, r.diagnostics ? JSON.stringify(r.diagnostics) : null)
+        .run();
+    } catch (err) {
+      // Fallback if migration 0004 has not been applied to remote D1 yet
+      try {
+        await this.db
+          .prepare(
+            `INSERT INTO slk_scan_log (ts, timeframes, pairs, alerts, events, errors, duration_ms, note)
+             VALUES (?,?,?,?,?,?,?,?)`,
+          )
+          .bind(r.ts, r.timeframes, r.pairs, r.alerts, r.events, r.errors, r.durationMs, r.note)
+          .run();
+      } catch (fallbackErr) {
+        console.warn(JSON.stringify({ level: "warn", msg: "insertScanLog failed", error: String(fallbackErr) }));
+      }
+    }
+  }
+
+  async getNotificationPreferences(): Promise<NotificationPreferences> {
+    try {
+      const row = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
+      if (!row) {
+        const prefs = { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
+        try { await this.saveNotificationPreferences(prefs, "default"); } catch {}
+        return prefs;
+      }
+      return { primaryConfirmed: true, telegramWatch: Boolean(row.telegram_watch), discordWatch: Boolean(row.discord_watch), operationalEnabled: Boolean(row.operational_enabled), cooldownMinutes: Number(row.cooldown_minutes), updatedUtc: String(row.updated_utc) };
+    } catch {
+      return { ...DEFAULT_NOTIFICATION_PREFERENCES, updatedUtc: new Date().toISOString() };
+    }
+  }
+
+  async saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void> {
+    const previous = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
+    const now = prefs.updatedUtc || new Date().toISOString();
+    await this.db.prepare(`INSERT INTO notification_preferences (preference_id,telegram_watch,discord_watch,operational_enabled,cooldown_minutes,updated_utc) VALUES (1,?,?,?,?,?) ON CONFLICT(preference_id) DO UPDATE SET telegram_watch=excluded.telegram_watch,discord_watch=excluded.discord_watch,operational_enabled=excluded.operational_enabled,cooldown_minutes=excluded.cooldown_minutes,updated_utc=excluded.updated_utc`).bind(prefs.telegramWatch ? 1 : 0, prefs.discordWatch ? 1 : 0, prefs.operationalEnabled ? 1 : 0, prefs.cooldownMinutes, now).run();
+    await this.db.prepare("INSERT INTO notification_preference_audit (previous_value,new_value,source,changed_utc) VALUES (?,?,?,?)").bind(JSON.stringify(previous ?? DEFAULT_NOTIFICATION_PREFERENCES), JSON.stringify(prefs), source, now).run();
+  }
+
+  async insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void> {
+    await this.db.prepare("INSERT INTO notification_delivery_audit (channel,kind,status,detail,created_utc) VALUES (?,?,?,?,?)").bind(row.channel, row.kind, row.status, row.detail ?? null, new Date().toISOString()).run();
+  }
+
+  async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
+    const where: string[] = []; const binds: unknown[] = [];
+    const add = (sql: string, value: unknown) => { where.push(sql); binds.push(value); };
+    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction); if (q.channel === "WATCH") where.push("1 = 0"); if (q.channel === "CONFIRMED") where.push("alert_status IN ('PAPER','SENT')"); if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
+    if (q.segment === "synthetics") {
+      where.push("(canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%')");
+    } else if (q.segment === "institutional") {
+      where.push("(canonical_symbol NOT LIKE 'V%' AND canonical_symbol NOT LIKE 'R_%')");
+    }
+    const clause = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+    const sortMap: Record<string,string> = { candleCloseTime: "candle_close_time", pair: "canonical_symbol", timeframe: "entry_timeframe", direction: "direction", status: "status", provider: "provider" };
+    const order = q.order === "asc" ? "ASC" : "DESC"; const sort = sortMap[q.sort ?? "candleCloseTime"] ?? "candle_close_time";
+    const offset = (q.page - 1) * q.pageSize;
+    const count = await this.db.prepare(`SELECT COUNT(*) AS total FROM slk_alerts${clause}`).bind(...binds).first();
+    const rows = await this.db.prepare(`SELECT * FROM slk_alerts${clause} ORDER BY ${sort} ${order}, id DESC LIMIT ? OFFSET ?`).bind(...binds, q.pageSize, offset).all();
+    return { rows: rows.results as AlertRow[], total: Number((count as Record<string,unknown> | null)?.total ?? 0) };
   }
 
   async recentAlerts(limit: number): Promise<AlertRow[]> {
@@ -189,6 +305,93 @@ export class D1Store implements Store {
       .all();
     return res.results;
   }
+
+  async eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT * FROM slk_events WHERE id > ? ORDER BY id ASC LIMIT ?")
+      .bind(cursorId, limit)
+      .all();
+    return res.results;
+  }
+
+  async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note FROM slk_scan_log ORDER BY ts DESC, id DESC LIMIT ?")
+      .bind(limit)
+      .all();
+    return res.results;
+  }
+
+  async expireOpenAlerts(): Promise<number> {
+    const res = await this.db
+      .prepare("UPDATE slk_alerts SET status='EXPIRED', r_multiple=0, exit_time=? WHERE status='OPEN'")
+      .bind(new Date().toISOString())
+      .run();
+    return Number(res.meta?.changes ?? 0);
+  }
+
+  async resetAllAlerts(): Promise<void> {
+    await this.db.prepare("DELETE FROM slk_alerts").bind().run();
+    await this.db.prepare("DELETE FROM slk_events").bind().run();
+    await this.db.prepare("DELETE FROM slk_scan_log").bind().run();
+  }
+
+  async clearSyntheticsAlerts(): Promise<number> {
+    const res = await this.db
+      .prepare(
+        "DELETE FROM slk_alerts WHERE canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%' OR canonical_symbol LIKE '1HZ%'"
+      )
+      .bind()
+      .run();
+    await this.db
+      .prepare(
+        "DELETE FROM slk_events WHERE pair LIKE 'V%' OR pair LIKE 'R_%' OR pair LIKE '1HZ%'"
+      )
+      .bind()
+      .run();
+    return Number(res.meta?.changes ?? 0);
+  }
+
+  async insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }> {
+    const createdUtc = entry.createdUtc || new Date().toISOString();
+    const email = entry.email.toLowerCase().trim();
+    try {
+      const res = await this.db
+        .prepare(
+          `INSERT OR IGNORE INTO slk_waitlist (email, telegram, segment_interest, created_utc, source)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .bind(email, entry.telegram?.trim() || null, entry.segmentInterest || "all", createdUtc, entry.source || "dashboard")
+        .run();
+      const duplicate = (res.meta?.changes ?? 0) === 0;
+      return { ok: true, duplicate };
+    } catch {
+      // Fallback: If table is not yet migrated, safely persist to slk_kv so signups are never dropped
+      await this.setKv(`waitlist:${email}`, JSON.stringify({ ...entry, email, createdUtc }));
+      return { ok: true, duplicate: false };
+    }
+  }
+
+  async getWaitlistCount(): Promise<number> {
+    try {
+      const row = await this.db.prepare("SELECT count(*) as c FROM slk_waitlist").bind().first();
+      return Number(row?.c ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  async listWaitlist(limit = 100): Promise<WaitlistRow[]> {
+    try {
+      const res = await this.db
+        .prepare("SELECT email, telegram, segment_interest, created_utc, source FROM slk_waitlist ORDER BY created_utc DESC LIMIT ?")
+        .bind(limit)
+        .all();
+      return (res.results ?? []) as WaitlistRow[];
+    } catch {
+      return [];
+    }
+  }
 }
 
 // ---------------------------------------------------------- in-memory impl
@@ -199,6 +402,10 @@ export class MemStore implements Store {
   kv = new Map<string, string>();
   scanLog: ScanLogRow[] = [];
   private eventKeys = new Set<string>();
+  private eventSeq = 0;
+  preferences: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  preferenceAudit: Record<string, unknown>[] = [];
+  waitlist = new Map<string, WaitlistEntry>();
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
     if (this.alerts.has(a.setupId)) return false;
@@ -227,8 +434,13 @@ export class MemStore implements Store {
     const key = `${ev.setupId}|${ev.state}|${iso(ev.candleTime)}`;
     if (this.eventKeys.has(key)) return false;
     this.eventKeys.add(key);
-    this.events.push({ setup_id: ev.setupId, pair: ev.pair, state: ev.state, candle_time: iso(ev.candleTime), reason: ev.reason, price: ev.price });
+    this.eventSeq += 1;
+    this.events.push({ id: this.eventSeq, setup_id: ev.setupId, pair: ev.pair, state: ev.state, candle_time: iso(ev.candleTime), reason: ev.reason, price: ev.price, created_utc: new Date().toISOString() });
     return true;
+  }
+
+  async eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]> {
+    return this.events.filter((e) => Number(e.id ?? 0) > cursorId).slice(0, limit);
   }
 
   async openAlerts(pair?: string, tf?: string): Promise<AlertRow[]> {
@@ -270,6 +482,26 @@ export class MemStore implements Store {
     this.scanLog.push(row);
   }
 
+  async getNotificationPreferences(): Promise<NotificationPreferences> { return { ...this.preferences }; }
+
+  async saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void> {
+    const previous = { ...this.preferences };
+    this.preferences = { ...prefs, primaryConfirmed: true, updatedUtc: prefs.updatedUtc || new Date().toISOString() };
+    this.preferenceAudit.push({ previous, newValue: this.preferences, source, changedUtc: this.preferences.updatedUtc });
+  }
+
+  async insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void> { this.preferenceAudit.push({ delivery: row, createdUtc: new Date().toISOString() }); }
+
+  async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
+    let rows = [...this.alerts.values()]; const match = (v: unknown, x?: string) => !x || String(v).toUpperCase() === x.toUpperCase();
+    rows = rows.filter(r => {
+      if (q.segment === "synthetics" && !isDerivPair(r.canonical_symbol)) return false;
+      if (q.segment === "institutional" && isDerivPair(r.canonical_symbol)) return false;
+      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && (q.channel !== "WATCH") && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
+    });
+    const total=rows.length; rows=rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize); return { rows, total };
+  }
+
   async recentAlerts(limit: number): Promise<AlertRow[]> {
     return [...this.alerts.values()].slice(-limit).reverse();
   }
@@ -277,9 +509,82 @@ export class MemStore implements Store {
   async recentEvents(limit: number): Promise<Record<string, unknown>[]> {
     return this.events.slice(-limit).reverse();
   }
+
+  async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
+    return this.scanLog.slice(-limit).reverse() as unknown as Record<string, unknown>[];
+  }
+
+  async expireOpenAlerts(): Promise<number> {
+    let count = 0;
+    const nowIso = new Date().toISOString();
+    for (const row of this.alerts.values()) {
+      if (row.status === "OPEN") {
+        row.status = "EXPIRED";
+        row.r_multiple = 0;
+        row.exit_time = nowIso;
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async resetAllAlerts(): Promise<void> {
+    this.alerts.clear();
+    this.events = [];
+    this.eventKeys.clear();
+    this.scanLog = [];
+  }
+
+  async clearSyntheticsAlerts(): Promise<number> {
+    let count = 0;
+    for (const [id, row] of this.alerts.entries()) {
+      if (isDerivPair(row.canonical_symbol)) {
+        this.alerts.delete(id);
+        count++;
+      }
+    }
+    this.events = this.events.filter((e) => !isDerivPair(String(e.pair ?? "")));
+    return count;
+  }
+
+  async insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }> {
+    const email = entry.email.toLowerCase().trim();
+    const duplicate = this.waitlist.has(email);
+    this.waitlist.set(email, {
+      ...entry,
+      email,
+      createdUtc: entry.createdUtc || new Date().toISOString(),
+    });
+    return { ok: true, duplicate };
+  }
+
+  async getWaitlistCount(): Promise<number> {
+    return this.waitlist.size;
+  }
+
+  async listWaitlist(limit = 100): Promise<WaitlistRow[]> {
+    return Array.from(this.waitlist.values())
+      .slice(0, limit)
+      .map((e) => ({
+        email: e.email,
+        telegram: e.telegram ?? null,
+        segment_interest: e.segmentInterest ?? null,
+        created_utc: e.createdUtc || new Date().toISOString(),
+        source: e.source ?? null,
+      }));
+  }
+}
+
+let defaultMemStore: Store | null = null;
+
+export function resetDefaultMemStore(): void {
+  defaultMemStore = null;
 }
 
 export function makeStore(db: D1Like | undefined): Store {
-  if (!db) return new MemStore();
+  if (!db) {
+    if (!defaultMemStore) defaultMemStore = new MemStore();
+    return defaultMemStore;
+  }
   return new D1Store(db);
 }

@@ -309,9 +309,11 @@ export function markFvgOverlap(levels: KeyLevel[], imbalances: Imbalance[]): voi
 export function selectOrigin(
   levels: KeyLevel[], price: number, atrVal: number, direction: Direction, cfg: StrategyConfig,
 ): KeyLevel | null {
-  if (atrVal <= 0) return null;
+  if (atrVal <= 0 || levels.length === 0) return null;
   let best: KeyLevel | null = null;
   let bestScore = -Infinity;
+  const maxOriginIndex = Math.max(...levels.map((l) => l.originIndex), 1);
+
   for (const lv of levels) {
     let dist: number;
     if (direction === "SHORT") {
@@ -323,17 +325,44 @@ export function selectOrigin(
     }
     const distAtr = dist / atrVal;
     if (distAtr > cfg.zoneMaxDistanceAtr) continue;
-    const score =
-      (lv.fvgOverlap ? 2.0 : 0) +
-      0.5 * Math.min(lv.touches, 3) +
-      (lv.flipped ? 0.25 : 0) +
-      1 / (1 + distAtr);
+
+    const proximity = Math.max(0, 1 - distAtr / cfg.zoneMaxDistanceAtr) * 3.0;
+    const recency = (lv.originIndex / maxOriginIndex) * 2.0;
+    const fvgScore = lv.fvgOverlap ? 1.5 : 0;
+    const flipScore = lv.flipped ? 1.0 : 0;
+    const touchScore = 0.5 * Math.min(lv.touches, 2);
+
+    const score = proximity + recency + fvgScore + flipScore + touchScore;
     if (score > bestScore) {
       bestScore = score;
       best = lv;
     }
   }
   return best;
+}
+
+/** Find the highest-confluence armed retracement key level across 1H / 30m / 4H
+ *  that overlaps an open FVG imbalance, has historical reaction touches, or has
+ *  flipped polarity (disrespected support/resistance). */
+export function findRetracementOrigin(
+  feeds: Record<string, Candle[] | undefined>,
+  direction: Direction,
+  currentPrice: number,
+  cfg: StrategyConfig,
+): KeyLevel | null {
+  const timeframes = ["1h", "30m", "4h"];
+  for (const tf of timeframes) {
+    const candles = feeds[tf];
+    if (!candles || candles.length < 20) continue;
+    const atrVal = atr(candles, cfg.atrPeriod);
+    if (atrVal <= 0) continue;
+    const imbalances = fvgZones(candles, cfg.fvgLookback);
+    const levels = keyLevels(candles, cfg);
+    markFvgOverlap(levels, imbalances);
+    const origin = selectOrigin(levels, currentPrice, atrVal, direction, cfg);
+    if (origin) return origin;
+  }
+  return null;
 }
 
 /** Drop the trailing in-progress candle so the engine only sees closed bars. */

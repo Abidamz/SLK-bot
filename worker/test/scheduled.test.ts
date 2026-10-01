@@ -4,7 +4,10 @@
  *  outage. Synthetic fixtures only — logic verification, not performance
  *  evidence. */
 import { describe, expect, it } from "vitest";
-import { scanAll, type Env } from "../src/index";
+import worker, { scanAll, watchEventFresh, deliver, applyHtfConflictGate, type Env } from "../src/index";
+import { loadConfig } from "../src/config";
+import type { Alert } from "../src/types";
+import { notifyAlert, notifyWatch } from "../src/notify";
 import { MemStore } from "../src/store";
 import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
 
@@ -20,6 +23,7 @@ function makeEnv(overrides: Record<string, string> = {}): Env {
     ENTRY_TFS: "30m",
     MODE: "paper",
     PAPER_NOTIFY: "true",
+    MIN_RISK_ATR: "0.1", // fixture uses a deliberately small synthetic stop
     ...overrides,
   } as Env;
 }
@@ -67,10 +71,10 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
 
     const alert = [...store.alerts.values()][0];
-    // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so Target 1 is
-    // promoted to the external draw and tp2 is left empty
-    expect(alert.tp_internal).toBeCloseTo(97.42, 2);
-    expect(alert.tp_external).toBeNull();
+    // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so TP1 is bounded
+    // at 3R and the distant external draw is retained as TP2/context.
+    expect(alert.tp_internal).toBeCloseTo(104.0246428571, 6);
+    expect(alert.tp_external).toBeCloseTo(97.42, 2);
     // ≥3R computed from the stored entry/stop/target triple
     const risk = Math.abs(Number(alert.entry) - Number(alert.stop_loss));
     expect(Math.abs(Number(alert.tp_internal) - Number(alert.entry)) / risk).toBeGreaterThanOrEqual(3);
@@ -198,7 +202,7 @@ describe("scheduled scan cycle", () => {
     expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
   });
 
-  it("watch toggle: sends 👀 TOUCH/SWEEP/SHIFT heads-ups ahead of the entry alert", async () => {
+  it("watch toggle suppresses stale replayed heads-ups", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     const env = makeEnv({ WATCH_NOTIFY: "true" });
@@ -207,12 +211,15 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBe(1);
     const watch = calls.telegram.filter((m) => m.startsWith("👀 WATCH"));
-    expect(watch.length).toBeGreaterThanOrEqual(1);
-    expect(watch.some((m) => m.includes("🌊 SWEEP"))).toBe(true);
-    expect(watch.every((m) => m.includes("Setup ID  : twelvedata:EURUSD"))).toBe(true);
-    expect(watch.every((m) => m.includes("Watch only"))).toBe(true);
-    // the real entry alert still arrives alongside the heads-ups
+    expect(watch).toHaveLength(0);
+    // the confirmed entry alert still arrives independently of watch freshness
     expect(calls.telegram.some((m) => m.includes("PAPER ALERT"))).toBe(true);
+  });
+
+  it("watch freshness allows a just-closed candle and rejects cold-start replay", () => {
+    const candle = { candleTime: T0 };
+    expect(watchEventFresh(candle, "30m", T0 + 30 * 60_000 + 60_000)).toBe(true);
+    expect(watchEventFresh(candle, "30m", T0 + 30 * 60_000 + 61 * 60_000)).toBe(false);
   });
 
   it("watch toggle obeys the boot gate (first scan notifies nothing)", async () => {
@@ -232,4 +239,466 @@ describe("scheduled scan cycle", () => {
       now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
     });
     expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
+  });
+
+  it("delivers entry alerts and watch heads-ups cleanly to Telegram", async () => {
+    const rawBodies: { url: string; body: any }[] = [];
+    const testFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      rawBodies.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 888 } }), { status: 200 });
+    };
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "mock-chat",
+      VIP_WATCH_TELEGRAM: "true",
+      fetchFn: testFetch,
+    };
+    // 1. Notify Watch
+    await notifyWatch(notifyEnv, {
+      setupId: "twelvedata:EURUSD:30m:SHORT:V:104.2:2024-03-02",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS structure shift",
+      price: 104.2,
+    }, "30m");
+
+    // 2. Notify Alert
+    const fakeAlert = {
+      pair: "EURUSD",
+      direction: "SHORT" as const,
+      entryTf: "30m",
+      mapTf: "4h",
+      keyLevelBounds: [104.0, 104.5] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "V" as const,
+      alertStatus: "PAPER" as const,
+      entry: 104.2,
+      stopLoss: 104.7,
+      tpInternal: 103.2,
+      tpExternal: 102.5,
+      drawOnLiquidity: null,
+      rrInternal: 2.0,
+      invalidationLevel: 104.8,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-entry-1",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    const watchCall = rawBodies.find((b) => b.body.text?.includes("👀 WATCH"));
+    expect(watchCall).toBeDefined();
+    expect(watchCall?.body.disable_notification).toBe(true);
+
+    const alertCall = rawBodies.find((b) => b.body.text?.includes("ACTION REQUIRED"));
+    expect(alertCall).toBeDefined();
+    expect(alertCall?.body.chat_id).toBe("mock-chat");
+    // Loud message does NOT set disable_notification, keeping Telegram's standard vibrating delivery
+    expect(alertCall?.body.disable_notification).toBeUndefined();
+
+    const pinCall = rawBodies.find((b) => b.url.includes("pinChatMessage"));
+    expect(pinCall?.body.message_id).toBe(888);
+    // Pin is sent silently so it doesn't interrupt or cancel out the loud message buzz
+    expect(pinCall?.body.disable_notification).toBe(true);
+  });
+
+  it("simultaneously sends loud confirmed alert to both channel and personal private DM", async () => {
+    const rawBodies: Array<{ url: string; body: Record<string, any> }> = [];
+    const testFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const parsedBody = init?.body ? JSON.parse(String(init.body)) : {};
+      rawBodies.push({ url, body: parsedBody });
+      if (url.includes("/pinChatMessage")) {
+        return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 999 } }), { status: 200 });
+    };
+
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "-1001234567890",
+      TELEGRAM_DM_CHAT_ID: "987654321",
+      VIP_WATCH_TELEGRAM: "true",
+      fetchFn: testFetch,
+    };
+
+    const fakeAlert = {
+      pair: "NAS100",
+      direction: "SHORT" as const,
+      entryTf: "15m",
+      mapTf: "4h",
+      keyLevelBounds: [20400, 20500] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "V" as const,
+      alertStatus: "PAPER" as const,
+      entry: 20465.0,
+      stopLoss: 20495.0,
+      tpInternal: 20390.0,
+      tpExternal: 20315.0,
+      drawOnLiquidity: null,
+      rrInternal: 2.5,
+      invalidationLevel: 20495.0,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-simul-1",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    // Verify channel message was sent
+    const channelAlert = rawBodies.find((b) => b.url.includes("/sendMessage") && b.body.chat_id === "-1001234567890");
+    expect(channelAlert).toBeDefined();
+    expect(channelAlert?.body.disable_notification).toBeUndefined();
+
+    // Verify personal DM message was sent simultaneously
+    const dmAlert = rawBodies.find((b) => b.url.includes("/sendMessage") && b.body.chat_id === "987654321");
+    expect(dmAlert).toBeDefined();
+    expect(dmAlert?.body.disable_notification).toBeUndefined();
+
+    // Verify channel message was pinned silently
+    const channelPin = rawBodies.find((b) => b.url.includes("/pinChatMessage") && b.body.chat_id === "-1001234567890");
+    expect(channelPin).toBeDefined();
+    expect(channelPin?.body.disable_notification).toBe(true);
+
+    // Verify watch alerts are NOT sent to DM
+    rawBodies.length = 0;
+    await notifyWatch(notifyEnv, {
+      setupId: "test:NAS100:15m:SHORT:V:20480:2024-03-02",
+      pair: "NAS100",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 20425,
+    }, "15m");
+
+    const channelWatch = rawBodies.find((b) => b.body.chat_id === "-1001234567890");
+    const dmWatch = rawBodies.find((b) => b.body.chat_id === "987654321");
+    expect(channelWatch).toBeDefined();
+    expect(channelWatch?.body.disable_notification).toBe(true);
+    // DM should NOT receive transient watch cards
+    expect(dmWatch).toBeUndefined();
+  });
+
+  it("limits VIP and synthetic channels to confirmed entry alerts only while keeping free channel armed with watch alerts", async () => {
+    const rawBodies: { url: string; body: any }[] = [];
+    const testFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      rawBodies.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 101 } }), { status: 200 });
+    };
+
+    const notifyEnv = {
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_CHAT_ID: "-100_VIP_INSTITUTIONAL",
+      TELEGRAM_DERIV_CHAT_ID: "-100_VIP_SYNTHETICS",
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_RADAR",
+      fetchFn: testFetch,
+    };
+
+    // 1. Notify Watch for Institutional pair (EURUSD)
+    await notifyWatch(notifyEnv, {
+      setupId: "test:EURUSD:15m:SHORT:V:1.0850:2026-09-25",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 1.0850,
+    }, "15m");
+
+    // 2. Notify Watch for Synthetic pair (V75)
+    await notifyWatch(notifyEnv, {
+      setupId: "test:V75:15m:LONG:V:45000:2026-09-25",
+      pair: "V75",
+      candleTime: Date.now(),
+      state: "SWEEP",
+      reason: "internal sweep",
+      price: 45000,
+    }, "15m");
+
+    // VIP Institutional and VIP Synthetics should NOT receive any watch messages (0 spam)
+    const vipInstWatch = rawBodies.filter((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL");
+    const vipDerivWatch = rawBodies.filter((b) => b.body.chat_id === "-100_VIP_SYNTHETICS");
+    expect(vipInstWatch).toHaveLength(0);
+    expect(vipDerivWatch).toHaveLength(0);
+
+    // Forex Free Channel SHOULD receive ONLY institutional watch alerts (synthetics strictly excluded)
+    const freeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_RADAR");
+    expect(freeWatches).toHaveLength(1);
+    expect(freeWatches[0].body.text).toContain("EURUSD");
+    expect(freeWatches[0].body.text).toContain("Join VIP");
+
+    // 3. Notify Confirmed Alert for Institutional pair
+    rawBodies.length = 0;
+    const fakeAlert = {
+      pair: "XAUUSD",
+      direction: "SHORT" as const,
+      entryTf: "15m",
+      mapTf: "4h",
+      keyLevelBounds: [4310, 4320] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "OC" as const,
+      alertStatus: "PAPER" as const,
+      entry: 4316.0,
+      stopLoss: 4322.2,
+      tpInternal: 4298.0,
+      tpExternal: null,
+      drawOnLiquidity: null,
+      rrInternal: 2.9,
+      invalidationLevel: 4322.2,
+      opposingLiquidityStanding: true,
+      sweepTime: Date.now() - 3600000,
+      bosTime: Date.now() - 1800000,
+      returnTime: Date.now(),
+      setupId: "test-gold-entry",
+      environment: "BEARISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+    await notifyAlert(notifyEnv, fakeAlert as any);
+
+    // VIP Institutional receives the loud confirmed alert
+    const vipAlert = rawBodies.find((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL" && b.url.includes("/sendMessage"));
+    expect(vipAlert).toBeDefined();
+    expect(vipAlert?.body.text).toContain("SLK CONFIRMED ENTRY");
+
+    // Free channel does NOT receive the confirmed alert (VIP exclusive)
+    const freeAlert = rawBodies.find((b) => b.body.chat_id === "-100_FREE_RADAR" && b.url.includes("/sendMessage"));
+    expect(freeAlert).toBeUndefined();
+
+    // 4. Dedicated Synthetics Free Channel routing when TELEGRAM_DERIV_FREE_CHAT_ID is configured
+    rawBodies.length = 0;
+    const splitFreeEnv = {
+      ...notifyEnv,
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_INSTITUTIONAL",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100_FREE_SYNTHETICS",
+    };
+
+    // Watch for EURUSD (institutional) -> routes to -100_FREE_INSTITUTIONAL
+    await notifyWatch(splitFreeEnv, {
+      setupId: "test:EURUSD:15m:SHORT:V:1.0850:2026-09-25",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS shift",
+      price: 1.0850,
+    }, "15m");
+
+    // Watch for V75 (synthetics) -> routes to -100_FREE_SYNTHETICS
+    await notifyWatch(splitFreeEnv, {
+      setupId: "test:V75:15m:LONG:V:45000:2026-09-25",
+      pair: "V75",
+      candleTime: Date.now(),
+      state: "SWEEP",
+      reason: "internal sweep",
+      price: 45000,
+    }, "15m");
+
+    const instFreeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_INSTITUTIONAL");
+    const derivFreeWatches = rawBodies.filter((b) => b.body.chat_id === "-100_FREE_SYNTHETICS");
+    expect(instFreeWatches).toHaveLength(1);
+    expect(instFreeWatches[0].body.text).toContain("EURUSD");
+    expect(derivFreeWatches).toHaveLength(1);
+    expect(derivFreeWatches[0].body.text).toContain("V75");
+  });
+
+  it("interleaves institutional and synthetic pairs in round-robin batches so neither starves", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({
+      PAIRS: "EURUSD,GBPUSD,USDJPY,V75,V100,V50",
+      PAIR_BATCH_SIZE: "2",
+      ENTRY_TFS: "30m",
+      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
+    });
+
+    const baseTime = NOW + 30_000;
+
+    // Tick 1: Should select 1 institutional (EURUSD) and 1 synthetic (V75)
+    const tick1 = await scanAll(env, {
+      now: baseTime, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick1.pairs).toEqual(["EURUSD", "V75"]);
+
+    // Tick 2: Should select next institutional (GBPUSD) and next synthetic (V100)
+    const tick2 = await scanAll(env, {
+      now: baseTime + 60_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick2.pairs).toEqual(["GBPUSD", "V100"]);
+
+    // Tick 3: Should select USDJPY and V50
+    const tick3 = await scanAll(env, {
+      now: baseTime + 120_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick3.pairs).toEqual(["USDJPY", "V50"]);
+
+    // Tick 4: All pairs done for this boundary -> idle (no candle close)
+    const tick4 = await scanAll(env, {
+      now: baseTime + 180_000, fetchFn: makeFakeFetch(calls), storeOverride: store,
+    });
+    expect(tick4.pairs).toEqual([]);
+    expect(store.scanLog[store.scanLog.length - 1].note).toBe("idle (no candle close)");
+  });
+
+  it("strictly alternates between institutional and synthetic pairs when PAIR_BATCH_SIZE is 1", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const env = makeEnv({
+      PAIRS: "EURUSD,GBPUSD,V75,V100",
+      PAIR_BATCH_SIZE: "1",
+      ENTRY_TFS: "30m",
+      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
+    });
+
+    const baseTime = NOW + 30_000;
+
+    // Tick 1: Inst (EURUSD)
+    const tick1 = await scanAll(env, { now: baseTime, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick1.pairs).toEqual(["EURUSD"]);
+
+    // Tick 2: Deriv (V75)
+    const tick2 = await scanAll(env, { now: baseTime + 60_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick2.pairs).toEqual(["V75"]);
+
+    // Tick 3: Inst (GBPUSD)
+    const tick3 = await scanAll(env, { now: baseTime + 120_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick3.pairs).toEqual(["GBPUSD"]);
+
+    // Tick 4: Deriv (V100)
+    const tick4 = await scanAll(env, { now: baseTime + 180_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick4.pairs).toEqual(["V100"]);
+
+    // Tick 5: Boundary complete
+    const tick5 = await scanAll(env, { now: baseTime + 240_000, fetchFn: makeFakeFetch(calls), storeOverride: store });
+    expect(tick5.pairs).toEqual([]);
+  });
+
+  it("supports /admin/set-oanda-token and /admin/probe-oanda endpoints", async () => {
+    const env = makeEnv();
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const fakeFetch = makeFakeFetch(calls);
+    env.fetchFn = fakeFetch;
+
+    // 1. Set token via /admin/set-oanda-token
+    const setReq = new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice", {
+      method: "GET",
+    });
+    const setResp = await worker.fetch(setReq, env, {} as any);
+    expect(setResp.status).toBe(200);
+    const setData = (await setResp.json()) as any;
+    expect(setData.ok).toBe(true);
+    expect(setData.status).toBe("connected");
+    expect(setData.maskedToken).toBe("TEST...OKEN");
+
+    // 2. Probe OANDA via /admin/probe-oanda
+    const probeReq = new Request("https://worker.test/admin/probe-oanda?pair=US30", {
+      method: "GET",
+    });
+    const probeResp = await worker.fetch(probeReq, env, {} as any);
+    expect(probeResp.status).toBe(200);
+    const probeData = (await probeResp.json()) as any;
+    expect(probeData.ok).toBe(true);
+    expect(probeData.connected).toBe(true);
+    expect(probeData.pair).toBe("US30");
+
+    // 3. Health endpoint reflects oandaConfigured
+    const healthReq = new Request("https://worker.test/health");
+    const healthResp = await worker.fetch(healthReq, env, {} as any);
+    const healthData = (await healthResp.json()) as any;
+    expect(healthData.oandaConfigured).toBe(true);
+  });
+
+  it("synthetics 1H primary: Deriv pairs confirm only on primary TFs while institutional pairs keep every entry TF", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    const env = makeEnv({ PAIRS: "EURUSD,V75", ENTRY_TFS: "30m,1h", PAIR_BATCH_SIZE: "2" });
+    const summary = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
+    });
+    expect(summary.pairs.sort()).toEqual(["EURUSD", "V75"]);
+
+    // production default: synthetics primary entry TF is 1H
+    expect(loadConfig(env).synthEntryTfs).toEqual(["1h"]);
+
+    // institutional pair books its 30m confirmation on the fixture storyline
+    const instAlerts = [...store.alerts.values()].filter((a) => a.canonical_symbol === "EURUSD");
+    expect(instAlerts.some((a) => a.entry_timeframe === "30m")).toBe(true);
+
+    // synthetic pair records zero 30m events/alerts — 1H is its only primary TF
+    expect(store.events.filter((e) => String(e.setup_id).includes(":V75:30m:"))).toHaveLength(0);
+    expect([...store.alerts.values()].filter((a) => a.canonical_symbol === "V75" && a.entry_timeframe === "30m")).toHaveLength(0);
+    expect(calls.telegram.filter((t) => t.includes("V75"))).toHaveLength(0);
+
+    // non-primary boundaries are bookkept as scanned so rotation/boundaries stay healthy
+    expect(store.kv.get("last_scan:V75:30m")).toBeDefined();
+    expect(store.kv.get("last_scan:V75:1h")).toBeDefined();
+    expect(store.kv.get("last_scan:EURUSD:30m")).toBeDefined();
+    expect(store.kv.get("last_scan:EURUSD:1h")).toBeDefined();
+  });
+
+  it("HTF conflict hard gate suppresses synthetic VIP delivery while institutional and aligned synthetic alerts stay loud", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    const env = makeEnv({ TELEGRAM_DERIV_CHAT_ID: "456" }); // synthetics VIP channel
+    const cfg = loadConfig(env); // FILTER_HTF_CONFLICT_DERIV_ONLY defaults to true
+    const fetchFn = makeFakeFetch(calls);
+
+    const mk = (overrides: Partial<Alert>): Alert => ({
+      setupId: "x", pair: "EURUSD", entryTf: "1h", mapTf: "4h",
+      direction: "SHORT", entry: 104.9, stopLoss: 105.2, tpInternal: 104.0, tpExternal: null,
+      candleCloseTime: NOW, environment: "bearish", phase: "expansion", htfAlignment: "H4:↓",
+      originKeyLevel: 105.0, keyLevelType: "OC", keyLevelBounds: [104.95, 105.05],
+      keyLevelTested: true, keyLevelFlipped: false, imbalanceContext: [],
+      internalLiquidity: [], externalLiquidity: [], drawOnLiquidity: null,
+      nearestExternalTarget: null, intermediateZones: [],
+      opposingLiquidityStanding: true, sweepTime: NOW - 3600_000, bosTime: NOW - 1800_000,
+      returnTime: NOW, invalidationLevel: 105.2, invalidationReason: null,
+      parameterVersion: "1", alertStatus: "PAPER", suppressReason: null, session: null,
+      atrEntry: 0.3, rrInternal: 3.0, cycleStage: "entry_alert", entryMode: "confirmation",
+      shadowClassification: "A_GRADE", ...overrides,
+    });
+
+    const synthConflict = mk({ pair: "V75", setupId: "deriv:V75:1h:SHORT:V:104.2:g1", shadowClassification: "HTF_CONFLICT" });
+    const instConflict = mk({ pair: "EURUSD", setupId: "td:EURUSD:30m:SHORT:V:104.2:g2", shadowClassification: "HTF_CONFLICT" });
+    const synthAligned = mk({ pair: "V100", setupId: "deriv:V100:1h:LONG:V:104.2:g3", direction: "LONG", shadowClassification: "A_GRADE" });
+    for (const a of [synthConflict, instConflict, synthAligned]) await store.insertAlert(a, "test");
+
+    // 1. synthetic HTF_CONFLICT → suppressed before any channel delivery
+    await deliver(env, store, synthConflict, cfg, true, fetchFn);
+    expect(synthConflict.alertStatus).toBe("SUPPRESSED");
+    expect(synthConflict.suppressReason).toContain("HTF conflict");
+    expect(calls.telegram).toHaveLength(0);
+
+    // 2. institutional HTF_CONFLICT → deriv-only gate leaves it loud
+    await deliver(env, store, instConflict, cfg, true, fetchFn);
+    expect(instConflict.alertStatus).toBe("PAPER");
+    expect(calls.telegram).toHaveLength(1);
+
+    // 3. aligned synthetic (A_GRADE) → loud
+    await deliver(env, store, synthAligned, cfg, true, fetchFn);
+    expect(synthAligned.alertStatus).toBe("PAPER");
+    expect(calls.telegram).toHaveLength(2);
+
+    // 4. pure gate matrix across config variants
+    const gateAll = loadConfig({ FILTER_HTF_CONFLICT_DERIV_ONLY: "false" });
+    const gateOff = loadConfig({ FILTER_HTF_CONFLICT: "false" });
+    expect(applyHtfConflictGate(mk({ pair: "EURUSD", setupId: "g4", shadowClassification: "HTF_CONFLICT" }), gateAll)).toBe(true);
+    expect(applyHtfConflictGate(mk({ pair: "EURUSD", setupId: "g5", shadowClassification: "HTF_CONFLICT" }), gateOff)).toBe(false);
+    expect(applyHtfConflictGate(mk({ pair: "V75", setupId: "g6", shadowClassification: "B_GRADE" }), cfg)).toBe(false);
   });

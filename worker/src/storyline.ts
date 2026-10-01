@@ -75,7 +75,7 @@ export function buildStoryline(d1: Candle[], h4: Candle[], cfg: StrategyConfig):
 
 /** Storyline snapshots at each recent closed H4 candle (point-in-time). */
 export function storylineSeries(
-  d1: Candle[], h4: Candle[], cfg: StrategyConfig, maxSnapshots = 90,
+  d1: Candle[], h4: Candle[], cfg: StrategyConfig, maxSnapshots = 20,
 ): [number, Storyline][] {
   const n = h4.length;
   const start = Math.max(20, n - maxSnapshots);

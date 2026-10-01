@@ -1,14 +1,14 @@
 /** State-machine parity tests — row-for-row ports of the Python engine
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
-import { defaultStrategy } from "../src/config";
+import { defaultStrategy, minStopDistance } from "../src/config";
 import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
   LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
 } from "./fixtures";
 
-const cfg = defaultStrategy();
+const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
 
 function runShort(rows = SHORT_ROWS, extra = {}) {
   return scanEntry({
@@ -68,10 +68,10 @@ describe("long mirror path", () => {
     expect(a.entry).toBe(98.1);
     expect(a.invalidationLevel).toBeCloseTo(96.9);
     expect(a.stopLoss).toBeLessThan(96.9);
-    // min 1:3 RR: the close-by 100.0 internal pool (~1.6R) is skipped and the
-    // alert promotes straight to the external draw at 103 (~3.9R)
-    expect(a.tpInternal).toBe(103.0);
-    expect(a.tpExternal).toBeNull();
+    // min 1:3 RR: the close-by 100.0 internal pool is skipped; TP1 is
+    // bounded at 3R and the distant external draw remains TP2/context.
+    expect(a.tpInternal).toBeCloseTo(101.8857857143, 5);
+    expect(a.tpExternal).toBe(103.0);
     expect(a.rrInternal).toBeGreaterThanOrEqual(3);
     expect(events.map((e) => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
   });
@@ -142,13 +142,13 @@ describe("target selection (regression: stale external draw must never sit on th
     expect(t).toEqual({ tp1: 97, tp2: 90 });
   });
 
-  it("upsizes tp1 to the external draw when the internal pool is too close", () => {
+  it("bounds a far promoted draw at the minimum execution target", () => {
     const t = selectTargets({
       ...base, isShort: true, entry: 100,
       internalPools: [{ side: "sellside", price: 99.5 }],  // < minTpR away
       nearestExternalTarget: 90,
     });
-    expect(t).toEqual({ tp1: 90, tp2: null });
+    expect(t).toEqual({ tp1: 97.085, tp2: 90 });
   });
 });
 
@@ -171,5 +171,95 @@ describe("risk shaping (min 1:3 RR + ATR-normalized stop ceiling)", () => {
       // stop width never exceeds 3.5 ATR from entry
       expect(Math.abs(a.entry - a.stopLoss)).toBeLessThanOrEqual(3.5 * a.atrEntry + 1e-9);
     }
+  });
+});
+
+describe("behavior-neutral replay diagnostics", () => {
+  it("counts the confirmation path without adding lifecycle events", () => {
+    const result = runShort();
+    expect(result.diagnostics).toEqual({
+      MAP: 1, TOUCH: 1, SWEEP: 1, SHIFT: 1, RETEST: 1, INVALID: 0, EXPIRED: 0,
+      retestCandidates: 1, riskRejects: 0,
+      riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
+      targetRejects: 0, confirmedAlerts: 1,
+    });
+    expect(runShort()).toEqual(result);
+  });
+
+  it.each([
+    ["belowMinRiskAtr", { minRiskAtr: 0.8 }], // production floor rejects this tiny-stop fixture
+    ["aboveMaxStopAtr", { maxStopAtr: 0.05 }],
+    ["nonPositiveRisk", { slBufferAtr: -10 }], // synthetic branch coverage only
+  ])("counts %s once, without fabricating RETEST/INVALID events", (reason, extra) => {
+    const result = runShort(SHORT_ROWS, extra);
+    expect(result.alerts).toEqual([]);
+    expect(result.events.map(e => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(result.diagnostics).toMatchObject({ retestCandidates: 1, riskRejects: 1, targetRejects: 0, RETEST: 0, confirmedAlerts: 0 });
+    expect(result.diagnostics.riskRejectReasons).toEqual({
+      nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0, [reason as string]: 1,
+    });
+    expect(runShort(SHORT_ROWS, extra)).toEqual(result);
+  });
+
+  it("separates target/RR rejection from stop-risk rejection", () => {
+    const result = runShort(SHORT_ROWS, { minTpR: 999 });
+    expect(result.diagnostics).toMatchObject({ retestCandidates: 1, targetRejects: 1, riskRejects: 0, RETEST: 0, confirmedAlerts: 0 });
+    expect(result.alerts).toEqual([]);
+    expect(result.events.map(e => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+  });
+
+  it("enforces minimum stop floor in pips (Option A)", () => {
+    // In SHORT_ROWS, pair is EURUSD (pipSize = 0.0001).
+    // If minStopPips is set to 3000 pips (distance 0.30), which is wider than natural risk (0.20):
+    const res = runShort(SHORT_ROWS, { minStopPips: 3000, maxStopAtr: 100 });
+    expect(res.alerts).toHaveLength(1);
+    const alert = res.alerts[0];
+    // Entry was 104.90, so SL floored at 104.90 + 0.30 = 105.20
+    expect(alert.stopLoss).toBeCloseTo(105.20, 4);
+  });
+
+  it("enforces asset-appropriate minimum stop floor distances (indices, gold, forex)", () => {
+    expect(minStopDistance("GER40", 10)).toBe(25.0);
+    expect(minStopDistance("US30", 10)).toBe(30.0);
+    expect(minStopDistance("NAS100", 10)).toBe(25.0);
+    expect(minStopDistance("JAPAN225", 10)).toBe(50.0);
+    expect(minStopDistance("XAUUSD", 10)).toBe(2.5);
+    expect(minStopDistance("GBPJPY", 10)).toBeCloseTo(0.10, 4);
+    expect(minStopDistance("EURUSD", 10)).toBeCloseTo(0.0010, 6);
+  });
+
+  it("counts invalidation and expiration separately, not as risk rejects", () => {
+    const invalid = runShort([...SHORT_ROWS.slice(0, 12), [103.9, 105.6, 103.85, 105.3]]);
+    const expired = runShort([
+      ...SHORT_ROWS.slice(0, 12), [103.9, 104.0, 103.4, 103.5],
+      [103.5, 103.6, 103.3, 103.4], [103.4, 103.5, 103.1, 103.2],
+    ], { retestWindow: 2 });
+    expect(invalid.diagnostics).toMatchObject({ INVALID: 1, EXPIRED: 0, riskRejects: 0, retestCandidates: 0, confirmedAlerts: 0 });
+    expect(expired.diagnostics).toMatchObject({ INVALID: 0, EXPIRED: 1, riskRejects: 0, retestCandidates: 0, confirmedAlerts: 0 });
+  });
+
+  it("returns explicit independent zero counts on short feeds and missing storylines", () => {
+    const short = runShort([]);
+    const noStory = scanEntry({
+      pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(SHORT_ROWS), snaps: [], cfg, mode: "paper", provider: "test",
+    });
+    expect(short).toEqual(noStory);
+    expect(short.diagnostics).toEqual({
+      MAP: 0, TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0, INVALID: 0, EXPIRED: 0,
+      retestCandidates: 0, riskRejects: 0,
+      riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
+      targetRejects: 0, confirmedAlerts: 0,
+    });
+    runShort();
+    expect(runShort([])).toEqual(short);
+  });
+
+  it("counts structural confirmations even when delivery is session-suppressed", () => {
+    const result = runShort(SHORT_ROWS, { sessionsAllowlist: [["Nowhere", "01:00", "02:00"]] });
+    expect(result.alerts[0].alertStatus).toBe("SUPPRESSED");
+    expect(result.diagnostics.confirmedAlerts).toBe(1);
+    expect(result.diagnostics.RETEST).toBe(1);
+    expect(result.diagnostics.riskRejects).toBe(0);
   });
 });

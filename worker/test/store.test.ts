@@ -59,11 +59,83 @@ describe("MemStore", () => {
     expect(rows[0].status).toBe("TP_HIT");
   });
 
+  it("filters and paginates alert queries with total count", async () => {
+    const s = new MemStore();
+    const a = mkAlert("a1"); a.direction = "SHORT"; await s.insertAlert(a, "dukascopy");
+    const b = mkAlert("a2"); b.direction = "LONG"; b.pair = "GBPUSD"; await s.insertAlert(b, "dukascopy");
+    const result = await s.queryAlerts({ pair: "EURUSD", direction: "SHORT", page: 1, pageSize: 10 });
+    expect(result.total).toBe(1); expect(result.rows[0].setup_id).toBe("a1");
+    const page = await s.queryAlerts({ page: 2, pageSize: 1 });
+    expect(page.total).toBe(2); expect(page.rows).toHaveLength(1);
+  });
+
+  it("isolates notification delivery audit records", async () => {
+    const s = new MemStore();
+    await s.insertNotificationDeliveryAudit({ channel: "telegram", kind: "test", status: "error: timeout" });
+    expect(s.preferenceAudit).toHaveLength(1);
+    expect(s.preferenceAudit[0].delivery).toMatchObject({ channel: "telegram", status: "error: timeout" });
+  });
+
   it("kv roundtrip + scan log", async () => {
     const s = new MemStore();
     await s.setKv("last_boundary:30m", "123");
     expect(await s.getKv("last_boundary:30m")).toBe("123");
     await s.insertScanLog({ ts: "x", timeframes: "30m", pairs: "EURUSD", alerts: 1, events: 5, errors: "", durationMs: 42, note: "ok" });
     expect(s.scanLog).toHaveLength(1);
+  });
+
+  it("expires open alerts cleanly", async () => {
+    const s = new MemStore();
+    await s.insertAlert(mkAlert("a1"), "td");
+    await s.insertAlert(mkAlert("a2"), "td");
+    await s.recordOutcome("a1", { status: "TP_HIT", exitPrice: 104.0, exitTime: BASE + 1000, rMultiple: 2.5 });
+    
+    // a1 is TP_HIT, a2 is OPEN
+    expect((await s.openAlerts())).toHaveLength(1);
+    const closed = await s.expireOpenAlerts();
+    expect(closed).toBe(1);
+    expect((await s.openAlerts())).toHaveLength(0);
+
+    const a2Row = (await s.recentAlerts(10)).find(r => r.setup_id === "a2");
+    expect(a2Row?.status).toBe("EXPIRED");
+    expect(a2Row?.r_multiple).toBe(0);
+  });
+
+  it("resets all alerts, events, and scan logs", async () => {
+    const s = new MemStore();
+    await s.insertAlert(mkAlert("a1"), "td");
+    await s.insertEvent({ setupId: "a1", pair: "EURUSD", state: "MAP", candleTime: BASE, reason: "armed", price: 105 });
+    await s.insertScanLog({ ts: "x", timeframes: "30m", pairs: "EURUSD", alerts: 1, events: 1, errors: "", durationMs: 10, note: "ok" });
+
+    expect(await s.recentAlerts(10)).toHaveLength(1);
+    expect(await s.recentEvents(10)).toHaveLength(1);
+    expect(s.scanLog).toHaveLength(1);
+
+    await s.resetAllAlerts();
+    expect(await s.recentAlerts(10)).toHaveLength(0);
+    expect(await s.recentEvents(10)).toHaveLength(0);
+    expect(s.scanLog).toHaveLength(0);
+  });
+
+  it("handles waitlist registration, deduplication, and retrieval", async () => {
+    const s = new MemStore();
+    const res1 = await s.insertWaitlist({ email: "trader1@example.com", telegram: "@trader1", segmentInterest: "all" });
+    expect(res1.ok).toBe(true);
+    expect(res1.duplicate).toBe(false);
+
+    // Duplicate email registration
+    const res2 = await s.insertWaitlist({ email: "trader1@example.com", telegram: "@trader1_new", segmentInterest: "synthetics" });
+    expect(res2.ok).toBe(true);
+    expect(res2.duplicate).toBe(true);
+
+    const res3 = await s.insertWaitlist({ email: "trader2@example.com", segmentInterest: "institutional" });
+    expect(res3.ok).toBe(true);
+    expect(res3.duplicate).toBe(false);
+
+    expect(await s.getWaitlistCount()).toBe(2);
+    const list = await s.listWaitlist(10);
+    expect(list).toHaveLength(2);
+    expect(list.map((r) => r.email)).toContain("trader1@example.com");
+    expect(list.map((r) => r.email)).toContain("trader2@example.com");
   });
 });

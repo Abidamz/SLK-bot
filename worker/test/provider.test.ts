@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { decodeJetta, fetchDukascopy, fetchOanda, fetchYahoo, providerForPair, symbolFor, DataQualityError } from "../src/provider";
+import { beforeEach, describe, expect, it } from "vitest";
+import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, resetProviderCircuitBreakers, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
 import { dukaJson, yahooFlatFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
 describe("provider routing", () => {
+  beforeEach(() => {
+    resetProviderCircuitBreakers();
+  });
+
   it("routes forex/metals to Twelve Data and index CFDs to the Dukascopy public feed", () => {
     expect(providerForPair("EURUSD")).toBe("twelvedata");
     expect(providerForPair("XAUUSD")).toBe("twelvedata");
@@ -13,18 +17,43 @@ describe("provider routing", () => {
     expect(providerForPair("JAPAN225")).toBe("dukascopy");
   });
 
+  it("routes metals to OANDA when its token exists (broker-aligned gold), TD otherwise", () => {
+    expect(providerForPair("XAUUSD", {}, true)).toBe("oanda");
+    expect(providerForPair("XAGUSD", {}, true)).toBe("oanda");
+    expect(providerForPair("XAUUSD", {}, false)).toBe("twelvedata");
+    // forex majors stay on Twelve Data for provider diversification
+    expect(providerForPair("EURUSD", {}, true)).toBe("twelvedata");
+    // indices keep OANDA primary
+    expect(providerForPair("US30", {}, true)).toBe("oanda");
+  });
+
+  it("routes Deriv synthetics to deriv provider", () => {
+    expect(providerForPair("V75")).toBe("deriv");
+    expect(providerForPair("R_75")).toBe("deriv");
+    expect(providerForPair("V100")).toBe("deriv");
+    expect(providerForPair("V50")).toBe("deriv");
+    expect(providerForPair("V25")).toBe("deriv");
+    expect(providerForPair("V10")).toBe("deriv");
+    expect(providerForPair("V75_1S")).toBe("deriv");
+    expect(providerForPair("V100_1S")).toBe("deriv");
+    expect(providerForPair("V50_1S")).toBe("deriv");
+    expect(providerForPair("V25_1S")).toBe("deriv");
+    expect(providerForPair("V10_1S")).toBe("deriv");
+  });
+
   it("PROVIDER_MAP overrides win over defaults", () => {
     expect(providerForPair("US30", { US30: "twelvedata" })).toBe("twelvedata");
     expect(providerForPair("EURUSD", { EURUSD: "yahoo" })).toBe("yahoo");
     expect(providerForPair("US30", { US30: "yahoo" })).toBe("yahoo");
   });
 
-  it("index CFDs prefer OANDA when its token exists, then Dukascopy, Yahoo last resort; metals stay on Twelve Data", () => {
+  it("index CFDs prefer OANDA when its token exists, then Dukascopy, never falling back to Yahoo", () => {
     expect(providerForPair("US30", {}, false)).toBe("dukascopy");
     expect(providerForPair("US30", {}, true)).toBe("oanda");
     expect(providerForPair("JAPAN225", {}, true)).toBe("oanda");
-    expect(providerForPair("US30", {}, false, false)).toBe("yahoo"); // dukascopy disabled → yahoo fallback
-    expect(providerForPair("XAUUSD", {}, true)).toBe("twelvedata"); // metals are NOT indices
+    expect(providerForPair("US30", {}, false, false)).toBe("twelvedata"); // no automated routing to yahoo
+    expect(providerForPair("XAUUSD", {}, true)).toBe("oanda"); // metals prefer OANDA when its token exists (broker-aligned gold)
+    expect(providerForPair("XAUUSD", {}, false)).toBe("twelvedata"); // no token → Twelve Data stays primary
     expect(providerForPair("XAUUSD", { XAUUSD: "oanda" }, true)).toBe("oanda"); // explicit single-source option
   });
 
@@ -131,6 +160,22 @@ describe("fetchOanda", () => {
     const fake: typeof fetch = async () =>
       new Response(JSON.stringify({ errorMessage: "Invalid token" }), { status: 401 });
     await expect(fetchOanda("BAD", "US30", "30m", 100, {}, fake)).rejects.toThrow(/OANDA error for US30_USD.*401.*Invalid token/s);
+  });
+
+  it("automatically falls back from practice to live endpoint when practice returns 401", async () => {
+    const seen: string[] = [];
+    const fake: typeof fetch = async (u) => {
+      seen.push(String(u));
+      if (String(u).includes("api-fxpractice")) {
+        return new Response(JSON.stringify({ errorMessage: "Invalid token" }), { status: 401 });
+      }
+      return new Response(JSON.stringify(wire), { status: 200 });
+    };
+    const candles = await fetchOanda("LIVE_TOK", "US30", "30m", 100, {}, fake);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toContain("api-fxpractice.oanda.com");
+    expect(seen[1]).toContain("api-fxtrade.oanda.com");
+    expect(candles).toHaveLength(2);
   });
 });
 
@@ -294,5 +339,456 @@ describe("SYMBOL_MAP precedence", () => {
     };
     await fetchOanda("TOK", "US30", "30m", 10, { US30: "^DJI" }, fetchFn);
     expect(urls[0]).toContain("US30_USD");
+  });
+});
+
+describe("yahooSymbolFor", () => {
+  it("formats forex pairs with =X suffix", () => {
+    expect(yahooSymbolFor("EURUSD")).toBe("EURUSD=X");
+    expect(yahooSymbolFor("GBPUSD")).toBe("GBPUSD=X");
+    expect(yahooSymbolFor("USDJPY")).toBe("USDJPY=X");
+    expect(yahooSymbolFor("USDZAR")).toBe("USDZAR=X");
+  });
+
+  it("formats metals and indices", () => {
+    expect(yahooSymbolFor("XAUUSD")).toBe("GC=F");
+    expect(yahooSymbolFor("XAGUSD")).toBe("SI=F");
+    expect(yahooSymbolFor("US30")).toBe("^DJI");
+    expect(yahooSymbolFor("GER40")).toBe("^GDAXI");
+    expect(yahooSymbolFor("JAPAN225")).toBe("^N225");
+  });
+
+  it("respects explicit symbol overrides", () => {
+    expect(yahooSymbolFor("XAUUSD", { XAUUSD: "XAUUSD=X" })).toBe("XAUUSD=X");
+    expect(yahooSymbolFor("EURUSD", { EURUSD: "EUR=X" })).toBe("EUR=X");
+  });
+});
+
+describe("fetchMarketData rate-limit fallback", () => {
+  beforeEach(() => {
+    resetProviderCircuitBreakers();
+  });
+
+  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted (never touches Yahoo)", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({
+          code: 429,
+          message: "You have run out of API credits for the day. 815 API credits were used, with the current limit being 800.",
+          status: "error",
+        }), { status: 200 });
+      }
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "EURUSD",
+      tf: "30m",
+      limit: 10,
+      tdKey: "test_td_key",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("dukascopy");
+    expect(res.candles.length).toBeGreaterThan(0);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+
+  it("automatically falls back from Twelve Data to OANDA when token exists and TD credits exhausted", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({
+          code: 429,
+          message: "You have run out of API credits for the day.",
+          status: "error",
+        }), { status: 200 });
+      }
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({
+          instrument: "EUR_USD",
+          granularity: "M30",
+          candles: [
+            { complete: true, volume: 50, time: "2026-09-04T20:00:00.000000000Z", mid: { o: "1.0800", h: "1.0850", l: "1.0790", c: "1.0820" } },
+            { complete: true, volume: 40, time: "2026-09-04T20:30:00.000000000Z", mid: { o: "1.0820", h: "1.0860", l: "1.0810", c: "1.0840" } },
+          ],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "EURUSD",
+      tf: "30m",
+      limit: 10,
+      tdKey: "test_td_key",
+      oandaToken: "TEST_TOKEN",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("oanda");
+    expect(res.candles.length).toBe(2);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+
+  it("automatically falls back from Dukascopy to OANDA on error without falling back to Yahoo", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({
+          instrument: "US30_USD",
+          granularity: "M30",
+          candles: [
+            { complete: true, volume: 100, time: "2026-09-04T20:00:00.000000000Z", mid: { o: "38000", h: "38150", l: "37950", c: "38100" } },
+            { complete: true, volume: 80, time: "2026-09-04T20:30:00.000000000Z", mid: { o: "38100", h: "38200", l: "38050", c: "38180" } },
+          ],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    const res = await fetchMarketData({
+      pair: "US30",
+      tf: "30m",
+      limit: 10,
+      oandaToken: "TEST_TOKEN",
+      fetchFn,
+    });
+
+    expect(res.provider).toBe("oanda");
+    expect(res.candles.length).toBe(2);
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+
+  it("fails safe when both Dukascopy and fallbacks fail without ever falling back to Yahoo", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
+      const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
+      urlsSeen.push(url);
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response("Service Unavailable", { status: 503 });
+      }
+      if (url.includes("query1.finance.yahoo.com")) {
+        return new Response(JSON.stringify({
+          chart: {
+            result: [{
+              timestamp: [1709510400, 1709512200],
+              indicators: {
+                quote: [{
+                  open: [38000, 38100],
+                  high: [38150, 38200],
+                  low: [37950, 38050],
+                  close: [38100, 38180],
+                }],
+              },
+            }],
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
+    };
+
+    await expect(fetchMarketData({
+      pair: "US30",
+      tf: "30m",
+      limit: 10,
+      fetchFn,
+    })).rejects.toThrow(/Dukascopy/);
+
+    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+  });
+});
+
+describe("fetchDeriv", () => {
+  it("requests ticks_history candles and maps to Candle[]", async () => {
+    class MockWebSocket {
+      listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      sent: string[] = [];
+      closed = false;
+      addEventListener(type: string, cb: (...args: any[]) => void) {
+        (this.listeners[type] ??= []).push(cb);
+      }
+      send(data: string) {
+        this.sent.push(data);
+        const req = JSON.parse(data);
+        if (req.ticks_history === "R_75") {
+          setTimeout(() => {
+            const msg = {
+              msg_type: "candles",
+              candles: [
+                { epoch: 1709510400, open: 450100.5, high: 450250.0, low: 450050.2, close: 450200.0 },
+                { epoch: 1709512200, open: 450200.0, high: 450350.0, low: 450180.0, close: 450310.5 },
+              ],
+            };
+            this.listeners["message"]?.forEach((cb) => cb({ data: JSON.stringify(msg) }));
+          }, 10);
+        }
+      }
+      accept() {}
+      close() { this.closed = true; }
+    }
+
+    const mockWs = new MockWebSocket();
+    const fakeFetch = async (): Promise<Response> => {
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const res = await fetchMarketData({
+      pair: "V75",
+      tf: "30m",
+      limit: 10,
+      fetchFn: fakeFetch,
+    });
+
+    expect(res.provider).toBe("deriv");
+    expect(res.candles.length).toBe(2);
+    expect(res.candles[0].o).toBe(450100.5);
+    expect(res.candles[1].c).toBe(450310.5);
+    expect(mockWs.closed).toBe(true);
+  });
+
+  it("handles accept() throwing gracefully without crashing WebSocket message flow", async () => {
+    class MockWebSocket {
+      listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      closed = false;
+      addEventListener(type: string, cb: (...args: any[]) => void) {
+        (this.listeners[type] ??= []).push(cb);
+      }
+      send(data: string) {
+        const req = JSON.parse(data);
+        if (req.ticks_history === "R_75") {
+          setTimeout(() => {
+            const msg = {
+              msg_type: "candles",
+              candles: [
+                { epoch: 1709510400, open: 450100.5, high: 450250.0, low: 450050.2, close: 450200.0 },
+                { epoch: 1709512200, open: 450200.0, high: 450350.0, low: 450180.0, close: 450310.5 },
+              ],
+            };
+            this.listeners["message"]?.forEach((cb) => cb({ data: JSON.stringify(msg) }));
+          }, 10);
+        }
+      }
+      accept() {
+        throw new Error("Websockets obtained from the 'new WebSocket()' constructor cannot call accept");
+      }
+      close() { this.closed = true; }
+    }
+
+    const mockWs = new MockWebSocket();
+    const fakeFetch = async (): Promise<Response> => {
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const res = await fetchMarketData({
+      pair: "V75",
+      tf: "30m",
+      limit: 10,
+      fetchFn: fakeFetch,
+    });
+
+    expect(res.provider).toBe("deriv");
+    expect(res.candles.length).toBe(2);
+    expect(mockWs.closed).toBe(true);
+  });
+});
+
+describe("Deriv alert routing", () => {
+  it("routes Deriv alerts to TELEGRAM_DERIV_CHAT_ID and institutional alerts to TELEGRAM_CHAT_ID", async () => {
+    const vipCalls: string[] = [];
+    const derivCalls: string[] = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (url.includes("sendMessage")) {
+        if (body.chat_id === "-100VIP") vipCalls.push(body.text);
+        if (body.chat_id === "-100DERIV") derivCalls.push(body.text);
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 123 } }));
+    };
+
+    const env = {
+      TELEGRAM_BOT_TOKEN: "mock_token",
+      TELEGRAM_CHAT_ID: "-100VIP",
+      TELEGRAM_DERIV_CHAT_ID: "-100DERIV",
+      fetchFn: fakeFetch,
+    };
+
+    const derivAlert: any = {
+      pair: "V75",
+      entryTf: "30m",
+      mapTf: "4h",
+      direction: "LONG",
+      entry: 450320.0,
+      stopLoss: 449850.0,
+      tpInternal: 451550.0,
+      tpExternal: 452800.0,
+      drawOnLiquidity: 452800.0,
+      invalidationLevel: 449700.0,
+      sweepTime: Date.now() - 1800_000,
+      bosTime: Date.now() - 900_000,
+      returnTime: Date.now(),
+      candleCloseTime: Date.now(),
+      keyLevelType: "V",
+      keyLevelBounds: [450100.0, 450400.0],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      alertStatus: "PAPER",
+    };
+
+    const xauAlert: any = {
+      pair: "XAUUSD",
+      entryTf: "30m",
+      mapTf: "4h",
+      direction: "LONG",
+      entry: 2150.0,
+      stopLoss: 2145.0,
+      tpInternal: 2165.0,
+      tpExternal: 2180.0,
+      drawOnLiquidity: 2180.0,
+      invalidationLevel: 2140.0,
+      sweepTime: Date.now() - 1800_000,
+      bosTime: Date.now() - 900_000,
+      returnTime: Date.now(),
+      candleCloseTime: Date.now(),
+      keyLevelType: "V",
+      keyLevelBounds: [2148.0, 2152.0],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      alertStatus: "PAPER",
+    };
+
+    const { notifyAlert } = await import("../src/notify");
+    await notifyAlert(env, derivAlert);
+    await notifyAlert(env, xauAlert);
+
+    expect(derivCalls.length).toBe(1);
+    expect(derivCalls[0]).toContain("V75");
+    expect(vipCalls.length).toBe(1);
+    expect(vipCalls[0]).toContain("XAUUSD");
+  });
+
+  it("fetchDeriv sends payload immediately when readyState is 0 without waiting for open event", async () => {
+    let payloadSent = false;
+    const mockFetcher: any = async () => {
+      const listeners: Record<string, Function[]> = {};
+      const mockWs = {
+        readyState: 0, // In Cloudflare Workers, readyState can be 0 even though socket is accepted
+        listeners,
+        addEventListener(event: string, cb: Function) {
+          listeners[event] = listeners[event] || [];
+          listeners[event].push(cb);
+        },
+        send(data: string) {
+          payloadSent = true;
+          const req = JSON.parse(data);
+          setTimeout(() => {
+            listeners["message"]?.forEach((cb) =>
+              cb({
+                data: JSON.stringify({
+                  msg_type: "candles",
+                  candles: [
+                    { epoch: 1710000000, open: 100, high: 105, low: 99, close: 104 },
+                  ],
+                }),
+              })
+            );
+          }, 5);
+        },
+        accept() {},
+        close() {},
+      };
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const candles = await fetchDeriv("V75", "1d", 10, {}, "1089", mockFetcher);
+    expect(payloadSent).toBe(true);
+    expect(candles.length).toBe(1);
+    expect(candles[0].c).toBe(104);
+  });
+
+  it("fetchDeriv routes through HTTP proxy relay when proxyUrl is supplied", async () => {
+    let proxyCalled = false;
+    const mockFetcher: any = async (u: string) => {
+      if (u.includes("https://relay.test.com/candles")) {
+        proxyCalled = true;
+        return new Response(JSON.stringify({
+          ok: true,
+          candles: [
+            { t: 1710000000000, o: 100, h: 105, l: 99, c: 104.5 },
+            { t: 1710001800000, o: 104.5, h: 108, l: 104, c: 107 },
+          ],
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const candles = await fetchDeriv("V75", "30m", 10, {}, "1089", mockFetcher, "https://relay.test.com");
+    expect(proxyCalled).toBe(true);
+    expect(candles.length).toBe(2);
+    expect(candles[1].c).toBe(107);
+  });
+
+  it("fetchDeriv falls back to WebSocket if proxy relay returns error", async () => {
+    let wsCalled = false;
+    const mockFetcher: any = async (u: string) => {
+      if (u.includes("https://relay.test.com")) {
+        return new Response(JSON.stringify({ ok: false, error: "Relay offline" }), { status: 502 });
+      }
+      // WebSocket fallback
+      wsCalled = true;
+      const listeners: Record<string, Function[]> = {};
+      const mockWs = {
+        readyState: 1,
+        listeners,
+        addEventListener(event: string, cb: Function) {
+          listeners[event] = listeners[event] || [];
+          listeners[event].push(cb);
+        },
+        send() {
+          setTimeout(() => {
+            listeners["message"]?.forEach((cb) =>
+              cb({
+                data: JSON.stringify({
+                  msg_type: "candles",
+                  candles: [{ epoch: 1710000000, open: 200, high: 205, low: 199, close: 204 }],
+                }),
+              })
+            );
+          }, 5);
+        },
+        accept() {},
+        close() {},
+      };
+      const resp = new Response(null, { status: 200 });
+      (resp as any).webSocket = mockWs;
+      return resp;
+    };
+
+    const candles = await fetchDeriv("V75", "30m", 10, {}, "1089", mockFetcher, "https://relay.test.com");
+    expect(wsCalled).toBe(true);
+    expect(candles.length).toBe(1);
+    expect(candles[0].c).toBe(204);
   });
 });

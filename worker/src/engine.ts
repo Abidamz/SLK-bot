@@ -7,8 +7,10 @@
  *  Stateless across scans; idempotency comes from the DB (unique setup ids
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
-import { PARAM_VERSION } from "./config";
+import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
+import { PARAM_VERSION, minStopDistance, pipSize } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
+import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
   Alert, Candle, Direction, EngineEvent, Setup, Storyline,
 } from "./types";
@@ -23,6 +25,9 @@ export interface ScanEntryArgs {
   cfg: StrategyConfig;
   mode: "paper" | "live";
   provider: string;
+  d1Candles?: Candle[];
+  h1Candles?: Candle[];
+  h4Candles?: Candle[];
 }
 
 function setupId(provider: string, pair: string, entryTf: string, d: Direction, level: { kind: string; originPrice: number; originTime: number }): string {
@@ -41,11 +46,18 @@ function bisectRight(keys: number[], x: number): number {
   return lo;
 }
 
-export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: EngineEvent[] } {
-  const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider } = args;
+export function scanEntry(args: ScanEntryArgs): {
+  alerts: Alert[];
+  events: EngineEvent[];
+  diagnostics: ReplayDiagnostics;
+  shadowDiagnostics: DirectionalBiasDiagnostics[];
+} {
+  const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events };
+  const diagnostics = emptyReplayDiagnostics();
+  const shadowDiagnostics: DirectionalBiasDiagnostics[] = [];
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -63,6 +75,7 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
   const active: { LONG: Setup | null; SHORT: Setup | null } = { LONG: null, SHORT: null };
 
   const emit = (s: Setup, state: string, c: Candle, reason: string, price: number | null = c.c) => {
+    countTransition(diagnostics, state);
     events.push({ setupId: s.setupId, pair, state, candleTime: c.t, reason, price });
     console.info(JSON.stringify({ level: "info", msg: "slk.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
   };
@@ -227,13 +240,17 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
                 ? seg.every((x) => x.l > (cur.drawOnLiquidity as number))
                 : seg.every((x) => x.h < (cur.drawOnLiquidity as number));
             }
+            diagnostics.retestCandidates++;
             const alert = buildAlert({
               pair, entryTf, closeTime, c, s: cur, isShort,
-              atrE, cfg, mode, standing, provider,
+              atrE, cfg, mode, standing, provider, diagnostics,
+              candles, candleIndex: i, d1Candles, h1Candles, h4Candles,
             });
             if (alert) {
               emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
               alerts.push(alert);
+              if (alert.directionalBias) shadowDiagnostics.push(alert.directionalBias);
+              diagnostics.confirmedAlerts++;
             }
             active[d] = null;
             continue;
@@ -247,13 +264,19 @@ export function scanEntry(args: ScanEntryArgs): { alerts: Alert[]; events: Engin
     }
   }
 
-  return { alerts, events };
+  return { alerts, events, diagnostics, shadowDiagnostics };
 }
 
 interface BuildAlertArgs {
   pair: string; entryTf: string; closeTime: number; c: Candle; s: Setup;
   isShort: boolean; atrE: number; cfg: StrategyConfig;
+  diagnostics: ReplayDiagnostics;
   mode: "paper" | "live"; standing: boolean; provider: string;
+  candles: Candle[];
+  candleIndex: number;
+  d1Candles?: Candle[];
+  h1Candles?: Candle[];
+  h4Candles?: Candle[];
 }
 
 /** Pick the internal-liquidity target (tp1) and external drawback (tp2) for
@@ -264,6 +287,7 @@ interface BuildAlertArgs {
  *  tp above entry and later "resolved" as TP_HIT at -1.2R). */
 export function selectTargets(args: {
   isShort: boolean; entry: number; risk: number; minTpR: number;
+  maxPromotedTpR?: number;
   internalPools: { side: string; price: number }[];
   nearestExternalTarget: number | null;
 }): { tp1: number; tp2: number | null } | null {
@@ -281,9 +305,20 @@ export function selectTargets(args: {
   if (tp1 === null) return null;
   let rr1 = Math.abs(tp1 - args.entry) / args.risk;
   if (rr1 < args.minTpR && tp2 !== null) {
-    // internal target too close — target the external draw directly
-    tp1 = tp2;
-    tp2 = null;
+    // Internal target is too close. Use a bounded execution target when the
+    // external draw is unusually distant; retain the external draw as tp2.
+    const promoted = tp2;
+    const promotedR = Math.abs(promoted - args.entry) / args.risk;
+    const capR = args.maxPromotedTpR ?? args.minTpR;
+    if (promotedR > capR) {
+      tp1 = args.isShort
+        ? args.entry - capR * args.risk
+        : args.entry + capR * args.risk;
+      tp2 = promoted;
+    } else {
+      tp1 = promoted;
+      tp2 = null;
+    }
     rr1 = Math.abs(tp1 - args.entry) / args.risk;
   }
   if (rr1 < args.minTpR) return null;
@@ -294,19 +329,44 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
   const entry = c.c;
   const buf = cfg.slBufferAtr * atrE;
-  const sl = isShort ? s.invLevel + buf : s.invLevel - buf;
-  const risk = isShort ? sl - entry : entry - sl;
-  if (risk <= 0 || risk < cfg.minRiskAtr * atrE) return null;
+  let sl = isShort ? s.invLevel + buf : s.invLevel - buf;
+  let risk = isShort ? sl - entry : entry - sl;
+  if (risk <= 0) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons.nonPositiveRisk++;
+    return null;
+  }
+  // Enforce Option A: Minimum Stop Floor in Pips/Points (e.g. 10 pips forex, 25-30 pts indices)
+  // so broker spread never prematurely tags out valid setups.
+  if (cfg.minStopPips && cfg.minStopPips > 0) {
+    const minDistance = minStopDistance(pair, cfg.minStopPips);
+    if (risk < minDistance) {
+      sl = isShort ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
+    }
+  }
+  if (risk < cfg.minRiskAtr * atrE) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons.belowMinRiskAtr++;
+    return null;
+  }
   // stop-width ceiling: beyond 2× ATR the entry is structurally too far from
   // its invalidation — re-enter later rather than alert with a fat stop
-  if (risk > cfg.maxStopAtr * atrE) return null;
+  if (risk > cfg.maxStopAtr * atrE) {
+    a.diagnostics.riskRejects++;
+    a.diagnostics.riskRejectReasons.aboveMaxStopAtr++;
+    return null;
+  }
 
   // targets: internal liquidity first, then the nearest external target
   const targets = selectTargets({
-    isShort, entry, risk, minTpR: cfg.minTpR,
+    isShort, entry, risk, minTpR: cfg.minTpR, maxPromotedTpR: cfg.maxPromotedTpR,
     internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
   });
-  if (!targets) return null;
+  if (!targets) {
+    a.diagnostics.targetRejects++;
+    return null;
+  }
   const { tp1, tp2 } = targets;
 
   let sess: string | null = null;
@@ -323,6 +383,28 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   const intermediate = s.imbalances
     .filter((imb) => !(imb.hi < lo || imb.lo > hi))
     .map((imb) => ({ lo: imb.lo, hi: imb.hi, direction: imb.direction }));
+
+  const shadowDiagnostics = evaluateDirectionalBias({
+    pair, entryTf, direction: s.direction,
+    entryCandles: a.candles,
+    d1Candles: a.d1Candles,
+    h4Candles: a.h4Candles,
+    h1Candles: a.h1Candles,
+    cfg,
+    setup: {
+      sweptPoolPrice: s.sweptPoolPrice,
+      sweepTime: s.sweepTime,
+      sweepIndex: s.sweepIndex,
+      bosTime: s.bosTime,
+      bosIndex: s.bosIndex,
+      retestTime: c.t,
+      retestIndex: a.candleIndex,
+      origin: s.level,
+    },
+    sweepOccurred: true,
+    bosOccurred: true,
+    retestOccurred: true,
+  });
 
   return {
     setupId: s.setupId, pair, entryTf, mapTf: cfg.mapTfLabel,
@@ -345,5 +427,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     alertStatus: status, suppressReason, session: sess,
     atrEntry: atrE, rrInternal: Math.round((Math.abs(tp1 - entry) / risk) * 100) / 100,
     cycleStage: "entry_alert", entryMode: "confirmation",
+    shadowClassification: shadowDiagnostics.classification,
+    directionalBias: shadowDiagnostics,
   };
 }
