@@ -36,6 +36,7 @@
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
     "MODE": "paper",
     "PAPER_NOTIFY": "true",
+    "ENGINE_DIGEST": "true",
     // "setup forming" heads-ups (TOUCH/SWEEP/SHIFT) and bias cards ahead of entry alerts
     "WATCH_NOTIFY": "true",
     // Keep VIP channels (Institutional & Synthetics) clean: only confirmed entry signals + outcomes delivered

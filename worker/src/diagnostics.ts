@@ -26,6 +26,57 @@ export interface ScanDiagnostics {
   byPairTimeframe: { pair: string; timeframe: string; replay: ReplayDiagnostics }[];
 }
 
+export interface EngineDisciplineTotals {
+  scans: number;
+  setupsEvaluated: number;
+  sweep: number;
+  shift: number;
+  retest: number;
+  confirmed: number;
+  rejectionCounts: {
+    targetFloor: number;
+    belowMinRiskAtr: number;
+    aboveMaxStopAtr: number;
+    nonPositiveRisk: number;
+    invalid: number;
+    expired: number;
+  };
+}
+
+export function summarizeScanLogs(rows: { diagnostics?: ScanDiagnostics }[]): EngineDisciplineTotals | null {
+  const totals: EngineDisciplineTotals = {
+    scans: 0, setupsEvaluated: 0, sweep: 0, shift: 0, retest: 0, confirmed: 0,
+    rejectionCounts: {
+      targetFloor: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0,
+      nonPositiveRisk: 0, invalid: 0, expired: 0,
+    },
+  };
+  const count = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  for (const row of rows) {
+    const diagnostics = row.diagnostics;
+    if (!diagnostics || !diagnostics.replay || !diagnostics.recorded) continue;
+    const replay = diagnostics.replay;
+    totals.scans++;
+    totals.setupsEvaluated += count(replay.MAP);
+    totals.sweep += count(replay.SWEEP);
+    totals.shift += count(replay.SHIFT);
+    // A retest candidate is counted before risk/target gates. RETEST itself
+    // retains its existing meaning: an accepted confirmation.
+    totals.retest += count(replay.retestCandidates);
+    totals.confirmed += count(diagnostics.recorded.confirmedAlerts);
+    totals.rejectionCounts.targetFloor += count(replay.targetRejects);
+    totals.rejectionCounts.belowMinRiskAtr += count(replay.riskRejectReasons?.belowMinRiskAtr);
+    totals.rejectionCounts.aboveMaxStopAtr += count(replay.riskRejectReasons?.aboveMaxStopAtr);
+    totals.rejectionCounts.nonPositiveRisk += count(replay.riskRejectReasons?.nonPositiveRisk);
+    totals.rejectionCounts.invalid += count(replay.INVALID);
+    totals.rejectionCounts.expired += count(replay.EXPIRED);
+  }
+  return totals.scans ? totals : null;
+}
+
 export function emptyLifecycleCounts(): LifecycleCounts {
   return { MAP: 0, TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0, INVALID: 0, EXPIRED: 0 };
 }

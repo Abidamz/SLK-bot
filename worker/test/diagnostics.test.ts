@@ -109,4 +109,38 @@ describe("D1 scan diagnostics serialization", () => {
     expect(bind).toHaveBeenLastCalledWith(row.ts, "30m", "EURUSD", 0, 0, "", 42, "ok", null);
     expect(run).toHaveBeenCalledTimes(2);
   });
+
+  it("scanLogsSince tolerates a missing diagnostics_json column and caches the fallback", async () => {
+    const sqlCalls: string[] = [];
+    const db = {
+      prepare: vi.fn((sql: string) => {
+        sqlCalls.push(sql);
+        return {
+          bind: (..._values: unknown[]) => ({
+            run: async () => ({ meta: { changes: 0 } }),
+            first: async () => null,
+            all: async () => {
+              if (sql.includes("diagnostics_json")) throw new Error("no such column: diagnostics_json");
+              return { results: [{
+                ts: "2026-09-29T12:00:00.000Z", timeframes: "30m", pairs: "EURUSD",
+                alerts: 0, events: 2, errors: "", duration_ms: 12, note: "ok",
+              }] };
+            },
+          }),
+        };
+      }),
+    } as unknown as D1Like;
+    const store = new D1Store(db);
+    const since = Date.parse("2026-09-28T00:00:00.000Z");
+    const first = await store.scanLogsSince(since);
+    const second = await store.scanLogsSince(since);
+    expect(first).toEqual([{
+      ts: "2026-09-29T12:00:00.000Z", timeframes: "30m", pairs: "EURUSD",
+      alerts: 0, events: 2, errors: "", durationMs: 12, note: "ok",
+    }]);
+    expect(second).toEqual(first);
+    expect(sqlCalls).toHaveLength(3); // one failed probe, then legacy reads only
+    expect(sqlCalls[1]).not.toContain("diagnostics_json");
+    expect(sqlCalls[2]).not.toContain("diagnostics_json");
+  });
 });

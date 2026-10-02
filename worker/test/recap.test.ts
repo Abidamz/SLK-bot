@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { computeRecapStats, formatPerformanceRecap, sendPerformanceRecap } from "../src/notify";
+import { computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendPerformanceRecap } from "../src/notify";
 import { checkAndDispatchScheduledRecaps } from "../src/index";
-import { makeStore } from "../src/store";
+import { emptyScanDiagnostics } from "../src/diagnostics";
+import { makeStore, MemStore } from "../src/store";
+import type { EngineDisciplineTotals } from "../src/diagnostics";
 import type { AlertRowish, NotifyEnv } from "../src/notify_types";
 import type { Alert } from "../src/types";
 
@@ -141,6 +143,102 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(card).toContain("• Setups Triggered: 0 (Strict Discipline)");
     expect(card).toContain("Capital preserved. Zero low-probability setups forced during non-expansion conditions.");
     expect(card).toContain("whop.com/slk-radar/slk-radar-vip-signals");
+  });
+
+  it("formats the exact weekly Engine Discipline digest", () => {
+    const totals: EngineDisciplineTotals = {
+      scans: 3, setupsEvaluated: 14, sweep: 10, shift: 8, retest: 4, confirmed: 0,
+      rejectionCounts: {
+        targetFloor: 5, belowMinRiskAtr: 2, aboveMaxStopAtr: 1,
+        nonPositiveRisk: 0, invalid: 2, expired: 3,
+      },
+    };
+    expect(formatEngineDisciplineDigest(totals)).toBe([
+      "🧭 ENGINE DISCIPLINE — WEEKLY",
+      "Setups evaluated: 14",
+      "Chains: SWEEP 10 · SHIFT 8 · RETEST 4",
+      "Confirmed: 0",
+      "0 sent — none met our 2.5R minimum.",
+      "Top rejection: 2.5R target floor (5)",
+      "Research only — paper-mode observations; not audited performance or financial advice.",
+      "SLK Model (Structure · Liquidity · Key Levels)",
+    ].join("\n"));
+  });
+
+  it("dispatches weekly engine digest only to explicit FREE channels and dedupes it", async () => {
+    const store = new MemStore();
+    const diagnostics = emptyScanDiagnostics();
+    diagnostics.replay.MAP = 14;
+    diagnostics.replay.SWEEP = 10;
+    diagnostics.replay.SHIFT = 8;
+    diagnostics.replay.retestCandidates = 4;
+    diagnostics.replay.targetRejects = 5;
+    diagnostics.replay.riskRejects = 8;
+    diagnostics.replay.riskRejectReasons.belowMinRiskAtr = 2;
+    diagnostics.replay.riskRejectReasons.aboveMaxStopAtr = 1;
+    diagnostics.replay.INVALID = 2;
+    diagnostics.replay.EXPIRED = 3;
+    const weeklyTime = Date.parse("2026-10-02T21:05:00.000Z");
+    await store.insertScanLog({
+      ts: new Date(weeklyTime - 3600_000).toISOString(), timeframes: "30m", pairs: "EURUSD",
+      alerts: 0, events: 0, errors: "", durationMs: 10, note: "ok", diagnostics,
+    });
+
+    const sentMessages: { chatId: string; text: string }[] = [];
+    const env = {
+      TELEGRAM_BOT_TOKEN: "MOCK_TOKEN",
+      TELEGRAM_CHAT_ID: "-100VIP-INSTITUTIONAL",
+      TELEGRAM_DERIV_CHAT_ID: "-100VIP-SYNTHETICS",
+      TELEGRAM_FREE_CHAT_ID: "-100FREE-INSTITUTIONAL",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100FREE-SYNTHETICS",
+      fetchFn: async (_u: any, init: any) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        sentMessages.push({ chatId: body.chat_id, text: body.text });
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    };
+    const first = await checkAndDispatchScheduledRecaps(env, store, weeklyTime);
+    expect(first.engineDigestSent).toBe(true);
+    const digests = sentMessages.filter((message) => message.text.startsWith("🧭 ENGINE DISCIPLINE"));
+    expect(digests).toHaveLength(2);
+    expect(new Set(digests.map((message) => message.chatId))).toEqual(new Set([
+      "-100FREE-INSTITUTIONAL", "-100FREE-SYNTHETICS",
+    ]));
+    expect(digests.every((message) => message.text === formatEngineDisciplineDigest({
+      scans: 1, setupsEvaluated: 14, sweep: 10, shift: 8, retest: 4, confirmed: 0,
+      rejectionCounts: {
+        targetFloor: 5, belowMinRiskAtr: 2, aboveMaxStopAtr: 1,
+        nonPositiveRisk: 0, invalid: 2, expired: 3,
+      },
+    }))).toBe(true);
+    expect(sentMessages.some((message) => message.chatId.includes("VIP"))).toBe(false);
+
+    const second = await checkAndDispatchScheduledRecaps(env, store, weeklyTime);
+    expect(second.engineDigestSent).toBe(false);
+    expect(sentMessages).toHaveLength(4); // two weekly recaps plus two digests, once each
+  });
+
+  it("honors ENGINE_DIGEST=false without affecting weekly recaps", async () => {
+    const store = new MemStore();
+    const diagnostics = emptyScanDiagnostics();
+    diagnostics.replay.MAP = 1;
+    await store.insertScanLog({
+      ts: "2026-10-02T20:00:00.000Z", timeframes: "30m", pairs: "EURUSD",
+      alerts: 0, events: 0, errors: "", durationMs: 10, note: "ok", diagnostics,
+    });
+    const messages: string[] = [];
+    const env = {
+      ENGINE_DIGEST: "false", TELEGRAM_BOT_TOKEN: "MOCK_TOKEN",
+      TELEGRAM_FREE_CHAT_ID: "-100FREE", TELEGRAM_DERIV_FREE_CHAT_ID: "-100DERIV-FREE",
+      fetchFn: async (_u: any, init: any) => {
+        const body = JSON.parse(String(init?.body ?? "{}")); messages.push(body.text);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    };
+    const result = await checkAndDispatchScheduledRecaps(env, store, Date.parse("2026-10-02T21:05:00.000Z"), { forceWeekly: true });
+    expect(result.engineDigestSent).toBe(false);
+    expect(messages.some((text) => text.startsWith("🧭 ENGINE DISCIPLINE"))).toBe(false);
+    expect(messages).toHaveLength(2);
   });
 
   it("sendPerformanceRecap dispatches institutional recaps strictly to TELEGRAM_FREE_CHAT_ID", async () => {
