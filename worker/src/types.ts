@@ -5,6 +5,31 @@ import type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow"
 export type Direction = "LONG" | "SHORT";
 export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "BE_HIT" | "EXPIRED";
 
+export type ShadowRejectReason = "TARGET_FLOOR" | "NO_RETEST";
+export type ShadowTradeStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
+
+/** Observation-only candidate. This is persisted separately from alerts,
+ *  events, outcomes, and public performance statistics. */
+export interface ShadowTradeCapture {
+  setupId: string;
+  pair: string;
+  entryTf: string;
+  direction: Direction;
+  entry: number;
+  stopLoss: number;
+  tp1: number;
+  rr: number;
+  rejectReason: ShadowRejectReason;
+  candleCloseTime: number;
+}
+
+export interface ShadowTradeOutcome {
+  status: Exclude<ShadowTradeStatus, "OPEN">;
+  exitPrice: number;
+  exitTime: number;
+  rMultiple: number;
+}
+
 export interface Candle {
   t: number; // candle OPEN time, ms epoch UTC
   o: number;

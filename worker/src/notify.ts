@@ -8,6 +8,7 @@
 import { fmtPips, fmtPrice, isDerivPair } from "./config";
 import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
 import type { DirectionalBiasDiagnostics } from "./shadow";
+import type { EngineDisciplineTotals } from "./diagnostics";
 import type { AlertRowish, NotifyEnv, OutcomeLike, PerformanceRecapStats } from "./notify_types";
 
 const GREEN = 0x2ecc71;
@@ -1151,6 +1152,55 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     "SLK Model (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",
   ].join("\n");
+}
+
+/** Compact weekly engine-selectivity digest. Counts are replay diagnostics,
+ *  not trade performance; this message is kept separate from VIP entry/outcome
+ *  routing and is only sent by the caller to explicit FREE-channel IDs. */
+export function formatEngineDisciplineDigest(totals: EngineDisciplineTotals): string {
+  const candidates: Array<[string, number]> = [
+    ["2.5R target floor", totals.rejectionCounts.targetFloor],
+    ["minimum risk filter", totals.rejectionCounts.belowMinRiskAtr],
+    ["maximum stop-width filter", totals.rejectionCounts.aboveMaxStopAtr],
+    ["non-positive risk", totals.rejectionCounts.nonPositiveRisk],
+    ["invalidated chain", totals.rejectionCounts.invalid],
+    ["expired chain", totals.rejectionCounts.expired],
+  ];
+  const top = candidates.reduce((best, current) => current[1] > best[1] ? current : best, ["none recorded", 0] as [string, number]);
+  const disciplineLine = totals.confirmed === 0
+    ? (totals.rejectionCounts.targetFloor > 0
+        ? "0 sent — none met our 2.5R minimum."
+        : "0 sent — no setup cleared all confirmation gates.")
+    : `${totals.confirmed} confirmed — each cleared the 2.5R target floor.`;
+  return [
+    "🧭 ENGINE DISCIPLINE — WEEKLY",
+    `Setups evaluated: ${totals.setupsEvaluated}`,
+    `Chains: SWEEP ${totals.sweep} · SHIFT ${totals.shift} · RETEST ${totals.retest}`,
+    `Confirmed: ${totals.confirmed}`,
+    disciplineLine,
+    `Top rejection: ${top[0]}${top[1] > 0 ? ` (${top[1]})` : ""}`,
+    "Research only — paper-mode observations; not audited performance or financial advice.",
+    "SLK Model (Structure · Liquidity · Key Levels)",
+  ].join("\n");
+}
+
+/** Send only to caller-supplied free-channel IDs; deliberately has no VIP or
+ *  primary-chat fallback. */
+export async function sendEngineDisciplineDigest(
+  env: NotifyEnv,
+  text: string,
+  freeChatIds: string[],
+): Promise<{ sent: boolean; chatIds: string[] }> {
+  const chatIds = [...new Set(freeChatIds.map((id) => id.trim()).filter(Boolean))];
+  if (!env.TELEGRAM_BOT_TOKEN || chatIds.length === 0) return { sent: false, chatIds };
+  for (const chatId of chatIds) {
+    try {
+      await sendTelegram(env, text, { silent: false, pin: false, chatId });
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "engine discipline digest delivery failed", chatId, error: String(err) }));
+    }
+  }
+  return { sent: true, chatIds };
 }
 
 /**
