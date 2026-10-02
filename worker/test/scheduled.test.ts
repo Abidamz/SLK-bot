@@ -68,7 +68,8 @@ describe("scheduled scan cycle", () => {
     expect(msg).toContain("Direction   : SHORT");
     expect(msg).toContain("RETEST → CONFIRMED");
     expect(msg).toContain("Research signal only. No order was placed.");
-    expect(msg).toContain("Setup ID    : twelvedata:EURUSD:30m:SHORT:V:104.2");
+    // New identity format: provider-free, tick-rounded price (FX tick 0.005)
+    expect(msg).toContain("Setup ID    : EURUSD:30m:SHORT:V:104.200000:");
 
     const alert = [...store.alerts.values()][0];
     // min 1:3 RR: the nearby 104.15 H4-pool is under 3R, so TP1 is bounded
@@ -109,8 +110,8 @@ describe("scheduled scan cycle", () => {
     expect(yahoo.every((u) => u.includes("%5EDJI"))).toBe(true);
     expect((calls.dataCalls ?? []).some((u) => u.includes("api.twelvedata.com"))).toBe(true);
     expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
-    // alert carries the winning provider in its setup id
-    expect(calls.telegram[0]).toContain("twelvedata:EURUSD");
+    // setup id is provider-free (provider stays a stored column, not identity)
+    expect(calls.telegram[0]).toContain("EURUSD:30m:SHORT:V:104.200000:");
   });
 
   it("default index CFD route is the Dukascopy public feed (no token needed)", async () => {
@@ -590,14 +591,23 @@ describe("scheduled scan cycle", () => {
   });
 
   it("supports /admin/set-oanda-token and /admin/probe-oanda endpoints", async () => {
-    const env = makeEnv();
+    const env = makeEnv({ ADMIN_KEY: "test-admin-key" });
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const fakeFetch = makeFakeFetch(calls);
     env.fetchFn = fakeFetch;
 
+    // 0. Unauthenticated requests must be rejected with 401
+    const unauthSetResp = await worker.fetch(
+      new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice"),
+      env,
+      {} as any,
+    );
+    expect(unauthSetResp.status).toBe(401);
+
     // 1. Set token via /admin/set-oanda-token
     const setReq = new Request("https://worker.test/admin/set-oanda-token?token=TEST_OANDA_TOKEN&env=practice", {
       method: "GET",
+      headers: { "x-admin-key": "test-admin-key" },
     });
     const setResp = await worker.fetch(setReq, env, {} as any);
     expect(setResp.status).toBe(200);
@@ -609,6 +619,7 @@ describe("scheduled scan cycle", () => {
     // 2. Probe OANDA via /admin/probe-oanda
     const probeReq = new Request("https://worker.test/admin/probe-oanda?pair=US30", {
       method: "GET",
+      headers: { "x-admin-key": "test-admin-key" },
     });
     const probeResp = await worker.fetch(probeReq, env, {} as any);
     expect(probeResp.status).toBe(200);

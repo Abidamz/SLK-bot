@@ -666,22 +666,20 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
   const dir = String(rec.direction);
   const dirEmoji = dir === "LONG" ? "🟢" : "🔴";
   const r = oc.rMultiple;
-  const tp1 = rec.tp_internal != null ? fmtPrice(pair, Number(rec.tp_internal)) : fmtPrice(pair, oc.exitPrice);
 
+  // Free-channel teaser: pair / timeframe / result only — no entry, stop or
+  // target levels. Exact levels stay VIP-only (see formatAlert / VIP cards).
   return [
     `🎯 TP1 HIT — 🌟【 ${boldPair} 】🌟 ${dir} (+${r.toFixed(2)}R)`,
     ``,
     `📍 Pair      : 🌟【 ${boldPair} 】🌟`,
     `• Timeframe : ${rec.entry_timeframe}`,
     `• Direction : ${dir} ${dirEmoji}`,
-    `• Entry     : ${fmtPrice(pair, Number(rec.entry))}`,
-    `• Target 1  : ${tp1} (+${r.toFixed(2)}R) ✅`,
-    `• Target 2  : Running risk-free toward external liquidity`,
+    `• Result    : TP1 reached at +${r.toFixed(2)}R ✅`,
     ``,
-    `VIP members received this alert with exact entry, stop floor, and lot size calculations.`,
+    `VIP members received this live alert with exact entry, stop floor, and targets.`,
     ``,
-    `Stop missing the moves.`,
-    `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     `👉 Live Verified Journal: https://slk-radar.pages.dev`,
   ].join("\n");
 }
@@ -808,11 +806,14 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
 /** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT
  *  transition on an entry timeframe. Delivered SILENTLY so phones do not vibrate. */
 export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFreeChannel?: boolean }): string {
+  // Current identity format: pair:tf:direction:kind:price:originTime
+  // (legacy provider-prefixed rows still exist in slk_events but are
+  // display-only — new watch cards are built from fresh new-format events).
   const parts = ev.setupId.split(":");
-  const direction = parts[3] ?? "";
+  const direction = parts[2] ?? "";
   const boldPair = toBold(ev.pair);
-  const originKind = parts[4] ?? "";
-  const originPrice = parts[5] ? Number(parts[5]) : null;
+  const originKind = parts[3] ?? "";
+  const originPrice = parts[4] ? Number(parts[4]) : null;
   const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
   const lines = [
     `👀 WATCH (Silent Radar) — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
@@ -1016,7 +1017,11 @@ export function computeRecapStats(
     return segment === "synthetics" ? isSynth : !isSynth;
   };
 
-  const segmentRows = rows.filter((r) => isTargetSegment(String(r.canonical_symbol ?? "")));
+  const segmentRows = rows.filter(
+    (r) =>
+      isTargetSegment(String(r.canonical_symbol ?? "")) &&
+      String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+  );
 
   // Window for period: daily = past 24 hours; weekly = past 7 days
   const windowMs = period === "daily" ? 24 * 3600 * 1000 : 7 * 86400 * 1000;
@@ -1037,6 +1042,20 @@ export function computeRecapStats(
   const periodDecided = periodTp + periodSl;
   const periodWinRate = periodDecided > 0 ? (periodTp / periodDecided) * 100 : null;
   const periodNetR = periodClosed.reduce((sum, r) => sum + (Number(r.r_multiple) || 0), 0);
+
+  // Best decided trade of the period (highest R) — existing delivered-only data.
+  let bestTrade: PerformanceRecapStats["bestTrade"] = null;
+  for (const r of periodClosed) {
+    const rv = Number(r.r_multiple) || 0;
+    if (!bestTrade || rv > bestTrade.r) {
+      bestTrade = {
+        pair: String(r.canonical_symbol ?? ""),
+        direction: String(r.direction ?? ""),
+        timeframe: String(r.entry_timeframe ?? ""),
+        r: Math.round(rv * 100) / 100,
+      };
+    }
+  }
 
   // All-time closed trades in segment
   const allTimeClosed = segmentRows.filter((r) => {
@@ -1064,6 +1083,7 @@ export function computeRecapStats(
     periodBe,
     periodWinRate: periodWinRate !== null ? Math.round(periodWinRate * 10) / 10 : null,
     periodNetR: Math.round(periodNetR * 100) / 100,
+    bestTrade,
     allTimeSetups: allTimeClosed.length,
     allTimeTp,
     allTimeSl,
@@ -1080,37 +1100,35 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   const isInst = stats.segment === "institutional";
   const title = isDaily
     ? isInst
-      ? "📊 [SLK RADAR] — DAILY PERFORMANCE RECAP"
-      : "📊 [SLK RADAR] — 24/7 SYNTHETICS DAILY RECAP"
+      ? "📊 SLK RADAR — DAILY PERFORMANCE RECAP"
+      : "📊 SLK RADAR — 24/7 SYNTHETICS DAILY RECAP"
     : isInst
-      ? "📊 [SLK RADAR] — WEEKLY PERFORMANCE JOURNAL"
-      : "📊 [SLK RADAR] — 24/7 SYNTHETICS WEEKLY JOURNAL";
+      ? "📊 SLK RADAR — WEEKLY PERFORMANCE JOURNAL"
+      : "📊 SLK RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL";
 
   const marketLine = isInst
-    ? "Market: Institutional (Forex · Indices · Metals)"
-    : "Market: Continuous Synthetics (V75 · V100 · V50 · V25 · V10)";
+    ? "🏛️ Institutional (Forex · Indices · Metals)"
+    : "⚡ Continuous Synthetics (V75 · V100 · V50 · V25 · V10)";
 
   const periodHeader = isDaily ? "📈 TODAY'S RESULTS" : "📈 THIS WEEK'S RESULTS";
+  const sign = (r: number) => (r >= 0 ? `+${r.toFixed(2)}R` : `${r.toFixed(2)}R`);
 
-  const netRFormatted = stats.periodNetR >= 0 ? `+${stats.periodNetR.toFixed(2)}R` : `${stats.periodNetR.toFixed(2)}R`;
-  const allTimeNetRFormatted = stats.allTimeNetR >= 0 ? `+${stats.allTimeNetR.toFixed(2)}R` : `${stats.allTimeNetR.toFixed(2)}R`;
-
-  let resultsBlock = "";
+  const resultsLines: string[] = [];
   if (stats.periodSetups > 0) {
     const winRateStr = stats.periodWinRate !== null ? `${stats.periodWinRate.toFixed(1)}%` : "N/A";
-    resultsBlock = [
-      periodHeader,
-      `• Setups Closed: ${stats.periodSetups}`,
-      `• Outcomes: ${stats.periodTp} TP Hit | ${stats.periodSl} SL Hit${stats.periodBe > 0 ? ` | ${stats.periodBe} BE` : ""}`,
-      `• Win Rate: ${winRateStr}`,
-      `• Net Return: ${netRFormatted}`,
-    ].join("\n");
+    resultsLines.push(
+      `Win Rate: ${winRateStr}   ·   Net Return: ${sign(stats.periodNetR)}`,
+      `Setups: ${stats.periodSetups} closed (${stats.periodTp} TP · ${stats.periodSl} SL${stats.periodBe > 0 ? ` · ${stats.periodBe} BE` : ""})`,
+    );
+    if (stats.bestTrade) {
+      const b = stats.bestTrade;
+      resultsLines.push(`Best trade: ${b.pair} ${b.direction} ${b.timeframe} ${sign(b.r)}`);
+    }
   } else {
-    resultsBlock = [
-      periodHeader,
-      "• Setups Triggered: 0 (Strict Discipline)",
-      "• Note: Capital preserved. Zero low-probability setups forced during non-expansion conditions.",
-    ].join("\n");
+    resultsLines.push(
+      "No setups closed — capital preserved.",
+      "We only act on the highest-conviction SLK confirmations.",
+    );
   }
 
   const allTimeWinRateStr = stats.allTimeWinRate !== null ? `${stats.allTimeWinRate.toFixed(1)}%` : "N/A";
@@ -1120,25 +1138,19 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     title,
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
     marketLine,
-    `Session: ${stats.dateLabel}`,
+    `📅 ${stats.dateLabel}`,
     "",
-    resultsBlock,
+    periodHeader,
+    ...resultsLines,
     "",
-    "🏆 VERIFIED ALL-TIME TRACK RECORD",
-    `• Net Return: ${allTimeNetRFormatted}`,
-    `• Decided Win Rate: ${allTimeWinRateStr}`,
-    `• Cumulative Record: ${stats.allTimeTp} TP Hit | ${stats.allTimeSl} SL Hit`,
-    "• Target Floor: 2.50R - 4.50R Asymmetric Expansion",
+    "🏆 ALL-TIME LEDGER",
+    `${sign(stats.allTimeNetR)} · ${allTimeWinRateStr} decided win rate (${stats.allTimeTp} TP · ${stats.allTimeSl} SL)`,
+    `🔗 Verified on the public ledger: ${ledgerUrl}`,
     "",
-    "🔒 100% PUBLIC TRANSPARENCY",
-    "Every execution is mathematically recorded intrabar on our public ledger:",
-    `🔗 Track Record: ${ledgerUrl}`,
-    "",
-    "💎 READY FOR REAL-TIME CONFIRMED ENTRIES?",
-    "Stop trading counter-trend noise. Get loud, real-time SLK confirmation alerts with exact Entry, Invalidation, and Target levels:",
-    "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    "SLK Model · Structure · Liquidity · Key Levels",
+    "SLK Model (Structure · Liquidity · Key Levels)",
+    "Paper simulation — research only. Not financial advice.",
   ].join("\n");
 }
 

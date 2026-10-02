@@ -135,7 +135,7 @@ describe("private shadow ledger and isolated resolution", () => {
     const [statsResponse, alertsResponse, recapResponse, monteCarloResponse] = await Promise.all([
       worker.fetch(request("/stats", "Bearer owner-test"), env, {} as any),
       worker.fetch(request("/alerts?includeSuppressed=true", "Bearer owner-test"), env, {} as any),
-      worker.fetch(request("/admin/preview-recap?period=weekly&segment=institutional"), env, {} as any),
+      worker.fetch(request("/admin/preview-recap?period=weekly&segment=institutional", "Bearer owner-test"), env, {} as any),
       worker.fetch(request("/api/monte-carlo?seed=11"), env, {} as any),
     ]);
     const bodies = await Promise.all([

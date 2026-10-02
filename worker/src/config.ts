@@ -299,6 +299,26 @@ export function pipSize(pair: string): number {
   return 0.0001;
 }
 
+/** The instrument tick used to round level prices inside setup identities:
+ *  FX 0.5 pip, JPY pairs 0.005, XAUUSD 0.05, indices 1.0, synthetics 0.01.
+ *  Sub-tick provider jitter must never mint a new setup ID. */
+export function identityTick(pair: string): number {
+  const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");
+  if (isDerivPair(p)) return 0.01;
+  if (INDEX_POINT_PAIRS.has(p)) return 1.0;
+  if (p.startsWith("XAU") || p.startsWith("XAG")) return 0.05;
+  if (p.includes("JPY")) return 0.005;
+  return 0.00005; // 0.5 pip for standard FX
+}
+
+/** Round a price to the instrument's identity tick. The final toFixed(10)
+ *  normalizes binary floating-point noise (e.g. 29711 × 0.005 = 148.554999…). */
+export function roundToTick(pair: string, price: number): number {
+  const tick = identityTick(pair);
+  if (!Number.isFinite(price) || tick <= 0) return price;
+  return Number((Math.round(price / tick) * tick).toFixed(10));
+}
+
 /** Minimum stop loss floor in absolute price distance to prevent spread and noise stop-outs. */
 export function minStopDistance(pair: string, minStopPips = 10): number {
   const p = pair.toUpperCase().replace("/", "").replace("=X", "").replace("-", "");

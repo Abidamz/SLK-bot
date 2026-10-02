@@ -15,7 +15,7 @@
  *  provider keys and channel credentials live as Worker secrets only. */
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair } from "./config";
 import { scanEntry } from "./engine";
-import { addReplayDiagnostics, countTransition, emptyScanDiagnostics, type ScanDiagnostics } from "./diagnostics";
+import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
@@ -83,6 +83,12 @@ export interface ScanOptions {
   fetchFn?: typeof fetch;
   force?: boolean; // scan regardless of candle boundaries (POST /scan-now)
   storeOverride?: Store; // tests inject the in-memory store here
+  /** Replay-hygiene horizon for slk_events writes (default 3 days). A replayed
+   *  transition whose candle closed older than this is NOT written to the
+   *  event tape — except when the setup has an active (OPEN) alert row.
+   *  Set 0 to disable the filter (A/B parity tests). Never affects the
+   *  alert freshness gate or alert insertion. */
+  eventReplayMaxAgeMs?: number;
 }
 
 export interface ScanSummary {
@@ -154,7 +160,9 @@ export async function checkAndDispatchScheduledRecaps(
   const weekNumber = Math.ceil(d.getUTCDate() / 7);
   const weekKey = `${d.getUTCFullYear()}-W${weekNumber}`;
 
-  const allRows = await store.recentAlerts(1000);
+  const allRows = (await store.recentAlerts(1000)).filter(
+    (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+  );
 
   // Hydrate Telegram channel IDs from KV if not bound in worker env vars
   const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
@@ -271,6 +279,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const diagnostics = emptyScanDiagnostics();
   const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
+  const eventReplayMaxAgeMs = opts.eventReplayMaxAgeMs ?? EVENT_REPLAY_MAX_AGE_MS;
 
   // which entry TFs closed a candle since the previous successful scan?
   // 1. Real-time intrabar outcome resolution: check all open trades every minute
@@ -571,6 +580,15 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         const isFirstScan = lastRawIsEmpty(lastBefore);
 
         for (const ev of events) {
+          // Replay hygiene: a stale replayed transition (candle closed >3 days
+          // ago) is not written to the event tape — a pure write reduction.
+          // EXCEPT when the setup has an active (OPEN) alert row, whose event
+          // trail must stay complete. Entry/alert behavior is untouched: this
+          // only gates the slk_events insert, and stale events would already
+          // fail the watch freshness gate (2×TF << 3 days).
+          if (!(await shouldRecordReplayEvent(store, ev, now, eventReplayMaxAgeMs))) {
+            continue;
+          }
           const inserted = await store.insertEvent(ev);
           if (!inserted) continue; // already-known transition (dedupe)
           eventCount++;
@@ -713,6 +731,29 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
  *  provide high-probability context;
  *  RETEST has its own full confirmed entry alert. */
 const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
+
+/** Replay hygiene: the stateless engine re-walks up to `setupWindow` candles
+ *  on every scan, so a cold start can surface transitions whose candles
+ *  closed days ago. Those stale rows add no value to the live event tape
+ *  (the tape is a live feed, not an archive) and are skipped at INSERT time —
+ *  a pure write reduction. The freshness GATES (alertEventFresh /
+ *  watchEventFresh) are untouched; alert insertion is untouched. */
+export const EVENT_REPLAY_MAX_AGE_MS = 3 * 86400_000;
+
+/** Pure staleness decision for a replayed transition. */
+export function isReplayEventStale(ev: { candleTime: number }, now: number, maxAgeMs: number): boolean {
+  return maxAgeMs > 0 && now - ev.candleTime > maxAgeMs;
+}
+
+/** Full decision: stale replay events are recorded only when the setup has an
+ *  active (OPEN) alert row — the evidence trail of a live trade stays
+ *  complete. Fresh (or filter-disabled) events are always recorded. */
+export async function shouldRecordReplayEvent(
+  store: Store, ev: { setupId: string; candleTime: number }, now: number, maxAgeMs: number,
+): Promise<boolean> {
+  if (!isReplayEventStale(ev, now, maxAgeMs)) return true;
+  return store.hasActiveAlert(ev.setupId);
+}
 
 /** Watch events are transient heads-ups, not durable alerts. Only notify when
  * the source candle closed recently; this prevents isolate cold-start replay
@@ -1056,10 +1097,22 @@ export function isIndexCfdIdleWindow(pair: string, now: number): boolean {
 
 function authed(request: Request, env: Env): boolean {
   if (!env.ADMIN_KEY) return false;
+  const expectedKey = env.ADMIN_KEY.trim();
   const auth = request.headers.get("authorization");
-  if (!auth) return false;
-  const match = auth.match(/^Bearer\s+(.+)$/i);
-  return Boolean(match && match[1].trim() === env.ADMIN_KEY.trim());
+  if (auth) {
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    if (match && match[1].trim() === expectedKey) return true;
+  }
+  const xKey = request.headers.get("x-admin-key");
+  if (xKey && xKey.trim() === expectedKey) return true;
+  try {
+    const url = new URL(request.url);
+    const key = url.searchParams.get("key") || url.searchParams.get("admin_key");
+    if (key && key.trim() === expectedKey) return true;
+  } catch {
+    // ignore malformed URLs
+  }
+  return false;
 }
 
 function readAuthed(_request: Request, _env: Env): boolean {
@@ -1075,8 +1128,8 @@ function json(body: unknown, status = 200): Response {
     headers: {
       "content-type": "application/json",
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "Authorization, Content-Type",
-      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-headers": "Authorization, Content-Type, X-Admin-Key",
+      "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
     },
   });
 }
@@ -1118,6 +1171,16 @@ export default {
 
     if (request.method === "OPTIONS") return json({ ok: true });
 
+    const isPublicApi =
+      (url.pathname === "/api/waitlist" && request.method === "POST") ||
+      url.pathname === "/api/monte-carlo" ||
+      url.pathname === "/api/recent-events" ||
+      url.pathname === "/api/engine-pulse" ||
+      url.pathname === "/api/whop-webhook";
+    if ((url.pathname === "/admin" || url.pathname.startsWith("/admin/") || (url.pathname.startsWith("/api/") && !isPublicApi)) && !authed(request, env)) {
+      return json({ error: "unauthorized" }, 401);
+    }
+
     if (url.pathname === "/health") {
       const cfg = loadConfig(env);
       const store = makeStore(env.DB);
@@ -1156,7 +1219,7 @@ export default {
       });
     }
 
-    if (url.pathname === "/terms" && request.method === "GET") {
+    if ((url.pathname === "/terms" || url.pathname === "/terms.html") && request.method === "GET") {
       const { TERMS_HTML } = await import("./terms_html");
       return new Response(TERMS_HTML, {
         headers: {
@@ -1312,7 +1375,7 @@ export default {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const setupId = decodeURIComponent(chartMatch[1]);
       const row = (await makeStore(env.DB).recentAlerts(500)).find((r) => r.setup_id === setupId);
-      if (!row) return json({ error: "signal not found" }, 404);
+      if (!row || row.alert_status === "SUPPRESSED") return json({ error: "signal not found" }, 404);
       const cfg = loadConfig(env);
       const rawTf = (url.searchParams.get("timeframe") ?? row.entry_timeframe).toLowerCase();
       const tf = rawTf === "h1" ? "1h" : rawTf === "h4" ? "4h" : rawTf;
@@ -1410,6 +1473,7 @@ export default {
       // Seeded → deterministic; iteration×horizon capped to protect Free-tier CPU.
       const store = makeStore(env.DB);
       const rows = (await store.recentAlerts(1000))
+        .filter((r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED")
         .filter((r) => ["TP_HIT", "SL_HIT", "BE_HIT", "EXPIRED"].includes(String(r.status)) && Number.isFinite(Number(r.r_multiple)));
       rows.sort((a, b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
       const rSeries = rows.map((r) => Number(r.r_multiple));
@@ -1449,6 +1513,19 @@ export default {
       return json({ ok: true, cursor, items });
     }
 
+    if (url.pathname === "/api/engine-pulse" && request.method === "GET") {
+      // Engine Pulse: read-only 24h aggregate of the engine's recorded
+      // activity from slk_scan_log.diagnostics_json. No engine writes, no
+      // secrets — one bounded D1 read plus small per-row JSON parses.
+      const nowMs = Date.now();
+      const windowHours = 24;
+      const sinceIso = new Date(nowMs - windowHours * 3600_000).toISOString();
+      // 24h of once-a-minute cron logs ≤ ~1440 rows; the cap is a safety net.
+      const rows = await makeStore(env.DB).scanLogsSince(sinceIso, 2000);
+      const pulse = buildEnginePulse(rows as unknown as EnginePulseRow[], nowMs, windowHours);
+      return json({ ok: true, ...pulse, asof: new Date(nowMs).toISOString() });
+    }
+
     if (url.pathname === "/alerts" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;
@@ -1461,7 +1538,13 @@ export default {
       if (bad) return json({ error: bad }, 400);
       if ((from && !Number.isFinite(fromMs)) || (to && !Number.isFinite(toMs))) return json({ error: "from and to must be valid ISO UTC dates" }, 400);
       if (fromMs !== null && toMs !== null && fromMs > toMs) return json({ error: "from must be earlier than or equal to to" }, 400);
-      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize };
+      const requestedIncludeSuppressed =
+        url.searchParams.get("includeSuppressed") === "true" ||
+        url.searchParams.get("includeSuppressed") === "1" ||
+        url.searchParams.get("include_suppressed") === "true" ||
+        url.searchParams.get("include_suppressed") === "1";
+      const includeSuppressed = requestedIncludeSuppressed && authed(request, env);
+      const store = makeStore(env.DB); const query: AlertQuery = { pair:url.searchParams.get("pair") ?? undefined, timeframe:url.searchParams.get("timeframe") ?? undefined, direction:url.searchParams.get("direction") ?? undefined, channel:url.searchParams.get("channel") ?? undefined, lifecycle:url.searchParams.get("lifecycle") ?? undefined, outcome:url.searchParams.get("outcome") ?? undefined, provider:url.searchParams.get("provider") ?? undefined, from:url.searchParams.get("from") ?? undefined, to:url.searchParams.get("to") ?? undefined, search:url.searchParams.get("search") ?? undefined, sort:url.searchParams.get("sort") ?? "candleCloseTime", order:(url.searchParams.get("order") as "asc"|"desc") || "desc", segment: (url.searchParams.get("segment") as any) ?? undefined, page, pageSize, includeSuppressed };
       const result = await store.queryAlerts(query); const rows = result.rows;
       // sanitized: the DB holds no secrets, but keep the response tight anyway
       return json({ items: rows.map((r) => ({
@@ -1481,7 +1564,9 @@ export default {
     if (url.pathname === "/stats" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const store = makeStore(env.DB);
-      const allRows = await store.recentAlerts(1000);
+      const allRows = (await store.recentAlerts(1000)).filter(
+        (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+      );
 
       const period = url.searchParams.get("period");
       const fromParam = url.searchParams.get("from");
@@ -2085,20 +2170,18 @@ export default {
       }
       const { sendTelegram, toBold } = await import("./notify");
       const boldV75 = toBold("Volatility 75 Index");
+      // Free-channel preview only: pair / timeframe / result — no levels.
       const teaser = [
         `🎯 TP1 HIT — 🌟【 ${boldV75} 】🌟 LONG (+3.12R)`,
         "",
         `📍 Pair      : 🌟【 ${boldV75} 】🌟 (V75)`,
         "• Timeframe : 30m",
         "• Direction : LONG 🟢",
-        "• Entry     : 450,320.00",
-        "• Target 1  : 451,550.00 (+3.12R) ✅",
-        "• Target 2  : Running risk-free toward external liquidity",
+        "• Result    : TP1 reached at +3.12R ✅",
         "",
-        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "VIP members received this live alert with exact entry, stop floor, and targets.",
         "",
-        "Stop missing the moves.",
-        "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
         "👉 Live Verified Journal: https://slk-radar.pages.dev",
       ].join("\n");
       try {
@@ -2311,20 +2394,18 @@ export default {
       }
       const { sendTelegram, toBold } = await import("./notify");
       const boldGold = toBold("XAUUSD");
+      // Free-channel preview only: pair / timeframe / result — no levels.
       const teaser = [
-        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 Short (+2.57R)`,
+        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 SHORT (+2.57R)`,
         "",
         `📍 Pair      : 🌟【 ${boldGold} 】🌟`,
         "• Timeframe : 30m",
         "• Direction : SHORT 🔴",
-        "• Entry     : 4,331.370",
-        "• Target 1  : 4,297.933 (+2.57R) ✅",
-        "• Target 2  : Running risk-free toward external liquidity",
+        "• Result    : TP1 reached at +2.57R ✅",
         "",
-        "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
+        "VIP members received this live alert with exact entry, stop floor, and targets.",
         "",
-        "Stop missing the moves.",
-        "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
         "👉 Live Verified Journal: https://slk-radar.pages.dev",
       ].join("\n");
       try {
@@ -2474,7 +2555,9 @@ export default {
       const store = makeStore(env.DB);
       const period = (url.searchParams.get("period") || "daily").toLowerCase() as "daily" | "weekly";
       const segment = (url.searchParams.get("segment") || "institutional").toLowerCase() as "institutional" | "synthetics";
-      const allRows = await store.recentAlerts(1000);
+      const allRows = (await store.recentAlerts(1000)).filter(
+        (r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED"
+      );
       const stats = computeRecapStats(allRows as AlertRowish[], segment, period);
       const card = formatPerformanceRecap(stats);
       return json({ ok: true, period, segment, stats, card });
@@ -2536,6 +2619,7 @@ export default {
         instructions: {
           previewRecap: "Visit /admin/preview-recap?period=daily&segment=institutional (or segment=synthetics) to inspect the automated performance recap card.",
           triggerRecap: "Visit /admin/trigger-recap?period=daily&segment=both to instantly dispatch the performance recaps to the respective free channels.",
+          deleteAlert: "Visit /admin/delete-alert?setup_id=<setup_id> to delete a specific alert from the journal.",
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",
           connectDerivChannel: "1. Add bot as Admin to Synthetics VIP channel. 2. Post any message in channel. 3. Visit /admin/connect-deriv-channel.",
@@ -2891,6 +2975,29 @@ export default {
       });
     }
 
+    if ((url.pathname === "/admin/delete-alert" || url.pathname === "/api/delete-alert") && (request.method === "POST" || request.method === "DELETE" || request.method === "GET")) {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      let body: Record<string, unknown> = {};
+      if (request.method === "POST" || request.method === "DELETE") {
+        try { body = (await request.json()) as Record<string, unknown>; } catch { /* allow empty */ }
+      }
+      const setupId = String(body.setup_id || body.setupId || body.id || url.searchParams.get("setup_id") || url.searchParams.get("id") || url.searchParams.get("setupId") || "").trim();
+      if (!setupId) {
+        return json({ ok: false, error: "setup_id parameter required (e.g. /admin/delete-alert?setup_id=...)" }, 400);
+      }
+      const store = makeStore(env.DB);
+      const deleted = await store.deleteAlert(setupId);
+      if (!deleted) {
+        return json({ ok: false, error: "alert not found" }, 404);
+      }
+      return json({
+        ok: true,
+        action: "delete_alert",
+        setup_id: setupId,
+        message: `Successfully deleted alert ${setupId}`,
+      });
+    }
+
     if (url.pathname === "/admin/trades" && request.method === "POST") {
       let body: Record<string, unknown> = {};
       try { body = await request.json() as Record<string, unknown>; } catch { /* allow empty */ }
@@ -2908,7 +3015,15 @@ export default {
         await store.resetAllAlerts();
         return json({ ok: true, action: "reset_all", message: "Successfully reset all signals, events, and logs." });
       }
-      return json({ error: "invalid action, must be expire_open, clear_synthetics, or reset_all" }, 400);
+      if (action === "delete_alert" || action === "delete") {
+        if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+        const setupId = String(body.setup_id || body.setupId || body.id || url.searchParams.get("setup_id") || url.searchParams.get("id") || url.searchParams.get("setupId") || "").trim();
+        if (!setupId) return json({ ok: false, error: "setup_id parameter required" }, 400);
+        const deleted = await store.deleteAlert(setupId);
+        if (!deleted) return json({ ok: false, error: "alert not found" }, 404);
+        return json({ ok: true, action: "delete_alert", setup_id: setupId, message: `Successfully deleted alert ${setupId}` });
+      }
+      return json({ error: "invalid action, must be expire_open, clear_synthetics, reset_all, or delete_alert" }, 400);
     }
 
     if (url.pathname === "/provider-webhook") {

@@ -4,7 +4,7 @@ const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.
 
 const state = {
   url: DEFAULT_URL,
-  adminKey: sessionStorage.getItem('slkAdminKey') || '',
+  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('slkAdminKey')) || '',
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
@@ -200,41 +200,107 @@ if ($('clearSyntheticsBtn')) {
   });
 }
 
+function clearAdminKey() {
+  state.adminKey = '';
+  try { localStorage.removeItem('slkAdminKey'); } catch (_) {}
+}
+
+async function getAdminKey(forcePrompt = false) {
+  if (forcePrompt) clearAdminKey();
+  if (!state.adminKey) {
+    try { state.adminKey = localStorage.getItem('slkAdminKey') || ''; } catch (_) {}
+  }
+  if (state.adminKey) return state.adminKey;
+  const key = window.prompt('Enter Admin Key:');
+  if (key && key.trim()) {
+    state.adminKey = key.trim();
+    try { localStorage.setItem('slkAdminKey', state.adminKey); } catch (_) {}
+  }
+  return state.adminKey;
+}
+
 async function api(path, options = {}) {
+  const isAdmin = Boolean(options.admin || path.startsWith('/admin/'));
+  if (isAdmin) {
+    const key = await getAdminKey();
+    if (!key) throw new Error('Admin key required.');
+  }
   const headers = {
-    ...(options.admin && state.adminKey ? { Authorization: `Bearer ${state.adminKey}` } : {}),
+    ...(options.headers || {}),
+    ...(isAdmin && state.adminKey ? { 'x-admin-key': state.adminKey, Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
   const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
+  if (r.status === 401 && isAdmin) {
+    clearAdminKey();
+    if (!options._retried) {
+      const retryKey = await getAdminKey(true);
+      if (retryKey) {
+        return api(path, { ...options, _retried: true });
+      }
+    }
+    throw new Error('401 Unauthorized — invalid admin key.');
+  }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
-}
-
-async function getAdminKey() {
-  if (state.adminKey) return state.adminKey;
-  const key = window.prompt("Enter Admin Key:");
-  if (key) {
-    state.adminKey = key.trim();
-    sessionStorage.setItem('slkAdminKey', state.adminKey);
-  }
-  return state.adminKey;
 }
 
 async function loadAll() {
   setStatus('Syncing paper ledger…', 'muted');
   try {
-    const [health, _stats, prefs] = await Promise.all([
+    const [health, _stats, prefs, pulse] = await Promise.all([
       api('/health').catch(() => null),
       loadStats(),
-      api('/dashboard/preferences/notifications').catch(() => null)
+      api('/dashboard/preferences/notifications').catch(() => null),
+      api('/api/engine-pulse').catch(() => null)
     ]);
     if (health) renderHealth(health);
     if (prefs) renderPreferences(prefs);
+    renderEnginePulse(pulse);
     await loadAlerts();
     setStatus('Worker Online · Pipeline Healthy', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
+}
+
+// ── Engine Pulse: read-only 24h aggregate of recorded scan diagnostics ──
+function renderEnginePulse(p) {
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const put = (id, v) => { const el = $(id); if (el) el.textContent = (v == null ? '—' : String(v)); };
+  if (!p || p.ok === false) {
+    if ($('enginePulseSummary')) $('enginePulseSummary').textContent = 'Engine pulse unavailable right now — it rebuilds automatically from recorded scan diagnostics.';
+    return;
+  }
+  const evaluated = num(p.evaluated);
+  const touch = num(p.chains && p.chains.TOUCH);
+  const retest = num(p.chains && p.chains.RETEST);
+  const confirmed = num(p.confirmed);
+  const summary = $('enginePulseSummary');
+  if (summary) {
+    const head = `${evaluated} setup${evaluated === 1 ? '' : 's'} evaluated · ${touch} touched · ${retest} reached RETEST · ${confirmed} confirmed`;
+    summary.textContent = confirmed > 0
+      ? `${head} — every entry cleared the strict 2.5R+ floor.`
+      : `${head} — selectivity working: only setups that clear every floor become entries.`;
+  }
+  put('epEvaluated', evaluated);
+  put('epTouch', touch);
+  put('epSweep', num(p.chains && p.chains.SWEEP));
+  put('epShift', num(p.chains && p.chains.SHIFT));
+  put('epRetest', retest);
+  put('epConfirmed', confirmed);
+  put('epScans', num(p.scans));
+  put('epPairs', num(p.pairsCovered));
+  const rej = p.rejections || {};
+  const bits = [];
+  if (num(rej.belowMinRiskAtr)) bits.push(`${num(rej.belowMinRiskAtr)} below the 0.8×ATR risk floor`);
+  if (num(rej.aboveMaxStopAtr)) bits.push(`${num(rej.aboveMaxStopAtr)} above the stop ceiling`);
+  if (num(rej.nonPositiveRisk)) bits.push(`${num(rej.nonPositiveRisk)} non-positive risk`);
+  if (num(rej.targetFloor)) bits.push(`${num(rej.targetFloor)} under the 2.5R target floor`);
+  const rejEl = $('enginePulseRejections');
+  if (rejEl) rejEl.textContent = bits.length
+    ? `Rejected on discipline: ${bits.join(' · ')}.`
+    : 'No rejections recorded in this window — every candidate met the floors.';
 }
 
 async function loadStats() {
@@ -544,7 +610,8 @@ function alertParams() {
 async function loadAlerts() {
   try {
     const result = await api(`/alerts?${alertParams()}`);
-    state.alerts = Array.isArray(result) ? result : (result.items || []);
+    const rawAlerts = Array.isArray(result) ? result : (result.items || []);
+    state.alerts = rawAlerts.filter(a => a.alertStatus !== 'SUPPRESSED');
     state.alertTotal = result.total ?? state.alerts.length;
     if ($('alertTotal')) $('alertTotal').textContent = `${state.alertTotal} setups recorded`;
     if ($('alertPage')) $('alertPage').textContent = `Page ${state.alertPage}`;
@@ -598,7 +665,7 @@ function renderAlerts() {
       statusLabel = 'BREAKEVEN 🛡️ (0.00R)';
       statusClass = 'state';
     } else if (a.status === 'OPEN') {
-      statusLabel = a.alertStatus === 'SUPPRESSED' ? 'OPEN · AUDIT' : 'ACTIVE IN MARKET';
+      statusLabel = 'ACTIVE IN MARKET';
       statusClass = 'state';
     } else if (a.status === 'EXPIRED') {
       statusLabel = 'EXPIRED ⌛';
@@ -905,7 +972,7 @@ async function fetchLedgerRows() {
   const rows = [];
   for (let page = 1; page <= 6; page++) {
     const res = await api(`/alerts?pageSize=200&page=${page}&sort=candleCloseTime&order=desc`);
-    const items = res.items || [];
+    const items = (res.items || []).filter(r => r.alertStatus !== 'SUPPRESSED');
     rows.push(...items);
     if (items.length < 200) break;
   }
@@ -1045,9 +1112,16 @@ if (document.readyState === 'loading') {
 
 // ── Functionality #10: Monte Carlo Quant Lab ─────────────────────────────
 async function runMonteCarloUI() {
-  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan');
-  if (!status) return;
-  status.textContent = 'Simulating…';
+  const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan'), runButton = $('mcRun');
+  if (!status || (runButton && runButton.disabled)) return;
+  status.textContent = 'Building possible outcomes…';
+  status.setAttribute('aria-busy', 'true');
+  if (cards) cards.innerHTML = '';
+  if (svg) svg.innerHTML = '';
+  if (runButton) {
+    runButton.disabled = true;
+    runButton.textContent = 'Running…';
+  }
   try {
     const val = id => (($('#' + id.slice(1)) || $(id) || {}).value);
     const q = 'iterations=' + encodeURIComponent(val('mcIterations') || 2000)
@@ -1056,28 +1130,43 @@ async function runMonteCarloUI() {
       + '&seed=' + encodeURIComponent(val('mcSeed') || 42);
     const d = await api('/api/monte-carlo?' + q);
     if (!d.ok) {
-      status.textContent = (d.error || 'UNAVAILABLE') + ': ' + (d.message || 'Monte Carlo needs at least 5 closed trades in the verified ledger.');
-      if (cards) cards.innerHTML = '';
-      if (svg) svg.innerHTML = '';
+      status.textContent = d.error === 'INSUFFICIENT_HISTORY'
+        ? 'At least 5 verified closed trades are needed before this stress test can run.'
+        : 'The stress test could not be run. Please try again in a moment.';
       return;
     }
-    status.textContent = d.iterations.toLocaleString() + ' paths × ' + d.horizon + ' trades · seed ' + d.seed
-      + ' · pool ' + d.trades + ' closed trades (win ' + Math.round(d.histWinRate * 100) + '%, expectancy '
-      + Number(d.histExpectancyR).toFixed(2) + 'R)';
+    const tradeCount = Number(d.trades);
+    status.textContent = Number(d.iterations).toLocaleString() + ' simulations · '
+      + Number(d.horizon).toLocaleString() + ' future trades ahead per simulation · shuffle code ' + d.seed
+      + ' · based on ' + tradeCount.toLocaleString() + ' verified closed ' + (tradeCount === 1 ? 'trade.' : 'trades.');
     const g = d.finalGrowth;
-    const pct = x => (x >= 1 ? '+' : '') + ((x - 1) * 100).toFixed(1) + '%';
-    cards.innerHTML =
-      '<div>Median growth<strong>' + pct(g.p50) + '</strong></div>' +
-      '<div>5th percentile<strong>' + pct(g.p5) + '</strong></div>' +
-      '<div>95th percentile<strong>' + pct(g.p95) + '</strong></div>' +
-      '<div>P(net loss)<strong>' + (d.probNetLoss * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 10%)<strong>' + (d.probDd10 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>P(DD ≥ 20%)<strong>' + (d.probDd20 * 100).toFixed(1) + '%</strong></div>' +
-      '<div>DD 95th percentile<strong>' + Number(d.maxDrawdownPct.p95).toFixed(1) + '%</strong></div>' +
-      '<div>Loss streak 95th<strong>' + d.consecLoss.p95 + ' trades</strong></div>';
+    const growth = x => {
+      const change = (Number(x) - 1) * 100;
+      return (change > 0 ? '+' : '') + change.toFixed(1) + '%';
+    };
+    const chance = x => (Number(x) * 100).toFixed(1) + '%';
+    const card = (label, value, note) => '<div class="mc-card"><span class="mc-card-label">' + label
+      + '</span><strong class="mc-card-value">' + value + '</strong><small class="mc-card-note">' + note + '</small></div>';
+    const losingRun = Math.ceil(Number(d.consecLoss.p95));
+    if (cards) cards.innerHTML = [
+      card('Typical Growth', growth(g.p50), 'The middle result across all simulated paths.'),
+      card('Unlucky Scenario', growth(g.p5), '5% of simulated paths finished lower.'),
+      card('Lucky Scenario', growth(g.p95), '5% of simulated paths finished higher.'),
+      card('Chance of Ending Down', chance(d.probNetLoss), 'Finished below the starting balance.'),
+      card('Chance of a 10% Dip', chance(d.probDd10), 'Fell 10% or more from a past high, at least once.'),
+      card('Chance of a 20% Dip', chance(d.probDd20), 'Fell 20% or more from a past high, at least once.'),
+      card('Worst Realistic Dip', Number(d.maxDrawdownPct.p95).toFixed(1) + '%', '95% of paths had a dip this size or smaller.'),
+      card('Longest Losing Run', losingRun + (losingRun === 1 ? ' trade' : ' trades'), '95% of paths had a run this long or shorter.')
+    ].join('');
     renderMcFan(d);
   } catch (e) {
-    status.textContent = 'Simulation failed: ' + e.message;
+    status.textContent = 'The stress test could not be completed. Please try again.';
+  } finally {
+    status.removeAttribute('aria-busy');
+    if (runButton) {
+      runButton.disabled = false;
+      runButton.textContent = '▶ Run stress test';
+    }
   }
 }
 
@@ -1103,8 +1192,8 @@ function renderMcFan(d) {
   out += `<polygon points="${fan}" fill="#38bdf8" opacity="0.16"/>`;
   out += `<polyline points="${d.bands.p50.map((v, i) => x(i) + ',' + y(v)).join(' ')}" fill="none" stroke="#8cf0c6" stroke-width="2.4"/>`;
   out += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(1)}" y2="${y(1)}" stroke="#f6c66d" stroke-dasharray="6 5"/>`;
-  out += `<text x="${W - pad.r - 4}" y="${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting equity 1.00×</text>`;
-  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">trade 0</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">trade ${d.horizon}</text>`;
+  out += `<text x="${W - pad.r - 4}" y="${y(1) - 6}" text-anchor="end" fill="#f6c66d" font-size="11">starting balance 1.00×</text>`;
+  out += `<text x="${pad.l}" y="${H - 12}" fill="#8793a7" font-size="11">Start</text><text x="${W - pad.r}" y="${H - 12}" text-anchor="end" fill="#8793a7" font-size="11">After ${d.horizon} trades</text>`;
   svg.innerHTML = out;
 }
 

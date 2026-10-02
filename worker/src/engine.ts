@@ -8,7 +8,7 @@
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
-import { PARAM_VERSION, minStopDistance, pipSize } from "./config";
+import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
@@ -30,9 +30,21 @@ export interface ScanEntryArgs {
   h4Candles?: Candle[];
 }
 
-function setupId(provider: string, pair: string, entryTf: string, d: Direction, level: { kind: string; originPrice: number; originTime: number }): string {
-  // deterministic composite id (readable in logs/audit trail)
-  return `${provider}:${pair}:${entryTf}:${d}:${level.kind}:${level.originPrice.toFixed(6)}:${new Date(level.originTime).toISOString()}`;
+/** Deterministic setup identity (readable in logs/audit trail).
+ *  Deliberately EXCLUDES the data provider: a provider failover must not
+ *  mint a new identity for the same level (the provider stays a stored
+ *  column on slk_alerts). The level price is rounded to the instrument's
+ *  identity tick so sub-tick provider jitter cannot rotate the ID.
+ *  Legacy provider-prefixed rows in D1 are handled by the store-level
+ *  identity guard (pair, timeframe, direction, level kind, origin time). */
+export function buildSetupId(
+  pair: string,
+  entryTf: string,
+  d: Direction,
+  level: { kind: string; originPrice: number; originTime: number },
+): string {
+  const price = roundToTick(pair, level.originPrice).toFixed(6);
+  return `${pair}:${entryTf}:${d}:${level.kind}:${price}:${new Date(level.originTime).toISOString()}`;
 }
 
 function bisectRight(keys: number[], x: number): number {
@@ -101,7 +113,7 @@ export function scanEntry(args: ScanEntryArgs): {
         const onSide = isShort ? c.c < lv.zoneLo : c.c > lv.zoneHi;
         if (onSide) {
           s = {
-            setupId: setupId(provider, pair, entryTf, d, lv),
+            setupId: buildSetupId(pair, entryTf, d, lv),
             direction: d, level: lv, state: "MAP",
             mapIndex: i, mapTime: c.t,
             touchIndex: 0, touchTime: null,
@@ -149,7 +161,7 @@ export function scanEntry(args: ScanEntryArgs): {
           const onSideNew = isShort ? c.c < origin.zoneLo : c.c > origin.zoneHi;
           if (onSideNew) {
             cur.level = origin;
-            cur.setupId = setupId(provider, pair, entryTf, d, origin);
+            cur.setupId = buildSetupId(pair, entryTf, d, origin);
             cur.mapIndex = i;
             cur.mapTime = c.t;
             emit(cur, "MAP", c, `${origin.kind}-level ${origin.originPrice} armed (${story!.environment}/${story!.phase})`, origin.originPrice);
@@ -516,7 +528,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     direction: s.direction, entry, stopLoss: sl,
     tpInternal: tp1, tpExternal: tp2, candleCloseTime: closeTime,
     environment: s.environment, phase: s.phase, htfAlignment: s.htfAlignment,
-    originKeyLevel: s.level.originPrice, keyLevelType: s.level.kind,
+    originKeyLevel: s.level.originPrice, originTime: s.level.originTime, keyLevelType: s.level.kind,
     keyLevelBounds: [s.level.zoneLo, s.level.zoneHi],
     keyLevelTested: s.level.touches > 0, keyLevelFlipped: s.level.flipped,
     imbalanceContext: s.imbalances.map((i2) => ({ lo: i2.lo, hi: i2.hi, direction: i2.direction })),

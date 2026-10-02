@@ -42,6 +42,12 @@ export interface AlertRow extends Record<string, unknown> {
 
 export interface Store {
   insertAlert(a: Alert, provider: string): Promise<boolean>; // false = duplicate
+  /** True if any alert row matches (pair, timeframe, direction, level kind,
+   *  origin time) — regardless of the setup-ID format (legacy
+   *  provider-prefixed or current). Used as a migration guard so an
+   *  old-format row can never be re-alerted under a new-format ID. */
+  hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean>;
+  hasActiveAlert(setupId: string): Promise<boolean>;
   updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void>;
   insertEvent(ev: EngineEvent): Promise<boolean>;            // false = duplicate
   openAlerts(pair?: string, tf?: string): Promise<AlertRow[]>;
@@ -50,7 +56,6 @@ export interface Store {
   getKv(key: string): Promise<string | null>;
   setKv(key: string, value: string): Promise<void>;
   insertScanLog(row: ScanLogRow): Promise<void>;
-  scanLogsSince(sinceMs: number, limit?: number): Promise<ScanLogRow[]>;
   scanDiagnosticsSince(sinceMs: number): Promise<EngineDisciplineTotals | null>;
   insertShadowTrade(row: ShadowTradeCapture): Promise<boolean>;
   openShadowTrades(pair?: string, tf?: string): Promise<ShadowTradeRow[]>;
@@ -61,10 +66,14 @@ export interface Store {
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
   eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]>;
   recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
+  /** Scan-log rows within [sinceIso, +∞) for the Engine Pulse aggregate,
+   *  including diagnostics_json (D1) / diagnostics (Mem). Newest first. */
+  scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]>;
   getNotificationPreferences(): Promise<NotificationPreferences>;
   saveNotificationPreferences(prefs: NotificationPreferences, source: string): Promise<void>;
   insertNotificationDeliveryAudit(row: { channel: string; kind: string; status: string; detail?: string }): Promise<void>;
   expireOpenAlerts(): Promise<number>;
+  deleteAlert(setupId: string): Promise<boolean>;
   resetAllAlerts(): Promise<void>;
   clearSyntheticsAlerts(): Promise<number>;
   insertWaitlist(entry: WaitlistEntry): Promise<{ ok: boolean; duplicate?: boolean }>;
@@ -95,6 +104,7 @@ export interface AlertQuery {
   from?: string; to?: string; search?: string; sort?: string; order?: "asc" | "desc";
   segment?: "all" | "institutional" | "synthetics";
   page: number; pageSize: number;
+  includeSuppressed?: boolean;
 }
 export interface AlertQueryResult { rows: AlertRow[]; total: number; }
 
@@ -254,22 +264,14 @@ function aggregateShadowRows(rows: ShadowTradeRow[]): ShadowLedger["aggregate"] 
   return aggregate;
 }
 
-function scanLogFromD1(row: Record<string, unknown>): ScanLogRow {
-  let diagnostics: ScanDiagnostics | undefined;
-  if (typeof row.diagnostics_json === "string") {
-    try { diagnostics = JSON.parse(row.diagnostics_json) as ScanDiagnostics; } catch { /* legacy/malformed diagnostics are unavailable */ }
-  }
-  return {
-    ts: String(row.ts ?? ""),
-    timeframes: String(row.timeframes ?? ""),
-    pairs: String(row.pairs ?? ""),
-    alerts: Number(row.alerts ?? 0),
-    events: Number(row.events ?? 0),
-    errors: String(row.errors ?? ""),
-    durationMs: Number(row.duration_ms ?? 0),
-    note: String(row.note ?? ""),
-    ...(diagnostics ? { diagnostics } : {}),
-  };
+/** Trailing ISO origin time embedded in a setup ID. Both the legacy
+ *  provider-prefixed format (`provider:pair:tf:dir:kind:price:ISO`) and the
+ *  current format (`pair:tf:dir:kind:price:ISO`) end with the origin level's
+ *  ISO timestamp; unrecognized IDs yield null (guard stays permissive). */
+const ORIGIN_TIME_RE = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
+export function originTimeFromSetupId(setupId: string): string | null {
+  const m = ORIGIN_TIME_RE.exec(setupId);
+  return m ? m[1] : null;
 }
 
 // ------------------------------------------------------------------ D1 impl
@@ -278,6 +280,14 @@ export class D1Store implements Store {
   constructor(private db: D1Like) {}
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
+    // Migration guard: the same logical setup — (pair, timeframe, direction,
+    // level kind, origin time) — must never produce a second alert row, even
+    // when the stored row carries a legacy provider-prefixed setup ID and the
+    // new scan mints a current-format ID.
+    if (a.originTime != null && Number.isFinite(a.originTime)
+        && await this.hasIdentityMatch(a.pair, a.entryTf, a.direction, a.keyLevelType, a.originTime)) {
+      return false;
+    }
     const res = await this.db
       .prepare(
         `INSERT OR IGNORE INTO slk_alerts (
@@ -309,6 +319,28 @@ export class D1Store implements Store {
       )
       .run();
     return res.meta.changes > 0;
+  }
+
+  async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
+    const targetIso = new Date(originTimeMs).toISOString();
+    const res = await this.db
+      .prepare("SELECT setup_id FROM slk_alerts WHERE canonical_symbol=? AND entry_timeframe=? AND direction=? AND key_level_type=?")
+      .bind(pair, entryTf, direction, keyLevelType)
+      .all();
+    for (const row of res.results) {
+      if (originTimeFromSetupId(String(row.setup_id)) === targetIso) return true;
+    }
+    return false;
+  }
+
+  /** True when the setup has a live (OPEN) alert row — its event trail stays
+   *  fully recorded even for stale replays (see EVENT_REPLAY_MAX_AGE_MS). */
+  async hasActiveAlert(setupId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare("SELECT 1 AS x FROM slk_alerts WHERE setup_id=? AND status='OPEN'")
+      .bind(setupId)
+      .first();
+    return row !== null;
   }
 
   async updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void> {
@@ -402,34 +434,6 @@ export class D1Store implements Store {
     } catch (err) {
       console.warn(JSON.stringify({ level: "warn", msg: "insertScanLog failed", error: String(err) }));
     }
-  }
-
-  async scanLogsSince(sinceMs: number, limit = 1000): Promise<ScanLogRow[]> {
-    const maxRows = Math.max(1, Math.min(10_000, Math.floor(limit)));
-    let includeDiagnostics = await hasScanDiagnosticsColumn(this.db);
-    const queryRows = async (withDiagnostics: boolean): Promise<Record<string, unknown>[]> => {
-      const diagnosticsColumn = withDiagnostics ? ", diagnostics_json" : "";
-      const result = await this.db.prepare(
-        `SELECT ts, timeframes, pairs, alerts, events, errors, duration_ms, note${diagnosticsColumn}
-         FROM slk_scan_log WHERE ts >= ? ORDER BY ts DESC, id DESC LIMIT ?`,
-      ).bind(iso(sinceMs), maxRows).all();
-      return result.results ?? [];
-    };
-    let rows: Record<string, unknown>[];
-    try {
-      rows = await queryRows(includeDiagnostics);
-    } catch (err) {
-      if (!includeDiagnostics) throw err;
-      // Regression hardening: legacy D1 may be missing diagnostics_json even
-      // when another read path has not probed the column yet.
-      markScanDiagnosticsColumn(this.db, false);
-      console.warn(JSON.stringify({ level: "warn", msg: "scanLogsSince falling back to legacy schema", error: String(err) }));
-      includeDiagnostics = false;
-      rows = await queryRows(false);
-    }
-    return rows
-      .reverse()
-      .map((row) => scanLogFromD1(includeDiagnostics ? row : { ...row, diagnostics_json: null }));
   }
 
   async scanDiagnosticsSince(sinceMs: number): Promise<EngineDisciplineTotals | null> {
@@ -569,7 +573,15 @@ export class D1Store implements Store {
   async queryAlerts(q: AlertQuery): Promise<AlertQueryResult> {
     const where: string[] = []; const binds: unknown[] = [];
     const add = (sql: string, value: unknown) => { where.push(sql); binds.push(value); };
-    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction); if (q.channel === "WATCH") where.push("1 = 0"); if (q.channel === "CONFIRMED") where.push("alert_status IN ('PAPER','SENT')"); if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
+    if (q.pair) add("canonical_symbol = ?", q.pair); if (q.timeframe) add("entry_timeframe = ?", q.timeframe); if (q.direction) add("direction = ?", q.direction);
+    if (q.channel === "WATCH") {
+      where.push("1 = 0");
+    } else if (q.channel === "CONFIRMED") {
+      where.push("alert_status IN ('PAPER','SENT')");
+    } else if (!q.includeSuppressed) {
+      where.push("(alert_status IS NULL OR alert_status != 'SUPPRESSED')");
+    }
+    if (q.lifecycle) add("status = ?", q.lifecycle); if (q.outcome) add("status = ?", q.outcome); if (q.provider) add("provider = ?", q.provider); if (q.from) add("candle_close_time >= ?", q.from); if (q.to) add("candle_close_time <= ?", q.to); if (q.search) { where.push("(setup_id LIKE ? OR canonical_symbol LIKE ?)"); binds.push(`%${q.search}%`, `%${q.search}%`); }
     if (q.segment === "synthetics") {
       where.push("(canonical_symbol LIKE 'V%' OR canonical_symbol LIKE 'R_%')");
     } else if (q.segment === "institutional") {
@@ -616,12 +628,61 @@ export class D1Store implements Store {
     return res.results;
   }
 
+  async scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]> {
+    const queryRows = async (withDiagnostics: boolean): Promise<Record<string, unknown>[]> => {
+      const diagnosticsColumn = withDiagnostics ? ", diagnostics_json" : "";
+      const result = await this.db.prepare(
+        `SELECT id, ts, timeframes, pairs, alerts, events, errors, duration_ms, note${diagnosticsColumn}
+         FROM slk_scan_log WHERE ts >= ? ORDER BY ts DESC, id DESC LIMIT ?`,
+      ).bind(sinceIso, limit).all();
+      return result.results ?? [];
+    };
+    const includeDiagnostics = await hasScanDiagnosticsColumn(this.db);
+    try {
+      return await queryRows(includeDiagnostics);
+    } catch (err) {
+      if (!includeDiagnostics || !String(err).toLowerCase().includes("diagnostics_json")) throw err;
+      // Older production databases may not have migration 0004 yet. Keep the
+      // Engine Pulse scan-history endpoint useful without the optional column.
+      markScanDiagnosticsColumn(this.db, false);
+      console.warn(JSON.stringify({ level: "warn", msg: "scanLogsSince falling back to legacy schema", error: String(err) }));
+      return queryRows(false);
+    }
+  }
+
   async expireOpenAlerts(): Promise<number> {
     const res = await this.db
       .prepare("UPDATE slk_alerts SET status='EXPIRED', r_multiple=0, exit_time=? WHERE status='OPEN'")
       .bind(new Date().toISOString())
       .run();
     return Number(res.meta?.changes ?? 0);
+  }
+
+  async deleteAlert(setupId: string): Promise<boolean> {
+    const isNum = /^\d+$/.test(setupId.trim());
+    let canonicalSetupId = setupId.trim();
+    if (isNum) {
+      const row = await this.db
+        .prepare("SELECT setup_id FROM slk_alerts WHERE id = ?")
+        .bind(Number(setupId.trim()))
+        .first();
+      if (row && typeof row.setup_id === "string") {
+        canonicalSetupId = row.setup_id;
+      }
+    }
+    const res = await this.db
+      .prepare("DELETE FROM slk_alerts WHERE setup_id = ? OR id = ?")
+      .bind(canonicalSetupId, isNum ? Number(setupId.trim()) : -1)
+      .run();
+    const changes = Number(res.meta?.changes ?? 0);
+    if (changes > 0) {
+      await this.db
+        .prepare("DELETE FROM slk_events WHERE setup_id = ?")
+        .bind(canonicalSetupId)
+        .run();
+      return true;
+    }
+    return false;
   }
 
   async resetAllAlerts(): Promise<void> {
@@ -704,6 +765,13 @@ export class MemStore implements Store {
 
   async insertAlert(a: Alert, provider: string): Promise<boolean> {
     if (this.alerts.has(a.setupId)) return false;
+    // Migration guard (parity with D1Store): an existing row for the same
+    // (pair, timeframe, direction, level kind, origin time) — in ANY setup-ID
+    // format — blocks the insert as a duplicate.
+    if (a.originTime != null && Number.isFinite(a.originTime)
+        && await this.hasIdentityMatch(a.pair, a.entryTf, a.direction, a.keyLevelType, a.originTime)) {
+      return false;
+    }
     this.alerts.set(a.setupId, {
       setup_id: a.setupId, provider, canonical_symbol: a.pair,
       map_timeframe: a.mapTf, entry_timeframe: a.entryTf,
@@ -715,6 +783,21 @@ export class MemStore implements Store {
       alert_status: a.alertStatus, status: "OPEN",
     });
     return true;
+  }
+
+  async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
+    const targetIso = new Date(originTimeMs).toISOString();
+    for (const row of this.alerts.values()) {
+      if (row.canonical_symbol !== pair || row.entry_timeframe !== entryTf
+        || row.direction !== direction || row.key_level_type !== keyLevelType) continue;
+      if (originTimeFromSetupId(row.setup_id) === targetIso) return true;
+    }
+    return false;
+  }
+
+  async hasActiveAlert(setupId: string): Promise<boolean> {
+    const row = this.alerts.get(setupId);
+    return row !== undefined && row.status === "OPEN";
   }
 
   async updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void> {
@@ -775,14 +858,6 @@ export class MemStore implements Store {
 
   async insertScanLog(row: ScanLogRow): Promise<void> {
     this.scanLog.push(row);
-  }
-
-  async scanLogsSince(sinceMs: number, limit = 1000): Promise<ScanLogRow[]> {
-    return this.scanLog
-      .filter((row) => Date.parse(row.ts) >= sinceMs)
-      .slice()
-      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))
-      .slice(-Math.max(1, Math.min(10_000, Math.floor(limit))));
   }
 
   async scanDiagnosticsSince(sinceMs: number): Promise<EngineDisciplineTotals | null> {
@@ -852,7 +927,13 @@ export class MemStore implements Store {
     rows = rows.filter(r => {
       if (q.segment === "synthetics" && !isDerivPair(r.canonical_symbol)) return false;
       if (q.segment === "institutional" && isDerivPair(r.canonical_symbol)) return false;
-      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && (q.channel !== "WATCH") && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
+      if (q.channel === "WATCH") return false;
+      if (q.channel === "CONFIRMED") {
+        if (r.alert_status !== "PAPER" && r.alert_status !== "SENT") return false;
+      } else if (!q.includeSuppressed) {
+        if (String(r.alert_status ?? "").toUpperCase() === "SUPPRESSED") return false;
+      }
+      return match(r.canonical_symbol,q.pair) && match(r.entry_timeframe,q.timeframe) && match(r.direction,q.direction) && match(r.status,q.lifecycle||q.outcome) && match(r.provider,q.provider) && (!q.search || `${r.setup_id} ${r.canonical_symbol}`.toLowerCase().includes(q.search.toLowerCase())) && (!q.from || String(r.candle_close_time) >= q.from) && (!q.to || String(r.candle_close_time) <= q.to);
     });
     const total=rows.length; rows=rows.slice((q.page-1)*q.pageSize,q.page*q.pageSize); return { rows, total };
   }
@@ -869,6 +950,13 @@ export class MemStore implements Store {
     return this.scanLog.slice(-limit).reverse() as unknown as Record<string, unknown>[];
   }
 
+  async scanLogsSince(sinceIso: string, limit: number): Promise<Record<string, unknown>[]> {
+    // In-memory rows carry the `diagnostics` object directly (D1 rows carry
+    // `diagnostics_json`); the pulse aggregator accepts either shape.
+    const rows = this.scanLog.filter((r) => r.ts >= sinceIso).slice(-limit);
+    return rows.slice().reverse() as unknown as Record<string, unknown>[];
+  }
+
   async expireOpenAlerts(): Promise<number> {
     let count = 0;
     const nowIso = new Date().toISOString();
@@ -881,6 +969,27 @@ export class MemStore implements Store {
       }
     }
     return count;
+  }
+
+  async deleteAlert(setupId: string): Promise<boolean> {
+    const isNum = /^\d+$/.test(setupId.trim());
+    let targetKey: string | null = null;
+    if (this.alerts.has(setupId.trim())) {
+      targetKey = setupId.trim();
+    } else {
+      for (const [key, alert] of this.alerts.entries()) {
+        if (key === setupId.trim() || (isNum && alert.id === Number(setupId.trim()))) {
+          targetKey = key;
+          break;
+        }
+      }
+    }
+    if (targetKey && this.alerts.has(targetKey)) {
+      this.alerts.delete(targetKey);
+      this.events = this.events.filter((e) => e.setupId !== targetKey && e.setup_id !== targetKey);
+      return true;
+    }
+    return false;
   }
 
   async resetAllAlerts(): Promise<void> {
