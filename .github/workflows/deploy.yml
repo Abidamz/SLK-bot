@@ -3,7 +3,7 @@ name: Deploy SLK Radar
 on:
   push:
     branches:
-      - arena/01a0b153-slk-bot
+      - 'arena/**'
       - main
   workflow_dispatch:
 
@@ -37,7 +37,7 @@ jobs:
     name: Deploy Worker & Pages to Cloudflare
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/arena/01a0b153-slk-bot' || github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
