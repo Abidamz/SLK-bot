@@ -1,302 +1,210 @@
-# SLK Radar — Complete Continuation Handoff & Architecture Summary
+# SLK Model — Definitive Project Handoff
 
-**Updated:** 2026-09-30 (UTC)  
-**Repository:** `Abidamz/SLK-bot` (GitHub: https://github.com/Abidamz/SLK-bot)  
-**Active Production Branch:** `arena/01a0b153-slk-bot`  
-**Latest Synced Commit:** `0e8f954` (`fix(provider): eliminate automated Yahoo Finance failovers and fallbacks`)
+**Updated:** 2026-10-05 (UTC)
+**Repository:** `Abidamz/SLK-bot`
+**This session's branch:** `arena/3ff9b8eb-slk-bot`
+**Production lineage:** `arena/01a0b153-slk-bot`
+**Production Worker:** `https://slk-alert-worker.abidogundamilola.workers.dev`
+**Production dashboard:** `https://slk-radar.pages.dev`
+**Deriv relay:** `https://slk-bot.vercel.app`
 
----
+This is the source of truth for future sessions. The current owner-provided brief and this file override stale descriptions elsewhere in the repository.
 
-## 1. Quick Links & Live Deployments
+## 1. Mission and current operating state
 
-- **Public Proof Journal & Dashboard:** `https://slk-radar.pages.dev`
-- **Subscriber Terms & Risk Disclaimer:** `https://slk-radar.pages.dev/terms`
-- **Whop Storefront (VIP Membership):** `https://whop.com/slk-radar/slk-radar-vip-signals`
-- **Deriv Candle Relay (Vercel Production - Verified 90ms latency):** `https://slk-bot.vercel.app`
-  - Candle feed: `GET https://slk-bot.vercel.app/candles?symbol=R_75&granularity=1800&limit=5`
-  - Health probe: `GET https://slk-bot.vercel.app/health`
-  - Latency probe: `GET https://slk-bot.vercel.app/probe`
-- **Cloudflare Worker API (Backend - 100% Automated Git Deployments Active):** `https://slk-alert-worker.abidogundamilola.workers.dev`
-  - Health: `GET /health` (`oandaConfigured: true`, `v2.5.4`)
-  - Stats: `GET /stats`
-  - Public Ledger: `GET /alerts`
-  - Scan Logs: `GET /scan-log`
-  - OANDA Live Probe: `GET /api/probe-oanda?pair=US30`
-  - Deriv WebSocket Probe: `GET /api/probe-deriv`
-- **OANDA v3 REST Provider Status:**
-  - Token verified and securely stored in D1 KV (`slk_kv.oanda_api_token`).
-  - Active coverage for 10 Institutional assets: `US30`, `NAS100`, `GER40` (`DE30_EUR`), `JAPAN225`, `XAUUSD`, `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`.
-  - Rate Limits & Capacity: 120 requests/minute with **no daily credit ceiling** (unlike Twelve Data's 800/day cliff). Current cron scan pace consumes <4% of OANDA's limit.
-  - Edge CPU Optimization: Server-side OHLC midpoint candle aggregation reduces Cloudflare edge CPU usage by ~85% (from 9ms down to 1–2ms), completely eliminating Cloudflare Free Tier 10ms CPU isolation kills.
-  - Multi-tier institutional failover: OANDA $\leftrightarrow$ Swiss Bank Dukascopy $\leftrightarrow$ Twelve Data (Yahoo Finance completely removed from automated fallback chain).
-- **Telegram Channels (4-Channel Isolated Architecture):**
-  - **VIP Institutional Channel:** Managed via `TELEGRAM_CHAT_ID` (`Trade jounal`)
-  - **VIP 24/7 Synthetics Channel:** Managed via `TELEGRAM_DERIV_CHAT_ID` (`SLK HUB | 24/7 SYNTHETICS`)
-  - **Free Institutional Hub:** Managed via `TELEGRAM_FREE_CHAT_ID` (`SLK TRADING HUB (FREE)`)
-  - **Dedicated Free Synthetics Hub:** Managed via `TELEGRAM_DERIV_FREE_CHAT_ID` (`https://t.me/SLK_Hub_synthetics_free`, `@SLK_Hub_synthetics_free`)
-  - **Personal VIP Push DM:** Managed via `TELEGRAM_DM_CHAT_ID`
+The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a paper-simulation trading-signal and research system—not an order-execution service.
 
----
+- **Mode is paper only:** `MODE=paper`, `PAPER_NOTIFY=true`; MT5/live execution stays disabled.
+- A Cloudflare Worker scans on a one-minute cron. It currently watches 23 configured markets on `15m,30m,1h`; Deriv synthetics use `30m,1h` as their primary entry timeframes.
+- The confirmation lifecycle is `MAP → TOUCH → SWEEP → SHIFT → RETEST → CONFIRMED`, with invalidation/expiry paths. The minimum target floor is `MIN_TP_R=2.5`; the minimum risk-width gate is `MIN_RISK_ATR=0.8`.
+- Production baseline supplied on 2026-10-05: the delivered ledger had 8 signals, 62.5% win rate, and +11.52R. Treat that as a small paper sample, not a performance promise.
+- Dashboard pages are on Cloudflare Pages project `slk-radar`. The Vercel relay supplies Deriv synthetic candles.
+- The shadow ledger is a separate, observation-only dataset. It must not change live/paper entries or leak into user-facing trading surfaces.
 
-## 2. Active Production Safety & Configuration
+## 2. Architecture and data boundaries
 
-```text
-MODE=paper
-WATCH_NOTIFY=true             (Active radar for heads-up detection)
-VIP_WATCH_NOTIFY=false        (Clean VIP feed: VIP Institutional and Synthetics channels receive ONLY confirmed entries and outcomes)
-PAPER_NOTIFY=true
-PAIR_BATCH_SIZE=1             (Free Tier CPU optimized: 1 pair per minute batch, oldest-first scanning)
-MIN_RISK_ATR=0.8
-MIN_TP_R=2.5                  (Strict 2.5R - 4R asymmetric reward floor across all pairs)
-SL_BUFFER_ATR=0.25            (Gold & Index wick padding)
-FILTER_HTF_CONFLICT=true      (Suppresses trades where lower-timeframe entry opposes 4H/1H momentum)
-FILTER_HTF_CONFLICT_DERIV_ONLY=true (Active on 24/7 continuous synthetics; institutional pairs evaluated in shadow mode)
-MT5/live broker execution: disabled (Research & paper alert mode only)
-```
+### Runtime path
 
-### Channel Routing Protocol (Strict Separation)
-- **VIP Institutional Channel (`TELEGRAM_CHAT_ID`):** High-signal execution feed. Receives **ONLY confirmed entry alerts** (`🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY`) and trade outcomes (`TP_HIT` / `SL_HIT`). Zero watch radar, zero synthetics.
-- **VIP Synthetics Channel (`TELEGRAM_DERIV_CHAT_ID`):** Dedicated Deriv synthetic execution feed. Receives **ONLY confirmed entry alerts** and trade outcomes for synthetic volatility pairs. Zero watch radar, zero forex.
-- **Free Institutional Channel (`TELEGRAM_FREE_CHAT_ID`):** Educational & conversion funnel. Receives `👀 WATCH` radar heads-ups (TOUCH, SWEEP, SHIFT), `🧭 BIAS CONFIRMATION` cards, and automated win teasers for Forex & Indices only. **Zero synthetics**.
-- **Dedicated Free Synthetics Channel (`TELEGRAM_DERIV_FREE_CHAT_ID`):** 24/7 unverified synthetic watch radar, bias confirmation cards, and V75 win teasers with Whop VIP upgrade links.
-- **Personal DM (`TELEGRAM_DM_CHAT_ID`):** Simultaneous personal push for confirmed entries.
+1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
+2. `worker/src/provider.ts` routes OANDA-supported institutional instruments using the configured provider map, with tested provider fallbacks. The three newly added Forex instruments resolve explicitly as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv synthetics are fetched through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
+3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
+4. Cloudflare D1 stores alerts, events, scan diagnostics, notification state, and the isolated shadow ledger. SQL migrations are in `worker/migrations/` (`0001`–`0006`). The owner already applied `0006_shadow_ledger.sql` in production; shadow-ledger code also fails safe if that table is unavailable.
+5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive watch radar, bias cards, teaser cards, weekly recaps, and the Engine Discipline digest. Synthetic content is never sent to the Forex free channel.
+6. The public journal shows only signals actually delivered to Telegram. Audit/admin views are protected. Recap cards retain the explicit **“paper simulation — research only”** disclaimer.
 
-### Freshness & Anti-Spam Safety Gates
-- **`alertEventFresh`**: Alerts are only delivered to Telegram if their candle closed within $2 \times \text{timeframe}$ of the current time (e.g. within 30 minutes for a 15m candle). Historical backfilled setups discovered during boot are recorded into D1 for public ledger transparency with `alertStatus: "SUPPRESSED"`, preventing outdated trades from being blasted to Telegram.
-- **`isFirstScan`**: On initial startup or when adding a new timeframe, the first scan is record-only, preventing burst alerts from past candles. Subsequent scans operate in real-time.
-- **Stale Replay Protection**: Historical replays are prevented from populating `slk_alerts`, ensuring only fresh real-time signals enter the ledger.
+### Important code locations
 
-### Active Markets (20 Quantitative Assets)
-- **Indices (4):** `NAS100`, `US30`, `GER40`, `JAPAN225`
-- **Metals (1):** `XAUUSD` (Gold)
-- **Forex (5):** `EURUSD`, `GBPUSD`, `USDJPY`, `AUDJPY`, `GBPJPY`
-- **Deriv Synthetics (10 continuous 24/7 assets):**
-  - Standard Volatility Series: `V75` (`R_75`), `V100` (`R_100`), `V50` (`R_50`), `V25` (`R_25`), `V10` (`R_10`)
-  - 1-Second Continuous Series: `V75_1S` (`1HZ75V`), `V100_1S` (`1HZ100V`), `V50_1S` (`1HZ50V`), `V25_1S` (`1HZ25V`), `V10_1S` (`1HZ10V`)
-- **Timeframes:** `15m` (resampled), `30m`, `1h`
-- **Weekend Mode:** Automatically bypasses closed traditional forex/index markets on weekends (Saturday 00:00 UTC through Sunday 21:00 UTC) so 100% of cron capacity scans the 10 continuous synthetics.
+- `worker/src/config.ts` — env parsing and strategy defaults.
+- `worker/src/provider.ts` — provider resolution and candle validation.
+- `worker/src/features.ts`, `worker/src/storyline.ts` — market structure and storyline.
+- `worker/src/engine.ts` — state machine, target/risk gates, optional partial-retest threshold.
+- `worker/src/store.ts` — D1/MemStore behavior, delivered ledger, scan logs, shadow ledger.
+- `worker/src/shadow.ts` — directional-bias classification (separate from shadow-trade measurement).
+- `worker/src/notify.ts` — Telegram formatting, channel routing, recaps and digest.
+- `worker/src/mt5.ts` — gated bridge client; production paper configuration does not dispatch orders.
+- `worker/src/index.ts` — Worker endpoints and scheduled orchestration.
+- `worker/migrations/0006_shadow_ledger.sql` — separate research table and indexes.
+- `dashboard/` — Pages dashboard and public journal.
+- `api/` — Vercel relay endpoints; `deriv-relay/` contains its standalone relay implementation.
 
----
+### Shadow-ledger contract
 
-## 2.1 Major Architectural Milestones (September 2026)
+- Captures only `TARGET_FLOOR` counterfactuals in `[2.0R, 2.5R)` and `NO_RETEST` counterfactuals.
+- Uses setup identity for deduplication, resolves with the same candle rules, and expires unresolved observations after 120 bars.
+- `GET /api/shadow-ledger` is owner/admin-key protected. It aggregates only the separate shadow table.
+- Shadow rows never appear in Telegram alerts, public events, `/stats`, `/alerts`, recaps, or Monte Carlo. Keep this strict isolation when changing code.
+- The Engine Discipline weekly digest is controlled by `ENGINE_DIGEST` and goes to explicit FREE-channel IDs only; it has no VIP fallback.
 
-1. **Video-Aligned Directional Bias Shadow Classification**:
-   - Evaluates multi-timeframe structural continuity across Weekly, Daily, 4H, and 1H contexts.
-   - Diagnostic components include:
-     - **Weekly Liquidity**: Weekly high/low sweeps and opposing liquidity targets.
-     - **Daily Structure**: Body-to-body candle breakouts and daily liquidity sweep + structure shifts.
-     - **4H Vantage Point**: Structural breakout status and primary trend direction.
-     - **1H Execution Alignment**: Agreement between execution context and higher-timeframe vantage.
-     - **Entry Quality**: Fair Value Gap (FVG) detection, displacement rebalance, lower-timeframe sweep, and structure break.
-     - **Classification Grades**: `A_GRADE` (full multi-timeframe alignment + FVG rebalance), `B_GRADE` (aligned without FVG rebalance), `HTF_CONFLICT` (opposing higher-timeframe momentum), `OBSERVATION_ONLY` (neutral or unconfirmed).
-   - Behavior-neutral: runs alongside standard confirmation entries without mutating entry triggers, targets, or risk limits. Fully validated across 9 deterministic test suites in `worker/test/shadow.test.ts`.
+## 3. Deployment model — read before any edit or push
 
-2. **Historical Runway Expansion (120 H4 Bars)**:
-   - In `worker/src/config.ts`, `baseCandlesLimit` was updated from 40 to 120 bars of H4 history.
-   - Ensures multi-day institutional origin key levels (such as Gold's 4303–4313 zone) remain active in the storyline engine across pullbacks.
+**Pushing any `arena/**` branch triggers production deployment. A push is a release; it is not a staging preview.** GitHub Actions runs the gates and, if green, deploys the Worker and dashboard.
 
-3. **Pre-Entry Watch Radar Enhancement**:
-   - `WATCH_STATES` expanded to include `TOUCH` alongside `SWEEP` and `SHIFT`.
-   - Free conversion channels receive heads-up notifications when price enters an armed origin zone, alerting subscribers before liquidity sweeps and structural shifts occur.
+### Required workflow invariants
 
-4. **Deriv WebSocket & Vercel Relay Architecture**:
-   - Deriv retired legacy endpoints (`ws.derivws.com` and `ws.binaryws.com` returning HTTP 520).
-   - Market data now connects via `wss://api.derivws.com/trading/v1/options/ws/public` requiring no demo token.
-   - Dedicated low-latency micro-service deployed to Vercel (`https://slk-bot.vercel.app/candles`) with persistent WebSocket connection and 15s candle caching.
+- `.github/workflows/deploy.yml` must remain **exactly** the version inherited from `origin/arena/01a0b153-slk-bot`: push triggers include `arena/**` and `main`; tests gate deployment; the deploy job is not opt-in gated. Do not replace it with workflow-dispatch-only logic or otherwise alter it.
+- Session work stays on `arena/3ff9b8eb-slk-bot`. Push only with `git push origin arena/3ff9b8eb-slk-bot`. Never switch branches for this session.
+- Do **not** merge PRs or ask the owner to merge. Pushing this branch is what deploys. Do not push to or deploy `main`; it is stale and hands-off.
+- Before each push, run the full local validation suite below. Do not push partially validated work.
+- After each push, wait for the GitHub Actions run to finish successfully and allow about three minutes for propagation. Then request `/health` with a fresh random query parameter and report the returned JSON. `/api/engine-pulse` or an observed behavior change can also verify a release. An unauthorized response from an unknown `/api/*` route does **not** prove that route exists.
+- A failing “Workers Builds” preview check is known benign noise. Cloudflare's native Git integration also duplicates deploys only for `arena/01a0b153-slk-bot`; neither is a reason to change the required workflow.
 
-5. **Dedicated 4-Channel Routing & Signal Isolation**:
-   - `getFreeChatIds()` strictly separates routing by `isDerivPair()`:
-     - Synthetic watch radar, bias confirmation cards, and win teasers route **only** to `TELEGRAM_DERIV_FREE_CHAT_ID`.
-     - Synthetics are **completely excluded** from the Forex Free channel (`TELEGRAM_FREE_CHAT_ID`).
-   - `broadcast()` strictly isolates VIP channels:
-     - Synthetic VIP alerts go **only** to `TELEGRAM_DERIV_CHAT_ID` with no fallback to `TELEGRAM_CHAT_ID`.
-     - Institutional VIP alerts go **only** to `TELEGRAM_CHAT_ID`.
-     - VIP channels receive **confirmed entries and outcomes only** (0 watch or bias cards).
+### Full local validation suite
 
----
+From the repository root, after dependencies are installed with `npm ci --prefix worker`:
 
-## 3. Real Live Track Record & Verified Ledger
-
-- **Total Recorded Trades:** 29 setups
-- **Resolved Trades (Win/Loss):** 23 trades
-  - **Take Profit Hits:** 15 trades (yielding between +0.95R and +4.53R each, targeted at internal swing points / min 2.5R)
-  - **Stop Loss Hits:** 8 trades (strictly capped at -1.00R each; one early gold paper exit recorded at -1.20R)
-  - **Expired Trades:** 6 trades (0.00R after exceeding the 120-bar resolution window)
-- **Decided Win Rate:** **65.2%** (15 / 23)
-- **Cumulative Net Return:** **+27.78R** (exact sum: `27.779R`)
-  - **Institutional (Forex / Indices / Gold):** 26 setups, 15 TP, 5 SL, **+30.78R** (75.0% win rate)
-  - **Synthetics (Deriv 24/7):** 3 setups, 0 TP, 3 SL (`V10_1S`: -1.00R, `V50_1S`: -1.00R, `V75`: -1.00R), **-3.00R**
-- **Live Shadow Classification Correlation & Synthetics Insight:**
-  - 100% of synthetic losses were counter-trend to higher timeframe momentum (4H or 1H).
-  - Both `V10_1S` and `V50_1S` were pre-flagged in real time as **`⚠️ HTF_CONFLICT`**.
-  - Synthetic algorithmic assets (Brownian motion / continuous random walk) produce severe lower-timeframe noise when trading against 4H/1H macro trends.
-  - Filtering or gating `HTF_CONFLICT` setups or elevating synthetic minimum entry timeframe to 1H is critical to protecting the Synthetics VIP channel reputation.
-- **Synthetics Clean Slate:** Production database purged of legacy stale test records; 0-trade clean slate ready for live streaming.
-
----
-
-## 4. Key System Architecture & Files
-
-| Path | Purpose |
-| :--- | :--- |
-| `worker/src/index.ts` | Worker router (`/health`, `/alerts`, `/stats`, `/scan-log`, cron handler, admin endpoints) |
-| `worker/src/engine.ts` | SLK confirmation state machine (`MAP` $\to$ `TOUCH` $\to$ `SWEEP` $\to$ `SHIFT` $\to$ `RETEST`) |
-| `worker/src/shadow.ts` | Behavior-neutral shadow directional bias classifier (`A_GRADE`, `B_GRADE`, `HTF_CONFLICT`) |
-| `worker/src/notify.ts` | 4-channel isolated Telegram dispatcher (loud pinned entries, silent watch cards, win teasers) |
-| `worker/src/provider.ts` | Market data provider with automatic failover (OANDA $\leftrightarrow$ Dukascopy $\leftrightarrow$ Twelve Data, Deriv Relay; Yahoo removed from fallback) |
-| `worker/src/store.ts` | SQLite / Cloudflare D1 persistence ledger |
-| `worker/wrangler.jsonc` | Cloudflare Worker configuration (`PAIR_BATCH_SIZE: 1`, safety variables) |
-| `dashboard/index.html` | Public track record UI with verified ledger table and performance metrics |
-| `dashboard/app.js` | Dashboard client logic with dynamic exact R-multiple calculation |
-| `dashboard/terms.html` | High-risk investment disclaimer and Terms of Service for Whop compliance |
-| `dashboard/SLK_Radar_Terms_of_Service.pdf` | Printable legal PDF for subscriber onboarding |
-| `MARKETING_PLAYBOOK.md` | Full marketing funnels, video scripts, Twitter threads, and launch strategy |
-
----
-
-## 5. Verification & Testing Endpoints
-
-### Automated Test Suite Commands
-Always verify all three commands pass cleanly before deployment:
 ```bash
 npm test -- --run
 npm run typecheck
 node --check dashboard/app.js
 ```
 
-### Live Worker Health & Diagnostics Endpoints
-- **Worker Health**: `https://slk-alert-worker.abidogundamilola.workers.dev/health`
-- **Deriv WebSocket Probe**: `https://slk-alert-worker.abidogundamilola.workers.dev/api/probe-deriv`
-- **Telegram Status & Configuration**: `https://slk-alert-worker.abidogundamilola.workers.dev/admin/telegram-status`
-- **Immediate Market Scan**: `https://slk-alert-worker.abidogundamilola.workers.dev/admin/trigger-scan`
+Then from `worker/`:
 
-### Test Signal Endpoints (Channel Verification)
-- **Test Institutional VIP Signal**: `/admin/test-alert?pair=EURUSD` (Loud confirmed entry to `Trade jounal` + DM)
-- **Test Synthetics VIP Signal**: `/admin/test-deriv` (Loud confirmed V75 entry to `SLK HUB | 24/7 SYNTHETICS`)
-- **Test Free Win Teaser**: `/admin/test-free-teaser` (TP1 Win Teaser to Forex Free channel)
-- **Test Free Synthetics Teaser**: `/admin/test-deriv-free-teaser` (V75 Win Teaser to dedicated Synthetics Free channel)
-- **Connect Free Synthetics Channel**: `/admin/connect-deriv-free-channel` (Auto-detects and links new channel from Telegram updates)
+```bash
+npx wrangler deploy --dry-run
+```
 
-### Real-Time Intrabar Outcome Resolution (v2.5.3)
-- Open trades are evaluated every single minute across all pairs via `resolveAllOpenAlerts()`.
-- Intrabar touch evaluation (`validateCandlesForOutcome`) includes the forming active candle when `slOnClose` is false, eliminating the previous 15–45 minute wait for candle closes and queue rotations.
+The same test, typecheck, and dashboard syntax gates run in GitHub Actions. The Wrangler dry run is an additional local release check.
 
-### Automated Continuous Deployment (Cloudflare Workers Builds Active)
-- **Deployment is 100% automated via Cloudflare Workers Builds**: Cloudflare is directly connected to GitHub (`Abidamz/SLK-bot`) watching branch `arena/01a0b153-slk-bot` with root directory `worker`.
-- **Every `git push origin arena/01a0b153-slk-bot` automatically triggers Cloudflare to build and deploy live within 30 seconds.**
-- **GitHub Actions is bypassed**: The account-level disabled status on GitHub Actions does not affect production because Cloudflare uses its own native GitHub webhook and build runners.
----
+### Post-push proof
 
-## 6. How to Continue in New Sessions
+```bash
+curl -fsS "https://slk-alert-worker.abidogundamilola.workers.dev/health?v=$(date +%s)"
+```
 
-If continuing in a new Arena session or environment:
-1. Ensure your git branch is set to `arena/01a0b153-slk-bot`. Never switch branches.
-2. Run `git pull origin arena/01a0b153-slk-bot`.
-3. Keep safety settings intact (`MODE=paper`, `MIN_RISK_ATR=0.8`, `PAIR_BATCH_SIZE=1`).
-4. Validate changes using `npm test -- --run`, `npm run typecheck`, and `node --check dashboard/app.js`.
+Always use a fresh query parameter. Never use a 401 from an unknown API route as deploy proof.
 
----
+## 4. Production environment and tuning reference
 
-## 7. Recommended Next Steps & Roadmap (ChatGPT / LLM Continuation Recommendations)
+These are effective production values on 2026-10-05, after the requested config widening. `worker/wrangler.jsonc` is the source for non-secret Worker variables; `worker/src/config.ts` supplies code defaults. “Safe range” is an operational recommendation, not permission to override a standing rule.
 
-For any developer, AI agent (e.g., ChatGPT, Claude), or engineering lead continuing work on `SLK-bot`, the following 6 roadmap enhancements offer the highest immediate ROI for trading edge, subscriber retention, and operational automation:
+| Variable | Effective value | Purpose | Safe range / standing constraint |
+|---|---|---|---|
+| `MODE` | `paper` | Worker operating mode. | **Paper only.** Do not set to `live`. |
+| `PAPER_NOTIFY` | `true` | Allows paper-simulation alerts to be delivered. | Keep `true`. |
+| `PAIRS` | `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S,USDCAD,NZDUSD,EURJPY` | Canonical watchlist (23 markets). | Only add symbols with a verified provider route and supported instrument mapping. Monitor scan capacity when widening. |
+| `ENTRY_TFS` | `15m,30m,1h` | Institutional entry timeframes. | Production-safe set is `15m`, `30m`, `1h`; finer intervals raise CPU/provider load. |
+| `SYNTH_ENTRY_TFS` | `30m,1h` | Primary entry timeframes for Deriv synthetics. | Must be valid entry intervals; current set is `30m,1h`. |
+| `RETEST_DEPTH_PCT` | `100` | Required fraction of the legacy post-BOS return toward the origin/FVG-overlap zone before RETEST can qualify. | Accepted range `1–100`. `100` is byte-identical to the legacy boundary check; `50` allows halfway back from the first post-BOS close outside the zone. Prefer `50–100` while studying; lower values can widen eligibility. Downstream gates are unchanged. |
+| `MIN_TP_R` | `2.5` | Minimum target reward:risk. | **Locked at 2.5.** Revisit only after 2–3 weeks of shadow evidence and an explicit owner decision. |
+| `MIN_RISK_ATR` | `0.8` | Minimum stop width normalized to entry-timeframe ATR. | **Locked at 0.8.** |
+| `MIN_STOP_PIPS` | `10` | Asset-aware minimum stop-distance floor. | Keep at least `10`; any increase requires a paper test. |
+| `SL_BUFFER_ATR` | `0.25` | ATR padding beyond the structural invalidation point. | Positive; practical tuning band `0.1–0.5`. Current value is `0.25`. |
+| `PAIR_BATCH_SIZE` | `1` | Number of pairs handled per cron tick; balances capacity and scan freshness. | Keep `1` unless CPU/coverage evidence supports `2`; do not raise casually. |
+| `FILTER_HTF_CONFLICT` | `true` | Enables higher-timeframe conflict filtering. | Boolean. Test any change in paper mode first. |
+| `FILTER_HTF_CONFLICT_DERIV_ONLY` | `true` | Applies the hard conflict gate to Deriv synthetics. | Keep `true` unless the owner explicitly requests a measured paper experiment. |
+| `WATCH_NOTIFY` | `true` | Enables setup-forming watch radar. | Boolean; watch content remains FREE-channel only. |
+| `VIP_WATCH_NOTIFY` | `false` | VIP watch-message override. | Keep `false`; VIP receives confirmed entries and final outcomes only. |
+| `ENGINE_DIGEST` | `true` | Enables the weekly Engine Discipline research digest. | Boolean; FREE channels only, never VIP. |
+| `CHART_SNAPSHOTS` | `true` | Enables Telegram chart snapshots. | Boolean; keep enabled in normal operation. Do not regress authentic candlesticks or green/red RR-box visuals. |
+| `TRAILING_BE_ENABLED` | `true` (code default; not overridden in Wrangler) | Enables breakeven protection handling. | Keep enabled. Preserve the explicit BE notice, including pending BE order, at `+1.50R`. |
+| `TRAILING_BE_TRIGGER_R` | `1.5` (code default; not overridden in Wrangler) | Favorable excursion that arms breakeven handling. | **Keep exactly `1.50R`.** |
+| `PROVIDER_MAP` | OANDA for `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,USDCAD,NZDUSD,EURJPY,XAUUSD,US30,GER40,JAPAN225,NAS100` | Explicit routing for configured institutional instruments. | Only use source-supported mappings. New Forex symbols must resolve to real instruments in `worker/src/provider.ts`; do not add an unapproved provider. |
+| `SYMBOL_MAP` | `{"US30":"^DJI","GER40":"^GDAXI","JAPAN225":"^N225","NAS100":"^NDX"}` | Optional provider-specific symbol overrides; active configured routes use their canonical OANDA/Dukascopy mappings. | Leave unchanged unless a selected provider requires a tested canonical mapping. Never use it to introduce an unapproved data source. |
+| `DERIV_PROXY_URL` | `https://slk-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
+| `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
+| `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
 
-### Recommendation 1: Automated Daily & Weekly Performance Recaps for Free Channels ✅ COMPLETED & DEPLOYED
-* **Status:** Implemented in `worker/src/notify.ts`, `worker/src/index.ts`, and fully covered by 8 vitest unit tests in `worker/test/recap.test.ts`.
-* **Objective:** Automatically convert free channel lurkers into paying $100/mo VIP subscribers without manual daily journal posting.
-* **Architecture:**
-  - Automated cron scheduler runs at 21:00 UTC (New York market close) for Daily Recaps and Friday 21:05 UTC (market close) for Weekly Recaps.
-  - Queries D1 `slk_alerts` for all trades closed in the last 24h / 7d.
-  - Calculates daily stats: Total Setups, Won, Lost, Breakeven, Net R-Multiple (e.g. `+5.8R today`, `+18.4R this week`), and Cumulative Ledger Return (+30.78R).
-  - Strict channel segregation: Institutional recap dispatches to `TELEGRAM_FREE_CHAT_ID`; 24/7 Synthetics recap dispatches to `TELEGRAM_DERIV_FREE_CHAT_ID`.
-  - Built-in deduplication via `slk_kv` prevents duplicate cards on multiple cron invocations.
-  - Admin inspection and manual trigger endpoints active: `/admin/preview-recap` and `/admin/trigger-recap`.
-  - Format a high-impact institutional summary card with a CTA button/link pointing to `https://slk-radar.pages.dev` (verified proof) and `https://whop.com/slk-radar` (VIP upgrade).
-  - Dispatch to `TELEGRAM_FREE_CHAT_ID` and `TELEGRAM_DERIV_FREE_CHAT_ID`.
-* **Relevant Files:** `worker/src/notify.ts` (formatter `formatDailyRecapCard`), `worker/src/index.ts` (cron schedule trigger).
+### Secret and credential handling
 
-### Recommendation 2: Trailing Breakeven (`BE`) & Trade Protection Engine ✅ COMPLETED & OPERATIONAL
-* **Status:** Implemented in `worker/src/outcomes.ts`, `worker/src/types.ts`, `worker/src/config.ts`, `worker/src/notify.ts`, `worker/src/index.ts`, `dashboard/app.js`, `worker/src/dashboard_html.ts`, and verified via 5 deterministic tests in `worker/test/outcomes.test.ts`.
-* **Objective:** Eliminate the risk of winning trades that reached +1.5R favorable excursion reversing into full -1.0R losses during high-impact news or liquidity sweeps.
-* **Architecture:**
-  - Extended `SignalStatus` in `worker/src/types.ts` to include `'BE_HIT'`.
-  - Added configurable parameters in `StrategyConfig` & Worker config: `trailingBeEnabled` (default `true`) and `trailingBeTriggerR` (default `1.5R`).
-  - In `evaluateSignal()` (`worker/src/outcomes.ts`), when price achieves $\ge +1.5R$ favorable excursion:
-    1. Arms breakeven state (`beArmed = true`).
-    2. Adjusts effective stop loss to the exact entry price (`entry`).
-    3. If price subsequently retraces to entry price or beyond, resolves as `BE_HIT` with `exitPrice = entry` and `rMultiple = 0.00` (zero loss incurred).
-    4. Symmetrically supports both `LONG` and `SHORT` directions, with full support for intrabar touch or close invalidation.
-    5. If price continues toward target, resolves cleanly as `TP_HIT` (+2.5R to +3.0R).
-  - Outcome notification formatted in `worker/src/notify.ts` with institutional badge `🛡️ BREAKEVEN HIT`, amber Discord color, and reassuring messaging: `🛡️ Trade was secured at Breakeven after reaching +1.50R favorable excursion. Zero loss incurred.`
-  - Full dashboard integration: filterable by `BE_HIT` across public dashboard, API `/api/alerts`, and `/api/stats`.
-* **Impact:** Drastically improves subscriber psychology, protects capital from high-volatility flash wicks, and locks in breakeven on extended trades without risking initial stop losses.
-* **Relevant Files:** `worker/src/types.ts`, `worker/src/config.ts`, `worker/src/outcomes.ts`, `worker/src/notify.ts`, `worker/src/index.ts`, `worker/test/outcomes.test.ts`.
+Secrets are configured outside Git (Cloudflare secrets/D1 as appropriate). Values are deliberately not recorded here. Relevant names include `OANDA_API_TOKEN` (legacy `OANDA_API_KEY` is also read), `TWELVEDATA_API_KEY`, Telegram bot/channel credentials, `DISCORD_WEBHOOK_URL`, `ADMIN_KEY`, `DASHBOARD_READ_KEY`, `WHOP_WEBHOOK_SECRET`, `CHART_IMG_API_KEY`, `SIGNAL_API_KEY`, `SIGNAL_SIGNING_SECRET`, and `PROVIDER_WEBHOOK_SECRET`. MT5 bridge URL/HMAC settings must remain inert in paper mode. Never print, log, commit, or ask the owner to paste secret values.
 
-### Recommendation 3: Automated Visual Chart Snapshots in Telegram Alerts ✅ COMPLETED & OPERATIONAL
-* **Status:** Implemented in `worker/src/notify.ts` via `getChartUrl()` and embedded directly into all confirmed entry alerts and verified journal teasers. Tested in `worker/test/whop.test.ts`.
-* **Objective:** Replace text-only Telegram alerts with direct visual chart links and references showing the SLK sequence (origin zone, sweep wick, entry trigger, stop loss, and target).
-* **Architecture:**
-  - Automated symbol resolver `getChartUrl()` maps institutional Forex & Indices (`US30`, `NAS100`, `GER40`, `XAUUSD`, `EURUSD`, `GBPUSD`, etc.) to TradingView chart views (`CURRENCYCOM`, `OANDA`, `FX`).
-  - Maps 24/7 continuous Synthetics (`V75`, `V100`, `R_75`, etc.) directly to the official Deriv DTrader interactive candle view.
-  - Confirmed alert delivery includes: `Chart View  : https://www.tradingview.com/chart/?symbol=...`
-* **Relevant Files:** `worker/src/notify.ts`, `worker/test/whop.test.ts`.
+## 5. Public/private surfaces and channel policy
 
-### Recommendation 4: Whop Webhook for 100% Automated VIP Channel Membership ✅ COMPLETED & OPERATIONAL
-* **Status:** Implemented in `worker/src/notify.ts`, `worker/src/index.ts`, and verified via deterministic test suite in `worker/test/whop.test.ts`.
-* **Objective:** Make the subscription business 100% passive by automatically managing VIP Telegram channel access on purchase, renewal, cancellation, or refund.
-* **Architecture:**
-  - Secure endpoint `POST /api/whop-webhook` in `worker/src/index.ts` with multi-mode authentication:
-    - Whop HMAC-SHA256 signature verification (`webhook-signature` or `x-whop-signature` with `t=...,v1=...` timestamp format).
-    - Bearer secret token `WHOP_WEBHOOK_SECRET` header or query parameter `?secret=`.
-  - On `membership.went_valid` or `payment.succeeded`:
-    - Calls Telegram Bot API `createChatInviteLink` with `member_limit: 1` and `expire_date: +48 hours`.
-    - Generates separate single-use invite links for Institutional VIP (`TELEGRAM_CHAT_ID`) and Synthetics VIP (`TELEGRAM_DERIV_CHAT_ID`).
-    - Persists member record in KV `whop:member:{membershipId}` with active status and timestamps.
-    - Returns invite links in JSON response for immediate delivery.
-  - On `membership.went_invalid` or `membership.cancelled`:
-    - Looks up member record from KV.
-    - If user's Telegram ID is recorded, revokes VIP channel access via `banChatMember` + `unbanChatMember`.
-    - Updates member record in KV to `status: "revoked"`.
-  - Admin inspection endpoint: `GET /admin/whop-member?id={membershipId}`.
-  - Manual single-use invite generator: `POST /admin/generate-invite?target={institutional|synthetics}`.
-* **Relevant Files:** `worker/src/index.ts`, `worker/src/notify.ts`, `worker/test/whop.test.ts`.
+- Public read surfaces include `/health`, `/api/engine-pulse`, `/api/recent-events`, and the public journal. The public journal is restricted to Telegram-delivered signals.
+- `/api/shadow-ledger` and administrative actions require the owner/admin key. Keep audit views protected. Treat public endpoint behavior as defined in `worker/src/index.ts`; do not infer route existence from a generic 401.
+- `VIP Institutional`: confirmed entries plus final outcomes only.
+- `VIP Synthetics`: confirmed synthetic entries plus final outcomes only.
+- `Forex Free`: watch radar, bias cards, allowed TP1 teasers (pair/timeframe/+R only), weekly digest/recap, and upgrade CTAs; **no synthetic content**.
+- `Synthetics Free`: synthetic watch/confirmation radar, allowed teasers, weekly digest/recap, and upgrade CTAs.
+- Recaps stay clearly labelled paper simulation/research only. Shadow-ledger candidates are never alerts or event-tape rows.
 
-### Recommendation 5: Elevate Synthetics to 1H Primary & Enforce HTF Bias Hard Gating ✅ COMPLETED & ENFORCED
-* **Status:** Enforced in production via `FILTER_HTF_CONFLICT_DERIV_ONLY=true` and `FILTER_HTF_CONFLICT=true` in `worker/src/config.ts` and `worker/wrangler.jsonc`.
-* **Objective:** Protect synthetic VIP channel track record and maximize win rate on 24/7 continuous assets.
-* **Analysis & Context:**
-  - Institutional Forex & Indices maintain an exceptional **+30.78R (75.0% win rate)** track record.
-  - Synthetic volatility assets (`V75`, `V100`, etc.) are continuous algorithmic random walks with higher lower-timeframe noise. The 3 historical synthetic paper losses were all counter-trend setups flagged as `HTF_CONFLICT`.
-* **Action:**
-  - Permanently enforce `FILTER_HTF_CONFLICT_DERIV_ONLY=true` so counter-trend setups are strictly suppressed from VIP synthetics.
-  - Retain 15m/30m for institutional Forex/Indices while ensuring 1H/4H directional consensus guards synthetic execution.
-* **Relevant Files:** `worker/src/config.ts`, `worker/wrangler.jsonc`, `worker/src/index.ts`.
+## 6. Pull request history (#2–#8)
 
-### Recommendation 6: MetaTrader 5 (MT5) Auto-Execution Webhook Bridge (For Live & Prop Firm Capital) ✅ COMPLETED & DEPLOYED
-* **Status:** Implemented in `scripts/mt5_bridge.py` with FastAPI, HMAC-SHA256 authentication, institutional dynamic lot sizing, and live + dry-run simulation modes. Worker-side signed dispatch client lives in `worker/src/mt5.ts` (`POST /webhook/trade` on confirmed entries via `deliver()`, `POST /webhook/breakeven` on the exact +1.5R arming candle via `resolveOutcomes()` + `beArmedTime()`, KV-deduped per setup). HARD SAFETY GATE: every dispatch is a no-op unless `MODE=live` AND `MT5_ENABLED=true` AND `MT5_WEBHOOK_URL` AND `MT5_HMAC_SECRET` are set — the production paper deployment never touches the bridge (`/health` exposes `mt5BridgeActive: false`). Covered by 8 deterministic tests in `worker/test/mt5.test.ts` (gate matrix, RFC HMAC vector, wire contract, deliver + breakeven integration).
-* **Objective:** Enable one-click or automated trade execution on live MT5 broker accounts (e.g., FTMO, FundedNext, IC Markets, Pepperstone) when the owner is ready to transition from paper testing to real capital.
-* **Architecture:**
-  - Python FastAPI micro-service deployed on a Windows VPS alongside the MT5 desktop terminal.
-  - Receives authenticated JSON trade webhooks (`POST /webhook/trade`) with HMAC signature validation.
-  - Dynamic lot sizing engine: calculates point value and account equity to size lots based on exact dollar risk ($100 per trade) or account percentage (1.0%).
-  - Orders submitted with `mt5.order_send()` with instant market fill, explicit SL, and internal TP1.
-  - Trailing breakeven endpoint (`POST /webhook/breakeven`): modifies open trade stop loss to exact entry price when triggered by the Worker.
-  - Simulation / dry-run mode for testing without risking capital on unsupported operating systems.
-* **Relevant Files:** `scripts/mt5_bridge.py`.
+| PR | State on 2026-10-05 | Summary |
+|---|---|---|
+| #2 | Merged | Production Worker feature set through the OANDA metals and Live Desk work. |
+| #3 | Open | Delivered-signal journal/admin change. The shipped visibility behavior was landed through #4. Do not merge, edit, or reopen this PR; owner handles it. |
+| #4 | Merged | Shipped delivered-signal visibility and related journal/admin controls to the production lineage. |
+| #5 | Merged | Clarified the Monte Carlo stress-test research/disclaimer presentation. |
+| #6 | Merged | Hardened admin/audit authorization and dashboard admin-key handling. |
+| #7 | Merged | Engine Pulse, replay hygiene, stable setup identity, and combined polish. |
+| #8 | Open | Observation-only shadow ledger, weekly free-channel digest, and legacy-schema hardening. Its code is absorbed by the merge commit on this session branch and is shipped by pushing this branch; **the owner closes PR #8 unmerged**. Do not modify or reopen it. |
 
+Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-managed and must not be merged, modified, or reopened by an agent.
 
-### Recommendations 7-9: Dashboard Evidence Suite (Replay Stepper, Position Calculator, Audit Export) ✅ COMPLETED
-* **Status:** Implemented in `dashboard/app.js`, `dashboard/index.html`, `dashboard/styles.css`, and mirrored with exact parity in `worker/src/dashboard_html.ts` (escaped inline client JS + CSS). Endpoint contract extended in `worker/src/index.ts` (`/dashboard/signals/:id/chart` now returns `confirmedAt` + `outcome{status,exitTime,rMultiple}` alongside `evidenceMarkers`), covered by `worker/test/dashboard.test.ts`.
-* **Replay (#7):** ⏮//▶/ stepper + auto-play rebuilds each trade candle-by-candle through MAP → TOUCH → SWEEP → SHIFT → RETEST → CONFIRMED → OUTCOME. Entry/stop/target lines only appear at the CONFIRMED step and the outcome badge only at the OUTCOME step — visual proof that no line was ever drawn with hindsight. Stable axes across steps; stage chips + narration line explain each step.
-* **Calculator (#8):** equity + risk% inputs in the chart modal compute dollar risk, suggested lot size (asset-class aware: USD-quoted forex 100k/lot, JPY crosses 100k/price, metals 100 oz/lot, indices & synthetics $1/point/lot), stop distance and TP1 payout, with a broker-verification disclaimer.
-* **Audit export (#9):** ⬇ CSV / ⬇ JSON buttons paginate `/alerts` (up to 1,200 rows) and download the verified ledger with Setup ID, Pair, TF, Direction, Entry, SL, TP1/TP2, Target RR, Outcome, Net R, opened/resolved timestamps (RFC-4180 escaping).
-* **Safety:** purely presentational — no engine, delivery, dedupe, outcome, or risk-rule changes.
+## 7. Standing rules — never violate without explicit owner instruction
 
-### Recommendation 10: Monte Carlo Drawdown Stress Test ("Quant Lab") ✅ COMPLETED
-* **Status:** Deterministic seeded bootstrap engine in `worker/src/montecarlo.ts` (mulberry32 PRNG, resamples the verified closed-trade R series with replacement), public endpoint `GET /api/monte-carlo?iterations=&horizon=&riskPct=&seed=` in `worker/src/index.ts` (iteration×horizon capped at 600k for Free-tier CPU; <5 closed trades → `INSUFFICIENT_HISTORY`), and a Quant Lab panel in both dashboards (`dashboard/index.html` + `app.js`, mirrored in `worker/src/dashboard_html.ts`) rendering growth percentile cards + a 5/50/95 equity fan chart.
-* **Outputs:** median/5th/95th compounded growth, P(net loss), P(DD≥10%), P(DD≥20%), DD 95th percentile, worst loss-streak 95th — all reproducible per seed (covered by `worker/test/montecarlo.test.ts`: determinism, ordering, all-win/all-lose invariants, risk-scaling tail widening, endpoint reproducibility over HTTP).
-* **Safety:** read-only research tool — touches no engine, delivery, or risk logic; UI carries an explicit "not a performance promise" disclaimer.
+1. Paper mode forever until the owner explicitly says otherwise: `MODE=paper`, `PAPER_NOTIFY=true`, MT5/live execution disabled.
+2. `MIN_TP_R` stays `2.5`. Shadow data is evidence gathering before any floor decision, due after 2–3 weeks of observations.
+3. `MIN_RISK_ATR` stays `0.8`.
+4. Brand only as **SLK Model (Structure · Liquidity · Key Levels)**. Do not label it with unrelated trading-system brands.
+5. Public journal/dashboard shows only signals actually delivered to Telegram; audit views stay admin-key-gated. Recap cards retain the paper simulation/research-only disclaimer.
+6. VIP receives confirmed entries and final outcomes only. Digests, teasers, and upgrade CTAs are FREE-channel only. No synthetic material goes to the Forex free channel.
+7. Never print, log, or commit secrets. Never ask the owner to paste secrets into chat.
+8. No Yahoo Finance anywhere: do not add it as a provider, route, fallback, or data source.
+9. Preserve explicit breakeven notification—including the pending BE order—at `+1.50R` favorable excursion.
+10. Preserve authentic candlesticks with green/red risk-reward boxes in the TradingView style.
+11. Do not merge, modify, or reopen PRs #3 and #8. The owner closes them manually.
+12. The `main` branch is hands-off entirely.
 
-### Recommendation 11: OANDA-Primary Gold + Live Desk Mode (smart-polling event tape) ✅ COMPLETED
-* **Metals routing (`worker/src/provider.ts`):** `METAL_PAIRS` (XAUUSD, XAGUSD) now route **OANDA-primary when its token exists** — broker-aligned gold pricing (retail/prop MT5 parity within 1-2 points), 120 req/min at 99.99% uptime, and it shields the Twelve Data 800-credit daily pool. No token → Twelve Data stays primary. Failover chain unchanged: OANDA → Dukascopy → Twelve Data. Covered by updated routing tests in `worker/test/provider.test.ts`.
-* **Live Desk Mode (Priority-3 SSE alternative, Free-tier safe):** `GET /api/recent-events?since=<id cursor>&limit=` serves the monotonic `slk_events.id` cursor feed (`store.eventsSince`, D1 + Mem). Dashboards poll every 15s (paused when the tab is hidden), prepend new TOUCH/SWEEP/SHIFT/RETEST rows to the 📡 Event Tape, flash the panel, and optionally play a WebAudio chime (user-gesture unlocked). ~1ms CPU per poll in isolated invocations — no long-lived stream, so the Free-tier 10ms CPU cap can never be breached. True SSE remains a one-file swap if/when Workers Paid is adopted. Covered by `worker/test/livedesk.test.ts` (cursor monotonicity, zero dup/gap paging, fresh-event delivery, param validation).
+## 8. Open items and owner follow-up
+
+1. After this release, verify shadow rows in D1 and let the measurement accumulate. The owner can run the proof-of-life query below about one day after deployment.
+2. Collect roughly 2–3 weeks of shadow observations before considering any `MIN_TP_R` decision. Keep the floor at `2.5` until the owner explicitly decides.
+3. The owner closes PR #8 unmerged. Do not take action on PR #3 or #8 in GitHub.
+4. Later bot changes belong in this same session branch and must use the complete validation → push → Actions → live-proof cycle above.
+
+## 9. Owner self-serve paths
+
+- **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on `arena/01a0b153-slk-bot`, commit → auto-deploys.
+- **Data queries/fixes:** Cloudflare D1 console.
+- **Shadow proof-of-life query** (run about one day after the shadow-ledger code is deployed):
+
+```sql
+SELECT reject_reason, COUNT(*) AS n
+FROM slk_shadow_trades
+GROUP BY reject_reason;
+```
+
+## 10. Useful release commands and endpoints
+
+```bash
+# install the exact Worker lockfile dependencies
+npm ci --prefix worker
+
+# required pre-push validation (run all four every time)
+npm test -- --run
+npm run typecheck
+node --check dashboard/app.js
+(cd worker && npx wrangler deploy --dry-run)
+
+# the only push target for this session
+git push origin arena/3ff9b8eb-slk-bot
+```
+
+- Fresh health check: `https://slk-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
+- Public engine pulse: `https://slk-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
+- Shadow aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
+- Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
+- Public dashboard/journal: `https://slk-radar.pages.dev`

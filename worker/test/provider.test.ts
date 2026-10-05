@@ -142,7 +142,7 @@ describe("fetchOanda", () => {
     expect(candles[1].c).toBe(39112.3);
   });
 
-  it("maps canonical forex names too (future single-source option)", async () => {
+  it("maps generic canonical Forex names to OANDA instrument codes", async () => {
     const seen: string[] = [];
     const fake: typeof fetch = async (u) => {
       seen.push(String(u));
@@ -150,6 +150,24 @@ describe("fetchOanda", () => {
     };
     await fetchOanda("TOK", "USDZAR", "30m", 100, {}, fake);
     expect(seen[0]).toContain("USD_ZAR");
+  });
+
+  it("maps the added Forex pairs to resolvable OANDA instruments", async () => {
+    const pairs = [
+      ["USDCAD", "USD_CAD"],
+      ["NZDUSD", "NZD_USD"],
+      ["EURJPY", "EUR_JPY"],
+    ] as const;
+    for (const [pair, instrument] of pairs) {
+      const seen: string[] = [];
+      const fake: typeof fetch = async (u) => {
+        seen.push(String(u));
+        return new Response(JSON.stringify({ instrument, granularity: "M30", candles: [] }), { status: 200 });
+      };
+      expect(providerForPair(pair, { [pair]: "oanda" }, true)).toBe("oanda");
+      await fetchOanda("TOK", pair, "30m", 100, {}, fake);
+      expect(seen[0]).toContain(`/instruments/${instrument}/candles`);
+    }
   });
 
   it("requires the token", async () => {

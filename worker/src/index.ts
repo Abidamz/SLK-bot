@@ -55,6 +55,7 @@ export interface Env {
   PAIRS?: string;
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
+  RETEST_DEPTH_PCT?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   ENGINE_DIGEST?: string;
@@ -65,6 +66,8 @@ export interface Env {
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
   SL_BUFFER_ATR?: string;
+  TRAILING_BE_ENABLED?: string;
+  TRAILING_BE_TRIGGER_R?: string;
   PAIR_BATCH_SIZE?: string;
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;

@@ -110,6 +110,8 @@ export interface Setup {
   bosTime: number | null;
   invLevel: number;
   leftZone: boolean;
+  /** First post-BOS close beyond the origin zone; anchors partial return depth. */
+  leftZonePrice: number | null;
   environment: string;
   phase: string;
   htfAlignment: string;

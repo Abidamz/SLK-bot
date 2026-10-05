@@ -1,7 +1,7 @@
 /** State-machine parity tests — row-for-row ports of the Python engine
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
-import { defaultStrategy, minStopDistance } from "../src/config";
+import { defaultStrategy, loadConfig, minStopDistance, type StrategyConfig } from "../src/config";
 import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
@@ -25,6 +25,49 @@ function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra =
     cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
   });
 }
+
+describe("RETEST_DEPTH_PCT compatibility and partial returns", () => {
+  it("defaults to 100 and is byte-identical to the legacy config without the flag", () => {
+    const legacyCfg = { ...cfg } as StrategyConfig;
+    delete legacyCfg.retestDepthPct;
+    const legacy = scanEntry({
+      pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(SHORT_ROWS, 30), snaps: snapsFor(SHORT_STORY),
+      cfg: legacyCfg, mode: "paper", provider: "test",
+    });
+
+    expect(defaultStrategy().retestDepthPct).toBe(100);
+    expect(loadConfig({}).strategy.retestDepthPct).toBe(100);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "50" }).strategy.retestDepthPct).toBe(50);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "0" }).strategy.retestDepthPct).toBe(100);
+    expect(runShort()).toEqual(legacy);
+  });
+
+  it("accepts a 50% pullback toward the FVG retest boundary without changing other gates", () => {
+    const rows = [...SHORT_ROWS];
+    rows[14] = [104.15, 104.45, 104.05, 104.35]; // reaches halfway, not the legacy boundary
+    const legacy = runShort(rows, { retestDepthPct: 100 });
+    const partial = runShort(rows, { retestDepthPct: 50 });
+
+    expect(legacy.alerts).toHaveLength(0);
+    expect(legacy.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(partial.alerts).toHaveLength(1);
+    expect(partial.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
+  });
+
+  it("applies the same partial-return calculation symmetrically to longs", () => {
+    const rows = [...LONG_ROWS];
+    rows[14] = [98.45, 98.50, 98.36, 98.40]; // reaches halfway, not the legacy boundary
+    const run = (retestDepthPct: number) => scanEntry({
+      pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(rows, 30), snaps: snapsFor(LONG_STORY),
+      cfg: { ...cfg, retestDepthPct }, mode: "paper", provider: "test",
+    });
+
+    expect(run(100).alerts).toHaveLength(0);
+    expect(run(50).alerts).toHaveLength(1);
+  });
+});
 
 describe("short confirmation path", () => {
   it("fires exactly once with full context", () => {

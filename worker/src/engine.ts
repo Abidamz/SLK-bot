@@ -66,6 +66,10 @@ export function scanEntry(args: ScanEntryArgs): {
   shadowTrades: ShadowTradeCapture[];
 } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
+  const configuredRetestDepthPct = cfg.retestDepthPct ?? 100;
+  const retestDepthPct = Number.isFinite(configuredRetestDepthPct)
+    ? Math.max(1, Math.min(100, configuredRetestDepthPct))
+    : 100;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
   const diagnostics = emptyReplayDiagnostics();
@@ -121,7 +125,7 @@ export function scanEntry(args: ScanEntryArgs): {
             sweepIndex: 0, sweepTime: null,
             extreme: 0, refPrice: 0,
             bosIndex: 0, bosTime: null,
-            invLevel: 0, leftZone: false,
+            invLevel: 0, leftZone: false, leftZonePrice: null,
             environment: story.environment, phase: story.phase,
             htfAlignment: story.htfAlignment,
             drawOnLiquidity: story.drawOnLiquidity,
@@ -242,9 +246,24 @@ export function scanEntry(args: ScanEntryArgs): {
         if (violated) { kill(cur, "INVALID", c, "close beyond invalidation level"); continue; }
         if (i > cur.bosIndex) {
           const left = isShort ? c.c < z.zoneLo : c.c > z.zoneHi;
-          if (left) cur.leftZone = true;
+          if (left && !cur.leftZone) {
+            cur.leftZone = true;
+            cur.leftZonePrice = c.c;
+          }
           const tol = cfg.retestToleranceAtr * atrE;
-          const returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          // At 100%, retain the exact pre-flag boundary check. Lower values
+          // require only that fraction of the return from the first close
+          // beyond the zone back to the established RETEST threshold.
+          const legacyReturns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          let returns = legacyReturns;
+          if (retestDepthPct < 100 && cur.leftZonePrice !== null) {
+            const legacyThreshold = isShort ? z.zoneLo - tol : z.zoneHi + tol;
+            const anchor = isShort
+              ? Math.min(cur.leftZonePrice, legacyThreshold)
+              : Math.max(cur.leftZonePrice, legacyThreshold);
+            const partialThreshold = anchor + (legacyThreshold - anchor) * (retestDepthPct / 100);
+            returns = isShort ? c.h >= partialThreshold : c.l <= partialThreshold;
+          }
           if (cur.leftZone && returns) {
             // opposing liquidity must remain standing for reversal setups
             let standing = false;
@@ -262,7 +281,10 @@ export function scanEntry(args: ScanEntryArgs): {
               shadowTrades,
             });
             if (alert) {
-              emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
+              const retestReason = retestDepthPct < 100
+                ? `partial return (${retestDepthPct}%) toward origin zone → confirmation entry @ ${c.c}`
+                : `return to origin zone → confirmation entry @ ${c.c}`;
+              emit(cur, "RETEST", c, retestReason);
               alerts.push(alert);
               if (alert.directionalBias) shadowDiagnostics.push(alert.directionalBias);
               diagnostics.confirmedAlerts++;
