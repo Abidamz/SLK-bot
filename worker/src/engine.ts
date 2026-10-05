@@ -12,7 +12,7 @@ import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
-  Alert, Candle, Direction, EngineEvent, Setup, Storyline,
+  Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowTradeCapture,
 } from "./types";
 import type { StrategyConfig } from "./config";
 
@@ -47,6 +47,24 @@ export function buildSetupId(
   return `${pair}:${entryTf}:${d}:${level.kind}:${price}:${new Date(level.originTime).toISOString()}`;
 }
 
+/** The 100% setting deliberately preserves the legacy ATR-tolerant predicate
+ *  byte-for-byte. Below 100, require that fraction of actual FVG penetration:
+ *  SHORT pulls up from zoneLo; LONG pulls down from zoneHi. */
+export function hasRequiredRetestDepth(
+  candle: Candle,
+  zoneLo: number,
+  zoneHi: number,
+  isShort: boolean,
+  tolerance: number,
+  depthPct = 100,
+): boolean {
+  if (!Number.isFinite(depthPct) || depthPct >= 100) {
+    return isShort ? candle.h >= zoneLo - tolerance : candle.l <= zoneHi + tolerance;
+  }
+  const depth = Math.max(0, depthPct) / 100 * Math.max(0, zoneHi - zoneLo);
+  return isShort ? candle.h >= zoneLo + depth : candle.l <= zoneHi - depth;
+}
+
 function bisectRight(keys: number[], x: number): number {
   let lo = 0;
   let hi = keys.length;
@@ -63,13 +81,15 @@ export function scanEntry(args: ScanEntryArgs): {
   events: EngineEvent[];
   diagnostics: ReplayDiagnostics;
   shadowDiagnostics: DirectionalBiasDiagnostics[];
+  shadowTrades: ShadowTradeCapture[];
 } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
   const diagnostics = emptyReplayDiagnostics();
   const shadowDiagnostics: DirectionalBiasDiagnostics[] = [];
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics };
+  const shadowTrades: ShadowTradeCapture[] = [];
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -242,7 +262,9 @@ export function scanEntry(args: ScanEntryArgs): {
           const left = isShort ? c.c < z.zoneLo : c.c > z.zoneHi;
           if (left) cur.leftZone = true;
           const tol = cfg.retestToleranceAtr * atrE;
-          const returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          const returns = hasRequiredRetestDepth(
+            c, z.zoneLo, z.zoneHi, isShort, tol, cfg.retestDepthPct,
+          );
           if (cur.leftZone && returns) {
             // opposing liquidity must remain standing for reversal setups
             let standing = false;
@@ -257,6 +279,7 @@ export function scanEntry(args: ScanEntryArgs): {
               pair, entryTf, closeTime, c, s: cur, isShort,
               atrE, cfg, mode, standing, provider, diagnostics,
               candles, candleIndex: i, d1Candles, h1Candles, h4Candles,
+              shadowTrades,
             });
             if (alert) {
               emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
@@ -269,6 +292,17 @@ export function scanEntry(args: ScanEntryArgs): {
           }
         }
         if (i - cur.bosIndex > cfg.retestWindow) {
+          // Capture only the hypothetical BOS-close trade in the separate
+          // research ledger. All failures are swallowed so observation cannot
+          // affect this established expiry transition or its event payload.
+          try {
+            const shadow = buildNoRetestShadow({
+              pair, entryTf, tfSeconds, s: cur, isShort, atrE, cfg, candles,
+            });
+            if (shadow) shadowTrades.push(shadow);
+          } catch (err) {
+            console.warn(JSON.stringify({ level: "warn", msg: "shadow NO_RETEST capture failed", setupId: cur.setupId, error: String(err) }));
+          }
           kill(cur, "EXPIRED", c, "no retest of the origin zone");
           continue;
         }
@@ -276,7 +310,7 @@ export function scanEntry(args: ScanEntryArgs): {
     }
   }
 
-  return { alerts, events, diagnostics, shadowDiagnostics };
+  return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades };
 }
 
 interface BuildAlertArgs {
@@ -289,6 +323,7 @@ interface BuildAlertArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  shadowTrades: ShadowTradeCapture[];
 }
 
 /** Pick the internal-liquidity target (tp1) and external drawback (tp2) for
@@ -337,6 +372,84 @@ export function selectTargets(args: {
   return { tp1, tp2 };
 }
 
+function buildTargetFloorShadow(args: {
+  pair: string; entryTf: string; closeTime: number; entry: number; stopLoss: number;
+  risk: number; isShort: boolean; s: Setup; cfg: StrategyConfig;
+}): ShadowTradeCapture | null {
+  if (args.cfg.minTpR !== 2.5 || args.risk <= 0) return null;
+  const candidate = selectTargets({
+    isShort: args.isShort,
+    entry: args.entry,
+    risk: args.risk,
+    minTpR: 2.0,
+    maxPromotedTpR: args.cfg.maxPromotedTpR,
+    internalPools: args.s.internalPools,
+    nearestExternalTarget: args.s.nearestExternalTarget,
+  });
+  if (!candidate) return null;
+  const rr = Math.abs(candidate.tp1 - args.entry) / args.risk;
+  if (!Number.isFinite(rr) || rr < 2.0 || rr >= 2.5) return null;
+  return {
+    setupId: args.s.setupId, pair: args.pair, entryTf: args.entryTf,
+    direction: args.s.direction, entry: args.entry, stopLoss: args.stopLoss,
+    tp1: candidate.tp1, rr, rejectReason: "TARGET_FLOOR",
+    candleCloseTime: args.closeTime,
+  };
+}
+
+function buildNoRetestShadow(args: {
+  pair: string; entryTf: string; tfSeconds: number; s: Setup; isShort: boolean;
+  atrE: number; cfg: StrategyConfig; candles: Candle[];
+}): ShadowTradeCapture | null {
+  const bosCandle = args.candles[args.s.bosIndex];
+  const bosAtr = args.atrE;
+  if (!bosCandle || !Number.isFinite(bosAtr) || bosAtr <= 0) return null;
+  const entry = bosCandle.c;
+  let stopLoss = args.isShort
+    ? args.s.invLevel + args.cfg.slBufferAtr * bosAtr
+    : args.s.invLevel - args.cfg.slBufferAtr * bosAtr;
+  let risk = args.isShort ? stopLoss - entry : entry - stopLoss;
+  if (!Number.isFinite(risk) || risk <= 0) return null;
+  if (args.cfg.minStopPips && args.cfg.minStopPips > 0) {
+    const minDistance = minStopDistance(args.pair, args.cfg.minStopPips);
+    if (risk < minDistance) {
+      stopLoss = args.isShort ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
+    }
+  }
+  // Use the nearest valid opposing liquidity target without imposing the
+  // confirmation-entry RR floor: this row measures a BOS-close entry that the
+  // retest rule rejected, not a second alert or a new strategy gate.
+  const side = args.isShort ? "sellside" : "buyside";
+  const validExternal = args.s.externalPools
+    .filter((pool) => pool.side === side && (args.isShort ? pool.price < entry : pool.price > entry))
+    .map((pool) => pool.price);
+  const mappedTargetIsValid = args.s.nearestExternalTarget !== null
+    && (args.isShort ? args.s.nearestExternalTarget < entry : args.s.nearestExternalTarget > entry);
+  const externalFallback = validExternal.length
+    ? (args.isShort ? Math.max(...validExternal) : Math.min(...validExternal))
+    : null;
+  const targets = selectTargets({
+    isShort: args.isShort, entry, risk, minTpR: 0,
+    maxPromotedTpR: args.cfg.maxPromotedTpR,
+    internalPools: args.s.internalPools,
+    nearestExternalTarget: mappedTargetIsValid ? args.s.nearestExternalTarget : externalFallback,
+  });
+  // A valid storyline normally supplies a draw target. If price has already
+  // crossed every mapped pool by the BOS close, retain the required outcome
+  // fields with a transparent 2.5R benchmark rather than silently dropping an
+  // otherwise qualifying NO_RETEST expiry.
+  const tp1 = targets?.tp1 ?? (args.isShort ? entry - 2.5 * risk : entry + 2.5 * risk);
+  const rr = targets ? Math.abs(tp1 - entry) / risk : 2.5;
+  if (!Number.isFinite(rr) || rr <= 0) return null;
+  return {
+    setupId: args.s.setupId, pair: args.pair, entryTf: args.entryTf,
+    direction: args.s.direction, entry, stopLoss, tp1, rr,
+    rejectReason: "NO_RETEST",
+    candleCloseTime: bosCandle.t + args.tfSeconds * 1000,
+  };
+}
+
 function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
   const entry = c.c;
@@ -377,6 +490,18 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   });
   if (!targets) {
     a.diagnostics.targetRejects++;
+    // The live floor remains cfg.minTpR (2.5R in production). As a separate
+    // counterfactual, ask the same selector for the best candidate at 2.0R;
+    // only a resulting RR in [2.0, 2.5) is recorded. This branch never returns
+    // an Alert and never emits an event or notification.
+    try {
+      const shadow = buildTargetFloorShadow({
+        pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
+      });
+      if (shadow) a.shadowTrades.push(shadow);
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow TARGET_FLOOR capture failed", setupId: s.setupId, error: String(err) }));
+    }
     return null;
   }
   const { tp1, tp2 } = targets;

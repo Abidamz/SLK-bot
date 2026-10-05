@@ -1,11 +1,11 @@
 /** State-machine parity tests — row-for-row ports of the Python engine
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
-import { defaultStrategy, minStopDistance } from "../src/config";
-import { scanEntry, selectTargets } from "../src/engine";
+import { defaultStrategy, loadConfig, minStopDistance } from "../src/config";
+import { hasRequiredRetestDepth, scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
-  LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
+  BASE, LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
 } from "./fixtures";
 
 const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
@@ -14,6 +14,14 @@ function runShort(rows = SHORT_ROWS, extra = {}) {
   return scanEntry({
     pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
     candles: mkCandles(rows, 30), snaps: snapsFor(SHORT_STORY),
+    cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
+  });
+}
+
+function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra = {}) {
+  return scanEntry({
+    pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+    candles: mkCandles(rows, 30), snaps: snapsFor(story),
     cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
   });
 }
@@ -77,6 +85,57 @@ describe("long mirror path", () => {
   });
 });
 
+describe("RETEST_DEPTH_PCT", () => {
+  it("defaults to 100 and preserves the exact legacy ATR-tolerant predicate", () => {
+    const strategy = defaultStrategy();
+    expect(strategy.retestDepthPct).toBe(100);
+
+    const short = { t: BASE, o: 104.9, h: 104.94, l: 104.8, c: 104.9 };
+    const shortLegacy = short.h >= SHORT_STORY.origin!.zoneLo - 0.02;
+    expect(shortLegacy).toBe(true);
+    expect(hasRequiredRetestDepth(short, SHORT_STORY.origin!.zoneLo, SHORT_STORY.origin!.zoneHi, true, 0.02, strategy.retestDepthPct))
+      .toBe(shortLegacy);
+
+    const long = { t: BASE, o: 98.1, h: 98.2, l: 98.06, c: 98.1 };
+    const longLegacy = long.l <= LONG_STORY.origin!.zoneHi + 0.02;
+    expect(longLegacy).toBe(true);
+    expect(hasRequiredRetestDepth(long, LONG_STORY.origin!.zoneLo, LONG_STORY.origin!.zoneHi, false, 0.02, strategy.retestDepthPct))
+      .toBe(longLegacy);
+
+    // The full engine result with an omitted value is byte-for-byte equal to
+    // the explicit legacy setting, not a newly interpreted 100% zone fill.
+    expect(runShort()).toEqual(runShort(SHORT_ROWS, { retestDepthPct: 100 }));
+  });
+
+  it("loads valid percentages and fails invalid values closed to legacy", () => {
+    expect(loadConfig({}).strategy.retestDepthPct).toBe(100);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "50" }).strategy.retestDepthPct).toBe(50);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "0" }).strategy.retestDepthPct).toBe(0);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "101" }).strategy.retestDepthPct).toBe(100);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "invalid" }).strategy.retestDepthPct).toBe(100);
+  });
+
+  it("lets SHORT and LONG retests confirm at the requested partial FVG depth", () => {
+    const shortHalf = runShort(SHORT_ROWS, { retestDepthPct: 50 });
+    const shortPastHalf = runShort(SHORT_ROWS, { retestDepthPct: 51 });
+    expect(shortHalf.alerts).toHaveLength(1); // wick reaches the FVG midpoint
+    expect(shortPastHalf.alerts).toHaveLength(0); // just shy of the 51% threshold
+
+    const longHalf = scanEntry({
+      pair: "GBPUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(LONG_ROWS, 30), snaps: snapsFor(LONG_STORY),
+      cfg: { ...cfg, retestDepthPct: 50 }, mode: "paper", provider: "test",
+    });
+    const longPastDepth = scanEntry({
+      pair: "GBPUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(LONG_ROWS, 30), snaps: snapsFor(LONG_STORY),
+      cfg: { ...cfg, retestDepthPct: 85 }, mode: "paper", provider: "test",
+    });
+    expect(longHalf.alerts).toHaveLength(1);
+    expect(longPastDepth.alerts).toHaveLength(0);
+  });
+});
+
 describe("failure paths", () => {
   it("invalidates on a close beyond the sweep extreme", () => {
     const rows = [...SHORT_ROWS.slice(0, 12), [103.9, 105.6, 103.85, 105.3] as [number, number, number, number]];
@@ -114,6 +173,70 @@ describe("failure paths", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertStatus).toBe("SUPPRESSED");
     expect(alerts[0].suppressReason).toBe("outside session allowlist");
+  });
+});
+
+describe("near-miss shadow capture (research-only)", () => {
+  function storyWithSingleTarget(target: number) {
+    return {
+      ...SHORT_STORY,
+      internalPools: [
+        { price: target, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+        { price: 103.5, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+      ],
+      nearestExternalTarget: null,
+      drawOnLiquidity: null,
+    };
+  }
+
+  it("captures [2.0R, 2.5R) floor rejects without an alert or shadow-specific event", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.35));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      pair: "EURUSD", entryTf: "30m", direction: "SHORT", entry: 104.9,
+      tp1: 104.35, rejectReason: "TARGET_FLOOR",
+    });
+    expect(result.shadowTrades[0].rr).toBeGreaterThanOrEqual(2.0);
+    expect(result.shadowTrades[0].rr).toBeLessThan(2.5);
+    // The pre-existing MAP/TOUCH/SWEEP/SHIFT tape is unchanged. A shadow row
+    // does not fabricate a RETEST event or any alert.
+    expect(result.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+    expect(result.diagnostics.confirmedAlerts).toBe(0);
+  });
+
+  it("does not capture a floor-rejected candidate below 2.0R", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.45));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toEqual([]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+  });
+
+  it("captures an expired post-BOS chain as a NO_RETEST BOS-close approximation", () => {
+    const rows: [number, number, number, number][] = [
+      ...SHORT_ROWS.slice(0, 12),
+      [103.9, 104.0, 103.4, 103.5],
+      [103.5, 103.6, 103.3, 103.4],
+      [103.4, 103.5, 103.1, 103.2],
+    ];
+    const candles = mkCandles(rows, 30);
+    const result = runShort(rows, { retestWindow: 2 });
+    expect(result.alerts).toHaveLength(0);
+    expect(result.events[result.events.length - 1]).toMatchObject({ state: "EXPIRED", reason: "no retest of the origin zone" });
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      rejectReason: "NO_RETEST", entry: candles[11].c, pair: "EURUSD", entryTf: "30m",
+    });
+    expect(result.shadowTrades[0].candleCloseTime).toBe(candles[11].t + 30 * 60_000);
+
+    const noPoolsStory = {
+      ...SHORT_STORY, internalPools: [], externalPools: [],
+      nearestExternalTarget: null, drawOnLiquidity: null,
+    };
+    const noPoolResult = runShortWithStory(noPoolsStory, rows, { retestWindow: 2 });
+    expect(noPoolResult.shadowTrades).toHaveLength(1);
+    expect(noPoolResult.shadowTrades[0]).toMatchObject({ rejectReason: "NO_RETEST", rr: 2.5 });
   });
 });
 

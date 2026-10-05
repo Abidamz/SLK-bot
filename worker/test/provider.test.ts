@@ -152,6 +152,26 @@ describe("fetchOanda", () => {
     expect(seen[0]).toContain("USD_ZAR");
   });
 
+  it("routes and resolves the additional FX pairs through their OANDA instruments", async () => {
+    const pairs = [
+      ["USDCAD", "USD_CAD"],
+      ["NZDUSD", "NZD_USD"],
+      ["EURJPY", "EUR_JPY"],
+    ] as const;
+    const providerMap = Object.fromEntries(pairs.map(([pair]) => [pair, "oanda"]));
+    const seen: string[] = [];
+    const fake: typeof fetch = async (url) => {
+      seen.push(String(url));
+      return new Response(JSON.stringify({ candles: [] }), { status: 200 });
+    };
+
+    for (const [pair, instrument] of pairs) {
+      expect(providerForPair(pair, providerMap, true)).toBe("oanda");
+      await fetchOanda("TOK", pair, "30m", 100, {}, fake);
+      expect(seen.at(-1)).toContain(`/instruments/${instrument}/candles`);
+    }
+  });
+
   it("requires the token", async () => {
     await expect(fetchOanda("", "US30", "30m", 100, {}, fetch)).rejects.toThrow(/OANDA_API_TOKEN/);
   });

@@ -526,7 +526,7 @@ describe("scheduled scan cycle", () => {
       PAIRS: "EURUSD,GBPUSD,USDJPY,V75,V100,V50",
       PAIR_BATCH_SIZE: "2",
       ENTRY_TFS: "30m",
-      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
+      SYNTH_ENTRY_TFS: "30m", // rotation override (code fallback 1h; Wrangler production adds 30m)
     });
 
     const baseTime = NOW + 30_000;
@@ -564,7 +564,7 @@ describe("scheduled scan cycle", () => {
       PAIRS: "EURUSD,GBPUSD,V75,V100",
       PAIR_BATCH_SIZE: "1",
       ENTRY_TFS: "30m",
-      SYNTH_ENTRY_TFS: "30m", // rotation coverage override (prod default is 1h)
+      SYNTH_ENTRY_TFS: "30m", // rotation override (code fallback 1h; Wrangler production adds 30m)
     });
 
     const baseTime = NOW + 30_000;
@@ -591,7 +591,7 @@ describe("scheduled scan cycle", () => {
   });
 
   it("supports /admin/set-oanda-token and /admin/probe-oanda endpoints", async () => {
-    const env = makeEnv({ ADMIN_KEY: "test-admin-key" });
+    const env = makeEnv({ ADMIN_KEY: "test-admin-key", MIN_RISK_ATR: "0.8" });
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const fakeFetch = makeFakeFetch(calls);
     env.fetchFn = fakeFetch;
@@ -633,9 +633,13 @@ describe("scheduled scan cycle", () => {
     const healthResp = await worker.fetch(healthReq, env, {} as any);
     const healthData = (await healthResp.json()) as any;
     expect(healthData.oandaConfigured).toBe(true);
+    expect(healthData.retestDepthPct).toBe(100);
+    expect(healthData.minTpR).toBe(2.5);
+    expect(healthData.minRiskAtr).toBe(0.8);
+    expect(healthData.engineDigestEnabled).toBe(true);
   });
 
-  it("synthetics 1H primary: Deriv pairs confirm only on primary TFs while institutional pairs keep every entry TF", async () => {
+  it("synthetic timeframe gate: Deriv confirms only on configured primary TFs while institutional pairs keep every entry TF", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [] };
     const store = new MemStore();
     const env = makeEnv({ PAIRS: "EURUSD,V75", ENTRY_TFS: "30m,1h", PAIR_BATCH_SIZE: "2" });
@@ -644,7 +648,7 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.pairs.sort()).toEqual(["EURUSD", "V75"]);
 
-    // production default: synthetics primary entry TF is 1H
+    // code fallback is 1H; the deployed Wrangler override also enables 30m
     expect(loadConfig(env).synthEntryTfs).toEqual(["1h"]);
 
     // institutional pair books its 30m confirmation on the fixture storyline

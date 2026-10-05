@@ -35,6 +35,9 @@ export interface StrategyConfig {
   bosWindow: number;
   retestWindow: number;
   retestToleranceAtr: number;
+  /** For values below 100, required percentage penetration into the FVG.
+   *  100 preserves the legacy retest predicate exactly. */
+  retestDepthPct: number;
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
@@ -104,6 +107,7 @@ export function defaultStrategy(): StrategyConfig {
     bosWindow: 16,
     retestWindow: 20,
     retestToleranceAtr: 0.3,
+    retestDepthPct: 100,
     setupWindow: 100,
     slBufferAtr: 0.1,
     minRiskAtr: 0.8,  // quarantine structurally tiny stops
@@ -129,6 +133,7 @@ interface EnvVars {
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
+  RETEST_DEPTH_PCT?: string;
   SL_BUFFER_ATR?: string;
   TRAILING_BE_ENABLED?: string;
   TRAILING_BE_TRIGGER_R?: string;
@@ -205,12 +210,18 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
   const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
   const minTpR = Number(env.MIN_TP_R ?? "");
+  const retestDepthRaw = env.RETEST_DEPTH_PCT?.trim();
+  const retestDepthPct = retestDepthRaw ? Number(retestDepthRaw) : 100;
   const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
   const strategy = defaultStrategy();
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
+  // Invalid values fail closed to 100: the exact legacy retest rule.
+  if (Number.isFinite(retestDepthPct) && retestDepthPct >= 0 && retestDepthPct <= 100) {
+    strategy.retestDepthPct = retestDepthPct;
+  }
   if (env.TRAILING_BE_ENABLED !== undefined) strategy.trailingBeEnabled = env.TRAILING_BE_ENABLED.toLowerCase() !== "false";
   const trailingBeTriggerR = Number(env.TRAILING_BE_TRIGGER_R ?? "");
   if (Number.isFinite(trailingBeTriggerR) && trailingBeTriggerR > 0) strategy.trailingBeTriggerR = trailingBeTriggerR;
