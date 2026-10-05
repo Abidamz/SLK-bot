@@ -714,6 +714,19 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   return lines.join("\n");
 }
 
+function recordDeliveryStatus(results: Record<string, string>, channel: string, status: string): void {
+  const previous = results[channel];
+  if (!previous || (previous === "ok" && status === "ok")) {
+    results[channel] = status;
+    return;
+  }
+  if (previous === "partial" || status === "partial" || previous === "ok" || status === "ok") {
+    results[channel] = "partial";
+    return;
+  }
+  results[channel] = status;
+}
+
 export interface BroadcastOptions {
   silent?: boolean;
   pin?: boolean;
@@ -747,10 +760,11 @@ export async function broadcast(
     for (const chatId of targetChannelIds) {
       try {
         await sendTelegram(env, text, { ...options, chatId });
-        results.telegram = "ok";
+        recordDeliveryStatus(results, "telegram", "ok");
       } catch (err) {
-        results.telegram = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: failure }));
       }
     }
   }
@@ -764,10 +778,11 @@ export async function broadcast(
       if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in target channel
       try {
         await sendTelegram(env, text, { silent: false, pin: false, chatId: dmId });
-        results.telegram_dm = "ok";
+        recordDeliveryStatus(results, "telegram_dm", "ok");
       } catch (err) {
-        results.telegram_dm = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram DM delivery failed", dmId, error: results.telegram_dm }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram_dm", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram DM delivery failed", dmId, error: failure }));
       }
     }
   }
@@ -775,9 +790,9 @@ export async function broadcast(
   if (discordAllowed && env.DISCORD_WEBHOOK_URL) {
     try {
       await sendDiscord(env, text, color);
-      results.discord = "ok";
+      recordDeliveryStatus(results, "discord", "ok");
     } catch (err) {
-      results.discord = `error: ${err instanceof Error ? err.message : String(err)}`;
+      recordDeliveryStatus(results, "discord", `error: ${err instanceof Error ? err.message : String(err)}`);
       console.warn(JSON.stringify({ level: "warn", msg: "discord delivery failed", error: results.discord }));
     }
   }
@@ -989,10 +1004,11 @@ export async function notifyOutcome(
     for (const freeId of freeChatIds) {
       try {
         await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeId });
-        results.telegram_free_teaser = "ok";
+        recordDeliveryStatus(results, "telegram_free_teaser", "ok");
       } catch (err) {
-        results.telegram_free_teaser = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram free TP teaser failed", freeId, error: results.telegram_free_teaser }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram_free_teaser", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free TP teaser failed", freeId, error: failure }));
       }
     }
   }

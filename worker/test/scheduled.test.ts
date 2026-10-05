@@ -80,6 +80,14 @@ describe("scheduled scan cycle", () => {
     const risk = Math.abs(Number(alert.entry) - Number(alert.stop_loss));
     expect(Math.abs(Number(alert.tp_internal) - Number(alert.entry)) / risk).toBeGreaterThanOrEqual(3);
     expect(alert.alert_status).toBe("PAPER");
+    const deliveryAudits = store.preferenceAudit
+      .map((entry) => (entry as any).delivery)
+      .filter(Boolean);
+    expect(deliveryAudits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ channel: "telegram", kind: "confirmed_entry", status: "delivered" }),
+      expect.objectContaining({ channel: "discord", kind: "confirmed_entry", status: "delivered" }),
+    ]));
+    expect(JSON.stringify(deliveryAudits)).not.toContain("TGT");
 
     // identical re-run: dedupe → nothing new, no extra messages
     const again = await scanAll(makeEnv(), {

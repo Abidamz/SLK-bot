@@ -25,8 +25,8 @@ import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validat
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias } from "./shadow";
-import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowTradeRow } from "./store";
-import type { Alert, Candle, Direction, ShadowTradeCapture } from "./types";
+import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
+import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
 export interface Env {
   DB?: D1Like;
@@ -113,6 +113,35 @@ function isTraditionalMarketWeekend(nowMs: number): boolean {
   if (day === 5 && hour >= 22) return true; // Friday post-market close
   if (day === 0 && hour < 21) return true; // Sunday pre-market open
   return false;
+}
+
+export function captureFvgRetest50Experiments(
+  pair: string, entryTf: string, tfSeconds: number, candles: Candle[], candidates: Alert[],
+): ShadowExperimentCapture[] {
+  if (!candles.length) return [];
+  const latestCloseTime = candles[candles.length - 1].t + tfSeconds * 1000;
+  const captures: ShadowExperimentCapture[] = [];
+  for (const candidate of candidates) {
+    if (candidate.candleCloseTime !== latestCloseTime || candidate.alertStatus === "SUPPRESSED") continue;
+    const risk = candidate.direction === "SHORT"
+      ? candidate.stopLoss - candidate.entry
+      : candidate.entry - candidate.stopLoss;
+    const reward = candidate.direction === "SHORT"
+      ? candidate.entry - candidate.tpInternal
+      : candidate.tpInternal - candidate.entry;
+    const rr = risk > 0 ? reward / risk : 0;
+    if (!Number.isFinite(rr) || rr <= 0) continue;
+    captures.push({
+      experimentId: `FVG_RETEST_50:${candidate.setupId}`,
+      sourceSetupId: candidate.setupId,
+      variant: "FVG_RETEST_50",
+      pair, entryTf, direction: candidate.direction,
+      entry: candidate.entry, stopLoss: candidate.stopLoss,
+      target: candidate.tpInternal, rr,
+      candleCloseTime: candidate.candleCloseTime,
+    });
+  }
+  return captures;
 }
 
 // -------------------------------------------------------------- performance recaps
@@ -567,16 +596,34 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
 
         const pairStrategy = strategyForPair(pair, cfg.strategy);
-        const { alerts, events, diagnostics: replay, shadowTrades } = scanEntry({
+        const scanResult = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
           cfg: pairStrategy, mode: cfg.mode, provider: providerName,
           d1Candles: d1 ?? undefined,
           h1Candles: feeds["1h"],
           h4Candles: h4,
         });
+        const { alerts, events, diagnostics: replay, shadowTrades } = scanResult;
+        const shadowExperiments = [...scanResult.shadowExperiments];
+
+        // Side-by-side 50% FVG retest research is limited to 30m and paper
+        // mode to cap CPU cost. Its alerts are converted to shadow rows only;
+        // they never enter the normal alert/event/delivery path.
+        if (cfg.mode === "paper" && tf === "30m" && (pairStrategy.retestDepthPct ?? 100) === 100 && candles.length) {
+          const retest50 = scanEntry({
+            pair, entryTf: tf, tfSeconds: secs, candles, snaps,
+            cfg: { ...pairStrategy, retestDepthPct: 50 }, mode: "paper", provider: providerName,
+            d1Candles: d1 ?? undefined,
+            h1Candles: feeds["1h"],
+            h4Candles: h4,
+            shadowOnly: true,
+          });
+          shadowExperiments.push(...captureFvgRetest50Experiments(pair, tf, secs, candles, retest50.alerts));
+        }
 
         addReplayDiagnostics(diagnostics, pair, tf, replay);
         await persistShadowCaptures(store, shadowTrades);
+        await persistShadowExperiments(store, shadowExperiments);
 
         const lastBefore = await store.getKv(`last_scan:${pair}:${tf}`);
         const isFirstScan = lastRawIsEmpty(lastBefore);
@@ -817,6 +864,35 @@ export function applyHtfConflictGate(
   return false;
 }
 
+async function persistNotificationDeliveryResults(
+  store: Store,
+  kind: "confirmed_entry" | "final_outcome",
+  context: { pair: string; timeframe: string; setupId: string },
+  results: Record<string, string>,
+): Promise<void> {
+  const entries = Object.entries(results);
+  const records = entries.length
+    ? entries.map(([channel, result]) => ({ channel, result }))
+    : [{ channel: "none", result: "not_configured" }];
+  for (const { channel, result } of records) {
+    const status = result === "ok" ? "delivered"
+      : result === "partial" ? "partial"
+      : result === "not_configured" ? "not_configured"
+      : "failed";
+    try {
+      // Store only non-secret identifiers and a normalized result; raw
+      // provider error text, chat IDs, and message content are never retained.
+      await store.insertNotificationDeliveryAudit({
+        channel, kind, status,
+        detail: JSON.stringify(context),
+      });
+    } catch (err) {
+      // Audit persistence is observational and must never block paper delivery.
+      console.warn(JSON.stringify({ level: "warn", msg: "notification delivery audit write failed", kind, channel, error: String(err) }));
+    }
+  }
+}
+
 export async function deliver(
   env: Env, store: Store, alert: Alert,
   cfg: ReturnType<typeof loadConfig>, allowed: boolean,
@@ -866,7 +942,13 @@ export async function deliver(
   const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
   const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
-  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, alert);
+  const deliveryResults = await notifyAlert(
+    { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey },
+    alert,
+  );
+  await persistNotificationDeliveryResults(store, "confirmed_entry", {
+    pair: alert.pair, timeframe: alert.entryTf, setupId: alert.setupId,
+  }, deliveryResults);
 
   // Roadmap #6: forward confirmed entries to the MT5 execution bridge.
   // Hard-gated: paper mode (production default) never touches the bridge.
@@ -918,7 +1000,13 @@ async function resolveOutcomes(
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
       const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
-      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId }, rec, oc);
+      const deliveryResults = await notifyOutcome(
+        { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId },
+        rec, oc,
+      );
+      await persistNotificationDeliveryResults(store, "final_outcome", {
+        pair: String(rec.canonical_symbol), timeframe: String(rec.entry_timeframe), setupId: String(rec.setup_id),
+      }, deliveryResults);
     }
   }
   return resolvedCount;
@@ -933,6 +1021,18 @@ export async function persistShadowCaptures(store: Store, captures: ShadowTradeC
       await store.insertShadowTrade(capture);
     } catch (err) {
       console.warn(JSON.stringify({ level: "warn", msg: "shadow capture persistence failed", setupId: capture.setupId, rejectReason: capture.rejectReason, error: String(err) }));
+    }
+  }
+}
+
+/** Persist experiment candidates in their own isolated ledger. Missing D1
+ *  migrations and storage errors never affect live/paper entry handling. */
+export async function persistShadowExperiments(store: Store, experiments: ShadowExperimentCapture[]): Promise<void> {
+  for (const experiment of experiments) {
+    try {
+      await store.insertShadowExperiment(experiment);
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment persistence failed", experimentId: experiment.experimentId, variant: experiment.variant, error: String(err) }));
     }
   }
 }
@@ -983,6 +1083,49 @@ export async function resolveShadowOutcomes(
   return resolved;
 }
 
+export async function resolveShadowExperimentOutcomes(
+  store: Store, cfg: ReturnType<typeof loadConfig>, pair: string, tf: string, candles: Candle[],
+): Promise<number> {
+  let open: ShadowExperimentRow[];
+  try {
+    open = await store.openShadowExperiments(pair, tf);
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "open shadow experiments unavailable", pair, tf, error: String(err) }));
+    return 0;
+  }
+  let resolved = 0;
+  for (const row of open) {
+    try {
+      const entryTime = Date.parse(row.candle_close_time);
+      if (!Number.isFinite(entryTime)) continue;
+      const after = candles.filter((c) => c.t >= entryTime);
+      if (!after.length) continue;
+      const outcome = evaluateSignal(
+        row.direction,
+        Number(row.hypothetical_entry),
+        Number(row.hypothetical_stop_loss),
+        Number(row.hypothetical_target),
+        after,
+        120,
+        cfg.slOnClose,
+        cfg.strategy.trailingBeTriggerR ?? 1.5,
+        false,
+      );
+      if (!outcome || outcome.status === "OPEN" || outcome.status === "BE_HIT") continue;
+      await store.recordShadowExperimentOutcome(row.experiment_id, {
+        status: outcome.status,
+        exitPrice: outcome.exitPrice,
+        exitTime: outcome.exitTime,
+        rMultiple: outcome.rMultiple,
+      });
+      resolved++;
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment outcome resolution failed", experimentId: row.experiment_id, error: String(err) }));
+    }
+  }
+  return resolved;
+}
+
 /** Real-time shadow resolver mirrors the paper-trade cadence but uses its own
  *  fetches and ledger. A 121-candle window preserves the requested 120-bar
  *  expiry horizon without changing the paper resolver's existing 30-candle reads. */
@@ -990,16 +1133,21 @@ export async function resolveAllOpenShadowTrades(
   env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
   now = Date.now(), fetchFn: typeof fetch = fetch,
 ): Promise<number> {
-  let open: ShadowTradeRow[];
+  let open: ShadowTradeRow[] = [];
+  let openExperiments: ShadowExperimentRow[] = [];
   try {
     open = await store.openShadowTrades();
   } catch (err) {
     console.warn(JSON.stringify({ level: "warn", msg: "shadow resolver lookup failed", error: String(err) }));
-    return 0;
   }
-  if (!open.length) return 0;
+  try {
+    openExperiments = await store.openShadowExperiments();
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment resolver lookup failed", error: String(err) }));
+  }
+  if (!open.length && !openExperiments.length) return 0;
   const groups = new Map<string, { pair: string; tf: string }>();
-  for (const row of open) {
+  for (const row of [...open, ...openExperiments]) {
     const key = `${row.canonical_symbol}:${row.entry_timeframe}`;
     if (!groups.has(key)) groups.set(key, { pair: row.canonical_symbol, tf: row.entry_timeframe });
   }
@@ -1022,7 +1170,10 @@ export async function resolveAllOpenShadowTrades(
           symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
         });
         const candles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
-        if (candles.length) totalResolved += await resolveShadowOutcomes(store, cfg, pair, tf, candles);
+        if (candles.length) {
+          totalResolved += await resolveShadowOutcomes(store, cfg, pair, tf, candles);
+          totalResolved += await resolveShadowExperimentOutcomes(store, cfg, pair, tf, candles);
+        }
       } catch (err) {
         console.warn(JSON.stringify({ level: "warn", msg: "shadow market data resolution failed", pair, tf, error: String(err) }));
       }
@@ -1470,6 +1621,42 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/shadow-experiments" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const requestedLimit = Number(url.searchParams.get("limit") ?? 500);
+      if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 5000) {
+        return json({ error: "limit must be between 1 and 5000" }, 400);
+      }
+      try {
+        const ledger = await makeStore(env.DB).getShadowExperimentLedger(requestedLimit);
+        return json({
+          available: ledger.available,
+          rows: ledger.rows.map((row) => ({
+            experimentId: row.experiment_id,
+            sourceSetupId: row.source_setup_id,
+            variant: row.variant,
+            pair: row.canonical_symbol,
+            timeframe: row.entry_timeframe,
+            direction: row.direction,
+            hypotheticalEntry: row.hypothetical_entry,
+            hypotheticalStopLoss: row.hypothetical_stop_loss,
+            hypotheticalTarget: row.hypothetical_target,
+            hypotheticalRr: row.hypothetical_rr,
+            createdUtc: row.created_utc,
+            candleCloseTime: row.candle_close_time,
+            status: row.status,
+            exitTime: row.exit_time,
+            exitPrice: row.exit_price,
+            rMultiple: row.r_multiple,
+          })),
+          aggregate: ledger.aggregate,
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "shadow experiments read failed", error: String(err) }));
+        return json({ error: "shadow experiments unavailable" }, 500);
+      }
+    }
+
     if (url.pathname === "/api/monte-carlo" && request.method === "GET") {
       // Quant Lab: bootstrap stress-test over the verified closed-trade R series.
       // Seeded → deterministic; iteration×horizon capped to protect Free-tier CPU.
@@ -1526,6 +1713,44 @@ export default {
       const rows = await makeStore(env.DB).scanLogsSince(sinceIso, 2000);
       const pulse = buildEnginePulse(rows as unknown as EnginePulseRow[], nowMs, windowHours);
       return json({ ok: true, ...pulse, asof: new Date(nowMs).toISOString() });
+    }
+
+    if (url.pathname === "/api/scan-audit" && request.method === "GET") {
+      // Private 1–31 day scan/funnel/delivery audit. Do not add this route to
+      // the public API allowlist above; `authed()` is required even though
+      // other portfolio reads are public.
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const days = Number(url.searchParams.get("days") ?? 21);
+      if (!Number.isInteger(days) || days < 1 || days > 31) {
+        return json({ error: "days must be an integer between 1 and 31" }, 400);
+      }
+      const toMs = Date.now();
+      const fromMs = toMs - days * 24 * 3600_000;
+      const fromUtc = new Date(fromMs).toISOString();
+      const toUtc = new Date(toMs).toISOString();
+      try {
+        const store = makeStore(env.DB);
+        const [scan, delivery] = await Promise.all([
+          store.scanAuditBetween(fromUtc, toUtc),
+          store.deliveryAuditBetween(fromUtc, toUtc),
+        ]);
+        return json({
+          ok: true,
+          window: { days, fromUtc, toUtc },
+          scan,
+          delivery,
+          caveats: [
+            "Per-pair/timeframe funnel figures are replay counts, not unique setup counts.",
+            "Scan error categories are keyword-based row counts, not confirmed root causes or unique incidents.",
+            "Alert and event totals are stored-row counts, not proof of Telegram or Discord receipt.",
+            "Delivery audit writes are best-effort; a missing result does not prove a message was not sent.",
+            "Delivery API-result tracking starts with this release; older delivery outcomes cannot be reconstructed.",
+          ],
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "private scan audit failed", error: String(err) }));
+        return json({ error: "scan audit unavailable" }, 500);
+      }
     }
 
     if (url.pathname === "/alerts" && request.method === "GET") {

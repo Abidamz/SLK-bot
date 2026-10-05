@@ -28,7 +28,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
 2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
-4. Cloudflare D1 stores alerts, events, scan diagnostics, notification state, and the isolated shadow ledger. SQL migrations are in `worker/migrations/` (`0001`–`0006`). The owner already applied `0006_shadow_ledger.sql` in production; shadow-ledger code also fails safe if that table is unavailable.
+4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0007`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes.
 5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive watch radar, bias cards, teaser cards, weekly recaps, and the Engine Discipline digest. Synthetic content is never sent to the Forex free channel.
 6. The public journal shows only signals actually delivered to Telegram. Audit/admin views are protected. Recap cards retain the explicit **“paper simulation — research only”** disclaimer.
 
@@ -38,12 +38,14 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - `worker/src/provider.ts` — provider resolution and candle validation.
 - `worker/src/features.ts`, `worker/src/storyline.ts` — market structure and storyline.
 - `worker/src/engine.ts` — state machine, target/risk gates, optional FVG-depth retest threshold.
-- `worker/src/store.ts` — D1/MemStore behavior, delivered ledger, scan logs, shadow ledger.
+- `worker/src/store.ts` — D1/MemStore behavior, delivered ledger, scan logs, private audit aggregates, shadow ledgers.
+- `worker/src/diagnostics.ts` — replay counters, pair/timeframe funnel data, scan-audit summaries, and the 24-hour Engine Pulse.
 - `worker/src/shadow.ts` — directional-bias classification (separate from shadow-trade measurement).
 - `worker/src/notify.ts` — Telegram formatting, channel routing, recaps and digest.
 - `worker/src/mt5.ts` — gated bridge client; production paper configuration does not dispatch orders.
-- `worker/src/index.ts` — Worker endpoints and scheduled orchestration.
-- `worker/migrations/0006_shadow_ledger.sql` — separate research table and indexes.
+- `worker/src/index.ts` — Worker endpoints and scheduled orchestration, including the isolated shadow-experiment pass.
+- `worker/migrations/0006_shadow_ledger.sql` — separate floor/retest research table and indexes.
+- `worker/migrations/0007_shadow_experiments.sql` — separate Breakout/FVG experiment table and indexes.
 - `dashboard/` — Pages dashboard and public journal.
 - `api/` — Vercel relay endpoints; `deriv-relay/` contains its standalone relay implementation.
 
@@ -53,6 +55,21 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - Uses setup identity for deduplication, resolves with the same candle rules, and expires unresolved observations after 120 bars.
 - `GET /api/shadow-ledger` is owner/admin-key protected. It aggregates only the separate shadow table.
 - Shadow rows never appear in Telegram alerts, public events, `/stats`, `/alerts`, recaps, or Monte Carlo. Keep this strict isolation when changing code.
+
+### Private scan and delivery audit
+
+- `GET /api/scan-audit?days=21` is owner/admin-key protected; valid windows are 1–31 days. The Pages dashboard exposes it under **Market Health → 21-Day Scan & Delivery Audit** and prompts for the existing owner key.
+- The report returns scan/error totals, keyword-based error categories, pair/timeframe replay funnel counts, and normalized channel API results for confirmed entries/final outcomes. Error categories are not confirmed root causes or unique incidents. It does not return raw provider errors, message contents, chat IDs, alerts, or shadow rows.
+- Funnel values are replay counts, not unique setup counts. Stored alert rows are not proof of notification delivery. Delivery status means the channel API accepted/rejected the request, not that a person saw it.
+- Durable delivery-result tracking starts with this release; past Telegram/Discord outcomes cannot be reconstructed. The report shows the first tracked timestamp for context, but writes are best-effort: missing rows do not prove that a message was not sent.
+
+### Separate shadow experiments (research only)
+
+- `BREAKOUT_CONTINUATION` provisionally records only a fresh latest-closed-candle body break through a confirmed swing, aligned with the higher-timeframe storyline. It applies the current stop/risk checks and uses the nearest external storyline target; it has not yet been validated against historical outcomes.
+- `FVG_RETEST_50` is a separate replay limited to paper-mode 30m scans whose configured retest depth remains at the legacy `100`. It tests midpoint FVG penetration, then records only latest-close, non-suppressed candidates. It does not change the normal 100% retest rule, alerts, target floor, or risk gates.
+- Both variants write only to `slk_shadow_experiments`; the 50% replay suppresses normal transition events and does not deliver its returned alerts. The table can safely be absent until migration `0007_shadow_experiments.sql` is applied.
+- `GET /api/shadow-experiments` is owner/admin-key protected. These rows must remain absent from Telegram, public events/journal, `/stats`, `/alerts`, recaps, and Monte Carlo.
+
 - The Engine Discipline weekly digest is controlled by `ENGINE_DIGEST` and goes to explicit FREE-channel IDs only; it has no VIP fallback.
 
 ## 3. Deployment model — read before any edit or push
@@ -132,7 +149,7 @@ Secrets are configured outside Git (Cloudflare secrets/D1 as appropriate). Value
 ## 5. Public/private surfaces and channel policy
 
 - Public read surfaces include `/health`, `/api/engine-pulse`, `/api/recent-events`, and the public journal. The public journal is restricted to Telegram-delivered signals.
-- `/api/shadow-ledger` and administrative actions require the owner/admin key. Keep audit views protected. Treat public endpoint behavior as defined in `worker/src/index.ts`; do not infer route existence from a generic 401.
+- `/api/shadow-ledger`, `/api/shadow-experiments`, `/api/scan-audit`, and administrative actions require the owner/admin key. Keep audit views protected. Treat public endpoint behavior as defined in `worker/src/index.ts`; do not infer route existence from a generic 401.
 - `VIP Institutional`: confirmed entries plus final outcomes only.
 - `VIP Synthetics`: confirmed synthetic entries plus final outcomes only.
 - `Forex Free`: watch radar, bias cards, allowed TP1 teasers (pair/timeframe/+R only), weekly digest/recap, and upgrade CTAs; **no synthetic content**.
@@ -170,15 +187,34 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 
 ## 8. Open items and owner follow-up
 
-1. After this release, verify shadow rows in D1 and let the measurement accumulate. The owner can run the proof-of-life query below about one day after deployment.
-2. Collect roughly 2–3 weeks of shadow observations before considering any `MIN_TP_R` decision. Keep the floor at `2.5` until the owner explicitly decides.
-3. The owner closes PR #8 unmerged. Do not take action on PR #3 or #8 in GitHub.
-4. Later bot changes belong in this same session branch and must use the complete validation → push → Actions → live-proof cycle above.
+1. The three-week signal drought is not diagnosed yet. After this release, use the protected dashboard audit to retrieve historical scan/error/funnel totals; delivery results before the instrumentation release cannot be recovered.
+2. Apply `worker/migrations/0007_shadow_experiments.sql` in production D1 so the separate Breakout/FVG experiment rows can be recorded. Missing-table behavior safely no-ops and retries its schema probe every five minutes.
+3. Collect roughly 2–3 weeks of shadow observations before considering any `MIN_TP_R` decision. Keep the floor at `2.5` until the owner explicitly decides.
+4. The owner closes PR #8 unmerged. Do not take action on PR #3 or #8 in GitHub.
+5. Later bot changes belong in this same session branch and must use the complete validation → push → Actions → live-proof cycle above.
 
 ## 9. Owner self-serve paths
 
 - **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on `arena/01a0b153-slk-bot`, commit → auto-deploys.
-- **Data queries/fixes:** Cloudflare D1 console.
+- **Automatic 21-day audit after release:** open the Pages dashboard → **Market Health** → **Run 21-Day Audit**. It asks for the existing owner key and displays aggregate results only.
+- **D1 queries/fixes or manual audit fallback:** Cloudflare Dashboard → Storage & Databases → D1 → `slk-alert-db` → Console.
+- **Read-only 21-day signal-drought audit** (UTC window 2026-09-14 through 2026-10-05; run the query, then return the result for diagnosis):
+
+```sql
+SELECT
+  COUNT(*) AS scan_rows,
+  MIN(ts) AS first_scan_utc,
+  MAX(ts) AS last_scan_utc,
+  SUM(CASE WHEN TRIM(COALESCE(pairs, '')) NOT IN ('', '[]', 'null') THEN 1 ELSE 0 END) AS active_scan_rows,
+  SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') THEN 1 ELSE 0 END) AS scan_error_rows,
+  SUM(COALESCE(alerts, 0)) AS alert_rows_written,
+  SUM(COALESCE(events, 0)) AS event_rows_written,
+  SUM(CASE WHEN diagnostics_json IS NOT NULL AND json_valid(diagnostics_json) = 1 THEN 1 ELSE 0 END) AS diagnostic_rows
+FROM slk_scan_log
+WHERE ts >= '2026-09-14T22:17:38.540Z'
+  AND ts <= '2026-10-05T22:17:38.540Z';
+```
+
 - **Shadow proof-of-life query** (run about one day after the shadow-ledger code is deployed):
 
 ```sql
@@ -206,5 +242,7 @@ git push origin arena/3ff9b8eb-slk-bot
 - Fresh health check: `https://slk-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
 - Public engine pulse: `https://slk-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
 - Shadow aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
+- Shadow-experiment aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
+- Scan/error/funnel/delivery audit (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
 - Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
 - Public dashboard/journal: `https://slk-radar.pages.dev`

@@ -26,6 +26,92 @@ export interface ScanDiagnostics {
   byPairTimeframe: { pair: string; timeframe: string; replay: ReplayDiagnostics }[];
 }
 
+export interface ScanAuditFunnelRow {
+  pair: string;
+  timeframe: string;
+  scanRows: number;
+  replay: ReplayDiagnostics;
+}
+
+/** Read-only historical scan summary. Replay funnel counts include replays and
+ *  are not unique setups; `recordedConfirmedAlerts` counts first-write rows. */
+export interface ScanAuditSummary {
+  scanRows: number;
+  activeScanRows: number;
+  scanErrorRows: number;
+  errorCategories: { staleFeed: number; rateLimitOrCredits: number; networkOrTimeout: number; other: number };
+  alertRowsWritten: number;
+  eventRowsWritten: number;
+  firstScanUtc: string | null;
+  lastScanUtc: string | null;
+  diagnosticsAvailable: boolean;
+  diagnosticRows: number;
+  invalidDiagnosticRows: number;
+  recordedConfirmedAlerts: number;
+  byPairTimeframe: ScanAuditFunnelRow[];
+}
+
+export interface DeliveryAuditBucket {
+  channel: string;
+  kind: "confirmed_entry" | "final_outcome";
+  delivered: number;
+  partial: number;
+  failed: number;
+  notConfigured: number;
+  total: number;
+}
+
+/** Counts of channel-level notifier results. These are not proof of user
+ *  receipt; only successful provider API responses are counted as delivered. */
+export interface NotificationDeliveryAuditSummary {
+  available: boolean;
+  firstTrackedUtc: string | null;
+  totalResults: number;
+  byChannel: DeliveryAuditBucket[];
+}
+
+export interface NotificationDeliveryAuditGroup {
+  channel: string;
+  kind: "confirmed_entry" | "final_outcome";
+  status: string;
+  count: number;
+}
+
+export function buildNotificationDeliveryAuditSummary(
+  available: boolean,
+  firstTrackedUtc: string | null,
+  groups: NotificationDeliveryAuditGroup[],
+): NotificationDeliveryAuditSummary {
+  const buckets = new Map<string, DeliveryAuditBucket>();
+  for (const group of groups) {
+    const key = `${group.kind}:${group.channel}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        channel: group.channel, kind: group.kind,
+        delivered: 0, partial: 0, failed: 0, notConfigured: 0, total: 0,
+      };
+      buckets.set(key, bucket);
+    }
+    const count = Number.isFinite(Number(group.count)) ? Math.max(0, Number(group.count)) : 0;
+    bucket.total += count;
+    switch (group.status) {
+      case "delivered": bucket.delivered += count; break;
+      case "partial": bucket.partial += count; break;
+      case "not_configured": bucket.notConfigured += count; break;
+      default: bucket.failed += count; break;
+    }
+  }
+  const byChannel = [...buckets.values()].sort((a, b) =>
+    a.kind.localeCompare(b.kind) || a.channel.localeCompare(b.channel),
+  );
+  return {
+    available, firstTrackedUtc,
+    totalResults: byChannel.reduce((total, bucket) => total + bucket.total, 0),
+    byChannel,
+  };
+}
+
 export interface EngineDisciplineTotals {
   scans: number;
   setupsEvaluated: number;
@@ -91,6 +177,103 @@ export function emptyReplayDiagnostics(): ReplayDiagnostics {
     riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
     targetRejects: 0, confirmedAlerts: 0,
   };
+}
+
+export function addReplayCounts(target: ReplayDiagnostics, source: Partial<ReplayDiagnostics>): void {
+  for (const state of LIFECYCLE_STATES) {
+    target[state] += Number.isFinite(Number(source[state])) ? Math.max(0, Number(source[state])) : 0;
+  }
+  for (const key of ["retestCandidates", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
+    target[key] += Number.isFinite(Number(source[key])) ? Math.max(0, Number(source[key])) : 0;
+  }
+  for (const key of ["nonPositiveRisk", "belowMinRiskAtr", "aboveMaxStopAtr"] as const) {
+    const value = source.riskRejectReasons?.[key];
+    target.riskRejectReasons[key] += Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  }
+}
+
+export interface ScanAuditInputRow {
+  ts: string;
+  pairs?: string | null;
+  errors?: string | null;
+  alerts?: number | null;
+  events?: number | null;
+  diagnostics?: ScanDiagnostics | null;
+  diagnostics_json?: string | null;
+}
+
+export function buildScanAuditSummary(
+  rows: ScanAuditInputRow[], diagnosticsAvailable: boolean,
+): ScanAuditSummary {
+  const summary: ScanAuditSummary = {
+    scanRows: rows.length, activeScanRows: 0, scanErrorRows: 0,
+    errorCategories: { staleFeed: 0, rateLimitOrCredits: 0, networkOrTimeout: 0, other: 0 },
+    alertRowsWritten: 0, eventRowsWritten: 0, firstScanUtc: null, lastScanUtc: null,
+    diagnosticsAvailable, diagnosticRows: 0, invalidDiagnosticRows: 0,
+    recordedConfirmedAlerts: 0, byPairTimeframe: [],
+  };
+  const funnel = new Map<string, ScanAuditFunnelRow>();
+  const asCount = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  for (const row of rows) {
+    const pairs = String(row.pairs ?? "").trim();
+    if (pairs && pairs !== "[]" && pairs.toLowerCase() !== "null") summary.activeScanRows++;
+    const errors = String(row.errors ?? "").trim();
+    if (errors && errors !== "[]" && errors.toLowerCase() !== "null") {
+      summary.scanErrorRows++;
+      const normalizedError = errors.toLowerCase();
+      if (normalizedError.includes("stale feed")) summary.errorCategories.staleFeed++;
+      else if (normalizedError.includes("rate limit") || normalizedError.includes("credit")) summary.errorCategories.rateLimitOrCredits++;
+      else if (normalizedError.includes("network") || normalizedError.includes("timeout")) summary.errorCategories.networkOrTimeout++;
+      else summary.errorCategories.other++;
+    }
+    summary.alertRowsWritten += asCount(row.alerts);
+    summary.eventRowsWritten += asCount(row.events);
+    if (row.ts && (!summary.firstScanUtc || row.ts < summary.firstScanUtc)) summary.firstScanUtc = row.ts;
+    if (row.ts && (!summary.lastScanUtc || row.ts > summary.lastScanUtc)) summary.lastScanUtc = row.ts;
+
+    let raw: unknown = row.diagnostics ?? row.diagnostics_json ?? null;
+    if (typeof raw === "string") {
+      try { raw = JSON.parse(raw); } catch { raw = false; }
+    }
+    if (raw == null) continue;
+    if (!raw || typeof raw !== "object") {
+      summary.invalidDiagnosticRows++;
+      continue;
+    }
+    const diagnostics = raw as ScanDiagnostics;
+    if (diagnostics.version !== 1 || !diagnostics.replay || !diagnostics.recorded) {
+      summary.invalidDiagnosticRows++;
+      continue;
+    }
+    summary.diagnosticRows++;
+    summary.recordedConfirmedAlerts += asCount(diagnostics.recorded.confirmedAlerts);
+    for (const item of Array.isArray(diagnostics.byPairTimeframe) ? diagnostics.byPairTimeframe : []) {
+      const pair = String(item?.pair ?? "").trim();
+      const timeframe = String(item?.timeframe ?? "").trim();
+      if (!pair || !timeframe || !item?.replay) continue;
+      const key = `${pair}\u0000${timeframe}`;
+      let entry = funnel.get(key);
+      if (!entry) {
+        entry = { pair, timeframe, scanRows: 0, replay: emptyReplayDiagnostics() };
+        funnel.set(key, entry);
+      }
+      entry.scanRows++;
+      addReplayCounts(entry.replay, item.replay);
+    }
+  }
+  summary.byPairTimeframe = [...funnel.values()].sort((a, b) =>
+    a.pair.localeCompare(b.pair) || a.timeframe.localeCompare(b.timeframe),
+  );
+  if (!diagnosticsAvailable) {
+    summary.diagnosticRows = 0;
+    summary.invalidDiagnosticRows = 0;
+    summary.recordedConfirmedAlerts = 0;
+    summary.byPairTimeframe = [];
+  }
+  return summary;
 }
 
 export function emptyScanDiagnostics(): ScanDiagnostics {

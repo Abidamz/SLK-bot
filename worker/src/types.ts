@@ -7,6 +7,23 @@ export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "BE_HIT" | "EXPIRED";
 
 export type ShadowRejectReason = "TARGET_FLOOR" | "NO_RETEST";
 export type ShadowTradeStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
+export type ShadowExperimentVariant = "BREAKOUT_CONTINUATION" | "FVG_RETEST_50";
+
+/** Counterfactual SLK Model candidate. These experiments never create alerts
+ *  or events and are persisted in a separate, owner-only research ledger. */
+export interface ShadowExperimentCapture {
+  experimentId: string;
+  sourceSetupId: string;
+  variant: ShadowExperimentVariant;
+  pair: string;
+  entryTf: string;
+  direction: Direction;
+  entry: number;
+  stopLoss: number;
+  target: number;
+  rr: number;
+  candleCloseTime: number;
+}
 
 /** Observation-only candidate. This is persisted separately from alerts,
  *  events, outcomes, and public performance statistics. */

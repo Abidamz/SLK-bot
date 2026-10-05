@@ -635,6 +635,17 @@
           <div class="empty">Loading feed health…</div>
         </div>
       </article>
+      <article class="panel" style="margin-top:18px;">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">PRIVATE · OWNER KEY REQUIRED</p>
+            <h2>21-Day Scan & Delivery Audit</h2>
+            <p class="muted-copy">Run a read-only report of scan errors, pair/timeframe funnel counts, and delivery API results.</p>
+          </div>
+          <button id="runScanAuditBtn" class="secondary">Run 21-Day Audit</button>
+        </div>
+        <pre id="scanAuditResults" class="muted-copy" aria-live="polite" style="white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0 0;">The report is private and loads only after the owner key is entered.</pre>
+      </article>
     </section>
 
     <section id="preferences" class="tab-panel">
@@ -828,6 +839,6 @@
       </div>
     </div>
   </footer>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

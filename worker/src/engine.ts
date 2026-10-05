@@ -12,7 +12,7 @@ import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
-  Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowTradeCapture,
+  Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowExperimentCapture, ShadowTradeCapture,
 } from "./types";
 import type { StrategyConfig } from "./config";
 
@@ -28,6 +28,8 @@ export interface ScanEntryArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  /** Internal counterfactual pass. Its events/alerts are never persisted or delivered. */
+  shadowOnly?: boolean;
 }
 
 /** Deterministic setup identity (readable in logs/audit trail).
@@ -71,12 +73,60 @@ function fvgRetestThreshold(s: Setup, isShort: boolean, depthPct: number): numbe
     : fvg.hi - width * (depthPct / 100);
 }
 
+function shadowRiskForStop(
+  pair: string, direction: Direction, entry: number, proposedStop: number,
+  atr: number, cfg: StrategyConfig,
+): { stopLoss: number; risk: number } | null {
+  if (!Number.isFinite(entry) || !Number.isFinite(proposedStop) || !Number.isFinite(atr) || atr <= 0) return null;
+  let stopLoss = proposedStop;
+  let risk = direction === "SHORT" ? stopLoss - entry : entry - stopLoss;
+  if (risk <= 0) return null;
+  if (cfg.minStopPips && cfg.minStopPips > 0) {
+    const minDistance = minStopDistance(pair, cfg.minStopPips);
+    if (risk < minDistance) {
+      stopLoss = direction === "SHORT" ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
+    }
+  }
+  if (risk < cfg.minRiskAtr * atr || risk > cfg.maxStopAtr * atr) return null;
+  return { stopLoss, risk };
+}
+
+function nearestExternalTarget(s: Storyline, direction: Direction, entry: number): number | null {
+  const isShort = direction === "SHORT";
+  const side = isShort ? "sellside" : "buyside";
+  const candidates = s.externalPools
+    .filter((pool) => pool.side === side && (isShort ? pool.price < entry : pool.price > entry))
+    .map((pool) => pool.price);
+  const mapped = s.nearestExternalTarget;
+  if (mapped !== null && (isShort ? mapped < entry : mapped > entry)) candidates.push(mapped);
+  if (!candidates.length) return null;
+  return isShort ? Math.max(...candidates) : Math.min(...candidates);
+}
+
+function makeShadowExperiment(args: {
+  experimentId: string; sourceSetupId: string; variant: ShadowExperimentCapture["variant"];
+  pair: string; entryTf: string; direction: Direction; entry: number;
+  stopLoss: number; target: number; risk: number; candleCloseTime: number;
+}): ShadowExperimentCapture | null {
+  const reward = args.direction === "SHORT" ? args.entry - args.target : args.target - args.entry;
+  const rr = reward / args.risk;
+  if (!Number.isFinite(rr) || rr <= 0) return null;
+  return {
+    experimentId: args.experimentId, sourceSetupId: args.sourceSetupId,
+    variant: args.variant, pair: args.pair, entryTf: args.entryTf,
+    direction: args.direction, entry: args.entry, stopLoss: args.stopLoss,
+    target: args.target, rr, candleCloseTime: args.candleCloseTime,
+  };
+}
+
 export function scanEntry(args: ScanEntryArgs): {
   alerts: Alert[];
   events: EngineEvent[];
   diagnostics: ReplayDiagnostics;
   shadowDiagnostics: DirectionalBiasDiagnostics[];
   shadowTrades: ShadowTradeCapture[];
+  shadowExperiments: ShadowExperimentCapture[];
 } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
   const configuredRetestDepthPct = cfg.retestDepthPct ?? 100;
@@ -88,7 +138,9 @@ export function scanEntry(args: ScanEntryArgs): {
   const diagnostics = emptyReplayDiagnostics();
   const shadowDiagnostics: DirectionalBiasDiagnostics[] = [];
   const shadowTrades: ShadowTradeCapture[] = [];
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades };
+  const shadowExperiments: ShadowExperimentCapture[] = [];
+  const shadowExperimentIds = new Set<string>();
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades, shadowExperiments };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -106,6 +158,7 @@ export function scanEntry(args: ScanEntryArgs): {
   const active: { LONG: Setup | null; SHORT: Setup | null } = { LONG: null, SHORT: null };
 
   const emit = (s: Setup, state: string, c: Candle, reason: string, price: number | null = c.c) => {
+    if (args.shadowOnly) return;
     countTransition(diagnostics, state);
     events.push({ setupId: s.setupId, pair, state, candleTime: c.t, reason, price });
     console.info(JSON.stringify({ level: "info", msg: "slk.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
@@ -119,6 +172,48 @@ export function scanEntry(args: ScanEntryArgs): {
     const c = candles[i];
     const closeTime = c.t + tfSeconds * 1000;
     const story = storyAt(closeTime);
+
+    // Shadow-only continuation experiment: require a fresh candle-body close
+    // through a previously confirmed swing in the H4 storyline's direction.
+    // It intentionally runs only on the latest closed candle (no historical
+    // backfill) and never emits an EngineEvent or Alert.
+    if (!args.shadowOnly && i === candles.length - 1 && i > 0 && story?.valid && story.direction) {
+      const previous = candles[i - 1];
+      for (const direction of ["SHORT", "LONG"] as Direction[]) {
+        const isShort = direction === "SHORT";
+        const alignedEnvironment = isShort ? story.environment === "bearish" : story.environment === "bullish";
+        if (story.direction !== direction || !alignedEnvironment) continue;
+        const brokenSwings = (isShort ? lows : highs)
+          .filter((sw) => sw.index < i && sw.index + conf < i)
+          .sort((a, b) => b.index - a.index);
+        const breakoutSwing = brokenSwings.find((sw) =>
+          isShort ? previous.c >= sw.price && c.c < sw.price : previous.c <= sw.price && c.c > sw.price,
+        );
+        if (!breakoutSwing) continue;
+        const stopSwings = (isShort ? highs : lows)
+          .filter((sw) => sw.index < i && sw.index + conf < i && (isShort ? sw.price > c.c : sw.price < c.c))
+          .sort((a, b) => b.index - a.index);
+        const stopSwing = stopSwings[0];
+        if (!stopSwing) continue;
+        const proposedStop = isShort
+          ? stopSwing.price + cfg.slBufferAtr * atrE
+          : stopSwing.price - cfg.slBufferAtr * atrE;
+        const risk = shadowRiskForStop(pair, direction, c.c, proposedStop, atrE, cfg);
+        const target = nearestExternalTarget(story, direction, c.c);
+        if (!risk || target === null) continue;
+        const sourceSetupId = `${pair}:${entryTf}:${direction}:BREAKOUT:${new Date(breakoutSwing.time).toISOString()}`;
+        const experiment = makeShadowExperiment({
+          experimentId: `BREAKOUT_CONTINUATION:${sourceSetupId}`,
+          sourceSetupId, variant: "BREAKOUT_CONTINUATION", pair, entryTf, direction,
+          entry: c.c, stopLoss: risk.stopLoss, target, risk: risk.risk,
+          candleCloseTime: closeTime,
+        });
+        if (experiment && !shadowExperimentIds.has(experiment.experimentId)) {
+          shadowExperimentIds.add(experiment.experimentId);
+          shadowExperiments.push(experiment);
+        }
+      }
+    }
 
     for (const d of ["SHORT", "LONG"] as Direction[]) {
       const isShort = d === "SHORT";
@@ -270,6 +365,7 @@ export function scanEntry(args: ScanEntryArgs): {
             const partialThreshold = fvgRetestThreshold(cur, isShort, retestDepthPct);
             returns = partialThreshold !== null && (isShort ? c.h >= partialThreshold : c.l <= partialThreshold);
           }
+
           if (cur.leftZone && returns) {
             // opposing liquidity must remain standing for reversal setups
             let standing = false;
@@ -318,7 +414,7 @@ export function scanEntry(args: ScanEntryArgs): {
     }
   }
 
-  return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades };
+  return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades, shadowExperiments };
 }
 
 interface BuildAlertArgs {

@@ -129,6 +129,57 @@ if ($('resetPerfDates')) {
 
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
+function formatScanAuditReport(report) {
+  const scan = report?.scan || {};
+  const delivery = report?.delivery || {};
+  const errors = scan.errorCategories || {};
+  const lines = [
+    `Window (UTC): ${report?.window?.fromUtc || '—'} to ${report?.window?.toUtc || '—'}`,
+    `Scan records: ${scan.scanRows ?? 0} total; ${scan.activeScanRows ?? 0} covered at least one market.`,
+    `Scan records with errors: ${scan.scanErrorRows ?? 0}.`,
+    `Error rows by keyword match (not unique incidents): stale-feed ${errors.staleFeed ?? 0}; rate-limit/credits ${errors.rateLimitOrCredits ?? 0}; network/timeout ${errors.networkOrTimeout ?? 0}; other ${errors.other ?? 0}.`,
+    `Stored alert rows: ${scan.alertRowsWritten ?? 0}; stored event rows: ${scan.eventRowsWritten ?? 0}. (Stored rows are not proof of message delivery.)`,
+    `Diagnostic rows: ${scan.diagnosticRows ?? 0} valid; ${scan.invalidDiagnosticRows ?? 0} invalid; available: ${scan.diagnosticsAvailable ? 'yes' : 'no'}.`,
+    `Recorded confirmed-alert rows: ${scan.recordedConfirmedAlerts ?? 0}.`,
+    '',
+    `First tracked delivery result: ${delivery.firstTrackedUtc || 'none recorded'}.`,
+    'Delivery audit writes are best-effort; missing rows do not prove that a message was not sent.',
+    'Delivery counts below are channel API results, not proof the recipient saw the message:',
+  ];
+  const deliveryRows = Array.isArray(delivery.byChannel) ? delivery.byChannel : [];
+  if (!deliveryRows.length) lines.push('  No tracked delivery results in this window.');
+  for (const row of deliveryRows) {
+    lines.push(`  ${row.kind} / ${row.channel}: ${row.delivered} delivered, ${row.partial} partial, ${row.failed} failed, ${row.notConfigured} not configured.`);
+  }
+  lines.push('', 'Pair/timeframe funnel totals (replay counts; repeats are not unique setups):');
+  const funnelRows = Array.isArray(scan.byPairTimeframe) ? scan.byPairTimeframe : [];
+  if (!funnelRows.length) lines.push('  No per-pair/timeframe diagnostics available.');
+  for (const row of funnelRows) {
+    const f = row.replay || {};
+    lines.push(`  ${row.pair} ${row.timeframe}: MAP ${f.MAP ?? 0} → TOUCH ${f.TOUCH ?? 0} → SWEEP ${f.SWEEP ?? 0} → SHIFT ${f.SHIFT ?? 0} → RETEST ${f.RETEST ?? 0}; target rejects ${f.targetRejects ?? 0}; risk rejects ${f.riskRejects ?? 0}.`);
+  }
+  return lines.join('\n');
+}
+
+if ($('runScanAuditBtn')) {
+  $('runScanAuditBtn').addEventListener('click', async () => {
+    const button = $('runScanAuditBtn');
+    const output = $('scanAuditResults');
+    button.disabled = true;
+    button.textContent = 'Running…';
+    if (output) output.textContent = 'Running the read-only 21-day audit…';
+    try {
+      const report = await api('/api/scan-audit?days=21', { admin: true });
+      if (output) output.textContent = formatScanAuditReport(report);
+    } catch (err) {
+      if (output) output.textContent = `Audit unavailable: ${err.message || String(err)}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Run 21-Day Audit';
+    }
+  });
+}
+
 ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort', 'alertFrom', 'alertTo'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
@@ -230,7 +281,10 @@ async function api(path, options = {}) {
     ...(isAdmin && state.adminKey ? { 'x-admin-key': state.adminKey, Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
-  const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
+  const requestOptions = { ...options };
+  delete requestOptions.admin;
+  delete requestOptions._retried;
+  const r = await fetch(state.url.replace(/\/$/, '') + path, { ...requestOptions, headers });
   if (r.status === 401 && isAdmin) {
     clearAdminKey();
     if (!options._retried) {
