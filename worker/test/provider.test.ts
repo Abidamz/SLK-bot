@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, fetchYahoo, providerForPair, resetProviderCircuitBreakers, symbolFor, yahooSymbolFor, DataQualityError } from "../src/provider";
-import { dukaJson, yahooFlatFeed } from "./fixtures";
+import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, providerForPair, resetProviderCircuitBreakers, symbolFor, DataQualityError } from "../src/provider";
+import { dukaJson, flatIndexFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
 describe("provider routing", () => {
@@ -41,17 +41,19 @@ describe("provider routing", () => {
     expect(providerForPair("V10_1S")).toBe("deriv");
   });
 
-  it("PROVIDER_MAP overrides win over defaults", () => {
+  it("PROVIDER_MAP supports only configured provider names", () => {
     expect(providerForPair("US30", { US30: "twelvedata" })).toBe("twelvedata");
-    expect(providerForPair("EURUSD", { EURUSD: "yahoo" })).toBe("yahoo");
-    expect(providerForPair("US30", { US30: "yahoo" })).toBe("yahoo");
+    expect(providerForPair("US30", { US30: "oanda" }, true)).toBe("oanda");
+    expect(providerForPair("US30", { US30: "dukascopy" })).toBe("dukascopy");
+    expect(providerForPair("EURUSD", { EURUSD: "unsupported" })).toBe("twelvedata");
+    expect(providerForPair("US30", { US30: "unsupported" })).toBe("dukascopy");
   });
 
-  it("index CFDs prefer OANDA when its token exists, then Dukascopy, never falling back to Yahoo", () => {
+  it("index CFDs prefer OANDA when its token exists, then Dukascopy", () => {
     expect(providerForPair("US30", {}, false)).toBe("dukascopy");
     expect(providerForPair("US30", {}, true)).toBe("oanda");
     expect(providerForPair("JAPAN225", {}, true)).toBe("oanda");
-    expect(providerForPair("US30", {}, false, false)).toBe("twelvedata"); // no automated routing to yahoo
+    expect(providerForPair("US30", {}, false, false)).toBe("twelvedata"); // disabled public index feed
     expect(providerForPair("XAUUSD", {}, true)).toBe("oanda"); // metals prefer OANDA when its token exists (broker-aligned gold)
     expect(providerForPair("XAUUSD", {}, false)).toBe("twelvedata"); // no token → Twelve Data stays primary
     expect(providerForPair("XAUUSD", { XAUUSD: "oanda" }, true)).toBe("oanda"); // explicit single-source option
@@ -61,58 +63,7 @@ describe("provider routing", () => {
     expect(symbolFor("EURUSD", {})).toBe("EUR/USD");
     expect(symbolFor("USDZAR", {})).toBe("USD/ZAR");
     expect(symbolFor("XAUUSD", {})).toBe("XAU/USD");
-    expect(symbolFor("US30", { US30: "^DJI" })).toBe("^DJI");
-  });
-});
-
-describe("fetchYahoo", () => {
-  const wire = {
-    chart: {
-      result: [{
-        timestamp: [1700000000, 1700001800, 1700003600],
-        indicators: {
-          quote: [{
-            open: [39000, 39010, null],   // third bar = session gap → skipped
-            high: [39020, 39030, null],
-            low: [38990, 39000, null],
-            close: [39010, 39015, null],
-          }],
-        },
-      }],
-      error: null,
-    },
-  };
-
-  it("parses quote arrays and skips null (gap) bars", async () => {
-    const fake: typeof fetch = async () => new Response(JSON.stringify(wire), { status: 200 });
-    const candles = await fetchYahoo("US30", "30m", 100, {}, fake);
-    expect(candles).toHaveLength(2);
-    expect(candles[0]).toEqual({ t: 1700000000000, o: 39000, h: 39020, l: 38990, c: 39010 });
-    expect(candles[1].c).toBe(39015);
-  });
-
-  it("uses the default Yahoo symbol for known index names, overridable by SYMBOL_MAP", async () => {
-    const seen: string[] = [];
-    const fake: typeof fetch = async (u) => {
-      seen.push(String(u));
-      return new Response(JSON.stringify(wire), { status: 200 });
-    };
-    await fetchYahoo("US30", "30m", 100, {}, fake);
-    expect(seen[0]).toContain("%5EDJI");           // default ^DJI
-    await fetchYahoo("US30", "30m", 100, { US30: "YM=F" }, fake);
-    expect(seen[1]).toContain("YM%3DF");           // explicit override
-  });
-
-  it("throws a descriptive error on Yahoo errors", async () => {
-    const fake: typeof fetch = async () =>
-      new Response(JSON.stringify({ chart: { result: null, error: { description: "No data found" } } }), { status: 200 });
-    await expect(fetchYahoo("GER40", "30m", 100, {}, fake)).rejects.toThrow(/Yahoo error for \^GDAXI/);
-  });
-
-  it("throws on empty/malformed results", async () => {
-    const fake: typeof fetch = async () =>
-      new Response(JSON.stringify({ chart: { result: [], error: null } }), { status: 200 });
-    await expect(fetchYahoo("JAPAN225", "1d", 100, {}, fake)).rejects.toThrow(/no candles/);
+    expect(symbolFor("US30", { US30: "US30/USD" })).toBe("US30/USD");
   });
 });
 
@@ -198,7 +149,7 @@ describe("fetchOanda", () => {
 });
 
 describe("decodeJetta", () => {
-  const feed = yahooFlatFeed();
+  const feed = flatIndexFeed();
 
   it("decodes cumulative unit deltas back to the exact candles", () => {
     const out = decodeJetta(dukaJson(feed));
@@ -241,7 +192,7 @@ describe("fetchDukascopy", () => {
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
       urls.push(url);
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
     await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
     expect(urls.every((u) => u.includes("USA30.IDX-USD"))).toBe(true);
@@ -257,7 +208,7 @@ describe("fetchDukascopy", () => {
     const urls: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
     await fetchDukascopy("EURUSD", "30m", 120, {}, fetchFn);
     expect(urls.every((u) => u.includes("EUR-USD"))).toBe(true);
@@ -267,7 +218,7 @@ describe("fetchDukascopy", () => {
     const urls: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
     const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
     expect(candles.length).toBe(120);                  // sliced to limit after merge/dedupe
@@ -285,7 +236,7 @@ describe("fetchDukascopy", () => {
       const urls: string[] = [];
       const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
         urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
-        return new Response(JSON.stringify(dukaJson(yahooFlatFeed(), 3600_000)), { status: 200 });
+        return new Response(JSON.stringify(dukaJson(flatIndexFeed(), 3600_000)), { status: 200 });
       };
       await fetchDukascopy("US30", tf, 120, {}, fetchFn);
       expect(urls.every((u) => u.includes(`/candles/${src}/`))).toBe(true);
@@ -312,7 +263,7 @@ describe("fetchDukascopy", () => {
     const fetchFn = async (_u: RequestInfo | URL): Promise<Response> => {
       n += 1;
       if (n <= 3) return new Response("missing", { status: 404 });
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
     const candles = await fetchDukascopy("US30", "30m", 120, {}, fetchFn);
     expect(candles.length).toBeGreaterThan(0);
@@ -324,7 +275,7 @@ describe("fetchDukascopy", () => {
     let fetches = 0;
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       fetches += 1;
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
     // warm-up ticks: each run fills ≤8 oldest-missing buckets into the cache
     for (let i = 0; i < 10; i++) await fetchDukascopy("US30", "30m", 120, {}, fetchFn, kv);
@@ -335,50 +286,29 @@ describe("fetchDukascopy", () => {
   });
 });
 
-describe("SYMBOL_MAP precedence", () => {
-  it("Yahoo-style SYMBOL_MAP values never poison Dukascopy instrument codes", async () => {
+describe("provider-specific symbol maps", () => {
+  it("ignores non-native overrides for canonical Dukascopy instruments", async () => {
     const urls: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
-      return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
     };
-    await fetchDukascopy("US30", "30m", 120, { US30: "^DJI" }, fetchFn);
-    expect(urls.every((u) => u.includes("USA30.IDX-USD") && !u.includes("%5EDJI"))).toBe(true);
+    await fetchDukascopy("US30", "30m", 120, { US30: "INVALID_ALIAS" }, fetchFn);
+    expect(urls.every((u) => u.includes("USA30.IDX-USD") && !u.includes("INVALID_ALIAS"))).toBe(true);
   });
 
-  it("Yahoo-style SYMBOL_MAP values never poison OANDA instruments", async () => {
+  it("keeps canonical OANDA instruments ahead of custom aliases", async () => {
     const urls: string[] = [];
-    const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
-      urls.push(typeof u === "string" ? u : u instanceof URL ? u.href : u.url);
-      return new Response(JSON.stringify({ instrument: "X", granularity: "M30", candles: [
+    const fetchFn: typeof fetch = async (u) => {
+      urls.push(String(u));
+      return new Response(JSON.stringify({ instrument: "US30_USD", granularity: "M30", candles: [
         { complete: true, volume: 0, time: "2024-03-04T00:00:00.000000000Z",
           mid: { o: "1", h: "1", l: "1", c: "1" } },
       ] }), { status: 200 });
     };
-    await fetchOanda("TOK", "US30", "30m", 10, { US30: "^DJI" }, fetchFn);
+    await fetchOanda("TOK", "US30", "30m", 10, { US30: "INVALID_ALIAS" }, fetchFn);
     expect(urls[0]).toContain("US30_USD");
-  });
-});
-
-describe("yahooSymbolFor", () => {
-  it("formats forex pairs with =X suffix", () => {
-    expect(yahooSymbolFor("EURUSD")).toBe("EURUSD=X");
-    expect(yahooSymbolFor("GBPUSD")).toBe("GBPUSD=X");
-    expect(yahooSymbolFor("USDJPY")).toBe("USDJPY=X");
-    expect(yahooSymbolFor("USDZAR")).toBe("USDZAR=X");
-  });
-
-  it("formats metals and indices", () => {
-    expect(yahooSymbolFor("XAUUSD")).toBe("GC=F");
-    expect(yahooSymbolFor("XAGUSD")).toBe("SI=F");
-    expect(yahooSymbolFor("US30")).toBe("^DJI");
-    expect(yahooSymbolFor("GER40")).toBe("^GDAXI");
-    expect(yahooSymbolFor("JAPAN225")).toBe("^N225");
-  });
-
-  it("respects explicit symbol overrides", () => {
-    expect(yahooSymbolFor("XAUUSD", { XAUUSD: "XAUUSD=X" })).toBe("XAUUSD=X");
-    expect(yahooSymbolFor("EURUSD", { EURUSD: "EUR=X" })).toBe("EUR=X");
+    expect(urls[0]).not.toContain("INVALID_ALIAS");
   });
 });
 
@@ -387,7 +317,7 @@ describe("fetchMarketData rate-limit fallback", () => {
     resetProviderCircuitBreakers();
   });
 
-  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted (never touches Yahoo)", async () => {
+  it("automatically falls back from Twelve Data to Dukascopy when daily credits are exhausted", async () => {
     const urlsSeen: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
@@ -400,7 +330,7 @@ describe("fetchMarketData rate-limit fallback", () => {
         }), { status: 200 });
       }
       if (url.includes("jetta.dukascopy.com")) {
-        return new Response(JSON.stringify(dukaJson(yahooFlatFeed())), { status: 200 });
+        return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
       }
       return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
     };
@@ -415,7 +345,7 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("dukascopy");
     expect(res.candles.length).toBeGreaterThan(0);
-    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+    expect(urlsSeen.some((u) => u.includes("jetta.dukascopy.com"))).toBe(true);
   });
 
   it("automatically falls back from Twelve Data to OANDA when token exists and TD credits exhausted", async () => {
@@ -454,17 +384,14 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("oanda");
     expect(res.candles.length).toBe(2);
-    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+    expect(urlsSeen.some((u) => u.includes("oanda.com"))).toBe(true);
   });
 
-  it("automatically falls back from Dukascopy to OANDA on error without falling back to Yahoo", async () => {
+  it("uses OANDA for index CFDs when its token is present", async () => {
     const urlsSeen: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
       urlsSeen.push(url);
-      if (url.includes("jetta.dukascopy.com")) {
-        return new Response("Service Unavailable", { status: 503 });
-      }
       if (url.includes("oanda.com")) {
         return new Response(JSON.stringify({
           instrument: "US30_USD",
@@ -488,33 +415,16 @@ describe("fetchMarketData rate-limit fallback", () => {
 
     expect(res.provider).toBe("oanda");
     expect(res.candles.length).toBe(2);
-    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+    expect(urlsSeen.some((u) => u.includes("oanda.com"))).toBe(true);
   });
 
-  it("fails safe when both Dukascopy and fallbacks fail without ever falling back to Yahoo", async () => {
+  it("fails safe when Dukascopy and its supported fallback fail", async () => {
     const urlsSeen: string[] = [];
     const fetchFn = async (u: RequestInfo | URL): Promise<Response> => {
       const url = typeof u === "string" ? u : u instanceof URL ? u.href : u.url;
       urlsSeen.push(url);
       if (url.includes("jetta.dukascopy.com")) {
         return new Response("Service Unavailable", { status: 503 });
-      }
-      if (url.includes("query1.finance.yahoo.com")) {
-        return new Response(JSON.stringify({
-          chart: {
-            result: [{
-              timestamp: [1709510400, 1709512200],
-              indicators: {
-                quote: [{
-                  open: [38000, 38100],
-                  high: [38150, 38200],
-                  low: [37950, 38050],
-                  close: [38100, 38180],
-                }],
-              },
-            }],
-          },
-        }), { status: 200 });
       }
       return new Response(JSON.stringify({ error: "unexpected URL" }), { status: 404 });
     };
@@ -525,8 +435,7 @@ describe("fetchMarketData rate-limit fallback", () => {
       limit: 10,
       fetchFn,
     })).rejects.toThrow(/Dukascopy/);
-
-    expect(urlsSeen.some((u) => u.includes("query1.finance.yahoo.com"))).toBe(false);
+    expect(urlsSeen.every((u) => u.includes("jetta.dukascopy.com"))).toBe(true);
   });
 });
 

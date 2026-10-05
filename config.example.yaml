@@ -8,13 +8,12 @@
 # stays disabled unless you explicitly opt in.
 # ─────────────────────────────────────────────────────────────────
 
-# "paper" = validation alerts tagged 🧪 PAPER (default; flip to "live" only
-# after you've reviewed paper alerts and trust the rules)
+# Paper simulation only: keep this value unchanged unless the owner explicitly authorizes a change.
 mode: paper
 paper_notify: true          # push paper alerts to Telegram/Discord too
 
 # Instruments (6-letter FX codes; XAUUSD = gold spot).
-# Indices work too when your provider has them — map symbols below.
+# Use only instruments supported by the configured market-data provider.
 pairs: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, XAUUSD]
 
 # Timeframe hierarchy
@@ -23,9 +22,8 @@ map_timeframe: "4h"               # vantage / map TF (built from source below)
 map_source_timeframe: "1h"        # fetched, then resampled into 4h
 context_timeframe: "1d"           # bias context (weekly/monthly derived)
 
-# Market data: "auto" uses Twelve Data if TWELVEDATA_API_KEY is set,
-# otherwise yfinance (no key needed, slightly delayed).
-provider: auto
+# Market data requires a Twelve Data API key in TWELVEDATA_API_KEY.
+provider: twelvedata
 candles_limit: 400
 poll_seconds: 30          # idle granularity between checks
 scan_delay_seconds: 10    # wait after a candle closes before fetching
@@ -33,7 +31,7 @@ alert_on_boot: false      # deliver setups already formed when the bot starts
 
 # Optional symbol overrides for your data source, e.g.:
 # symbol_map:
-#   XAUUSD: "GC=F"        # yfinance futures proxy
+#   XAUUSD: "XAU/USD"     # Twelve Data symbol format
 #   US30: "US30/USD"      # Twelve Data format example
 
 strategy:

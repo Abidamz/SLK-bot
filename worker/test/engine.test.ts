@@ -26,7 +26,7 @@ function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra =
   });
 }
 
-describe("RETEST_DEPTH_PCT compatibility and partial returns", () => {
+describe("RETEST_DEPTH_PCT compatibility and FVG penetration", () => {
   it("defaults to 100 and is byte-identical to the legacy config without the flag", () => {
     const legacyCfg = { ...cfg } as StrategyConfig;
     delete legacyCfg.retestDepthPct;
@@ -43,29 +43,58 @@ describe("RETEST_DEPTH_PCT compatibility and partial returns", () => {
     expect(runShort()).toEqual(legacy);
   });
 
-  it("accepts a 50% pullback toward the FVG retest boundary without changing other gates", () => {
+  it("requires a 50% penetration to the bearish FVG midpoint, while 100 keeps the legacy edge gate", () => {
+    const story = {
+      ...SHORT_STORY,
+      imbalances: [{ lo: 104.95, hi: 105.05, direction: "bearish" as const, time: BASE }],
+    };
     const rows = [...SHORT_ROWS];
-    rows[14] = [104.15, 104.45, 104.05, 104.35]; // reaches halfway, not the legacy boundary
-    const legacy = runShort(rows, { retestDepthPct: 100 });
-    const partial = runShort(rows, { retestDepthPct: 50 });
+    rows[14] = [103.55, 104.99, 103.50, 104.90]; // past legacy edge, just shy of FVG midpoint
+    rows[15] = [104.90, 105.00, 104.85, 104.92]; // reaches FVG midpoint
 
-    expect(legacy.alerts).toHaveLength(0);
-    expect(legacy.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    const legacy = runShortWithStory(story, rows.slice(0, 15), { retestDepthPct: 100 });
+    const beforeMidpoint = runShortWithStory(story, rows.slice(0, 15), { retestDepthPct: 50 });
+    const partial = runShortWithStory(story, rows, { retestDepthPct: 50 });
+
+    expect(legacy.alerts).toHaveLength(1);
+    expect(beforeMidpoint.alerts).toHaveLength(0);
     expect(partial.alerts).toHaveLength(1);
+    expect(partial.alerts[0].returnTime).toBe(BASE + 15 * 30 * 60_000);
     expect(partial.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
   });
 
-  it("applies the same partial-return calculation symmetrically to longs", () => {
+  it("applies the same FVG-depth measurement symmetrically to longs", () => {
+    const story = {
+      ...LONG_STORY,
+      imbalances: [{ lo: 97.75, hi: 98.05, direction: "bullish" as const, time: BASE }],
+    };
     const rows = [...LONG_ROWS];
-    rows[14] = [98.45, 98.50, 98.36, 98.40]; // reaches halfway, not the legacy boundary
-    const run = (retestDepthPct: number) => scanEntry({
+    rows[14] = [98.45, 98.52, 97.91, 98.10]; // legacy edge reached, midpoint not yet tagged
+    rows[15] = [98.10, 98.15, 97.90, 98.10]; // reaches FVG midpoint
+    const run = (retestDepthPct: number, candles = rows) => scanEntry({
       pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
-      candles: mkCandles(rows, 30), snaps: snapsFor(LONG_STORY),
+      candles: mkCandles(candles, 30), snaps: snapsFor(story),
       cfg: { ...cfg, retestDepthPct }, mode: "paper", provider: "test",
     });
 
-    expect(run(100).alerts).toHaveLength(0);
+    expect(run(100, rows.slice(0, 15)).alerts).toHaveLength(1);
+    expect(run(50, rows.slice(0, 15)).alerts).toHaveLength(0);
     expect(run(50).alerts).toHaveLength(1);
+  });
+
+  it("requires an overlapping, direction-matched FVG below 100", () => {
+    const rows = [...SHORT_ROWS];
+    rows[14] = [103.55, 104.99, 103.50, 104.90];
+    const unmatchedImbalances = [
+      [],
+      [{ lo: 104.2, hi: 105.05, direction: "bullish" as const, time: BASE }],
+      [{ lo: 104.0, hi: 104.5, direction: "bearish" as const, time: BASE }],
+    ];
+
+    for (const imbalances of unmatchedImbalances) {
+      const story = { ...SHORT_STORY, imbalances };
+      expect(runShortWithStory(story, rows, { retestDepthPct: 50 }).alerts).toHaveLength(0);
+    }
   });
 });
 

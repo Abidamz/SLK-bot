@@ -77,8 +77,10 @@ cp config.example.yaml config.yaml   # pairs, timeframes, strategy tuning
 cp .env.example .env                 # tokens (see below)
 ```
 
-Market data works with **zero API keys** (yfinance fallback). Twelve Data is
-used automatically when you set `TWELVEDATA_API_KEY`.
+The Python runner uses Twelve Data and requires `TWELVEDATA_API_KEY` in
+`.env`. The Cloudflare Worker uses its explicit OANDA routes, with the
+configured Dukascopy fallback for supported index CFDs and the Deriv relay for
+synthetic indices.
 
 ```bash
 python -m pytest tests/ -q        # 38 tests, incl. a full offline pipeline test
@@ -89,10 +91,9 @@ python -m slk_bot stats           # performance summary ·  --send pushes it
 python -m slk_bot events          # recent MAP/TOUCH/SWEEP/... transitions
 ```
 
-**Paper mode first** (the research's recommendation): with `mode: paper`
-(default) every alert is tagged `🧪 PAPER`; review them against your charts,
-tune `config.yaml`, and flip to `mode: live` only when the rules earn it. Set
-`paper_notify: false` to keep paper alerts log-only.
+**Paper simulation only:** keep `mode: paper` and `paper_notify: true`; every alert
+is tagged `🧪 PAPER`. Review alerts against charts and tune only approved
+settings. Do not enable live operation unless the owner explicitly authorizes it.
 
 ## Connecting Telegram
 
@@ -110,18 +111,22 @@ tune `config.yaml`, and flip to `mode: live` only when the rules earn it. Set
 
 ## Market data
 
-| Provider | Cost | Latency | Notes |
-|---|---|---|---|
-| **Twelve Data** (recommended) | free key: 8 req/min, 800/day | real-time-ish | `EURUSD`→`EUR/USD`, `XAUUSD`→`XAU/USD` automatically |
-| **yfinance** (default) | free, no key | delayed ~minutes | `EURUSD=X` etc.; `XAUUSD` falls back to `GC=F` |
+The Python CLI currently supports Twelve Data only. The deployed Worker has
+separate provider routing for its configured OANDA instruments, public
+Dukascopy index feed, and Deriv synthetic relay.
 
-The bot fetches 1h (resampled to 4h) + entry TFs at every cycle and the daily
-context once per UTC day — roughly **3 credits/pair/hour** on a 30m/1h stack,
-~450/day for 6 pairs: inside the free tier. Adding 15m execution roughly
-doubles that — trim `pairs:` or upgrade the plan accordingly. Another broker
-feed (OANDA, Polygon, …) plugs in as one `DataProvider` subclass in
-`slk_bot/data/` — that is also where a real **spread check** would hook in
-(none of the current feeds expose spreads).
+| Provider | Cost | Role |
+|---|---|---|
+| **Twelve Data** | API key; free plan has request limits | Python runner and Worker fallback; canonical FX/metals symbols are normalized automatically |
+| **OANDA** | API token | Official broker candles for configured Worker instruments |
+| **Dukascopy** | Public feed | Index-CFD fallback where a supported instrument mapping exists |
+| **Deriv** | Relay configuration | Synthetic-index candles through the Worker relay |
+
+The Python runner fetches 1h (resampled to 4h) + entry TFs at every cycle and
+the daily context once per UTC day — roughly **3 credits/pair/hour** on a
+30m/1h stack. Adding 15m execution roughly doubles that; trim `pairs:` or
+upgrade the Twelve Data plan accordingly. Any new Python provider must be
+explicitly reviewed and tested before it is added.
 
 All volatility-sensitive thresholds are **ATR-normalized per symbol and
 timeframe** from live data — the research explicitly warns against universal
@@ -155,7 +160,7 @@ Then `sudo systemctl enable --now slk-bot`, watch with `journalctl -u slk-bot -f
 slk_bot/
 ├── config.py              # YAML + env configuration
 ├── models.py              # Candle / Direction / price helpers
-├── data/                  # yfinance + Twelve Data providers, closed-candle hygiene
+├── data/                  # Twelve Data provider and closed-candle hygiene
 ├── slk/                   # ← THE SLK MODEL LIVES HERE
 │   ├── features.py        #   pivots, environment, phase, BOS, liquidity pools,
 │   │                      #   A/V/OC key levels + flips, FVGs, resampling

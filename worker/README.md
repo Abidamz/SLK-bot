@@ -9,7 +9,7 @@ trades and never will.**
 ## Architecture
 
 ```
-Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
+Configured feeds (Twelve Data/OANDA/Dukascopy/Deriv) ──► Cron */1 * * * * ──► scanAll()
                                                 │  per pair × entry TF
                                                 ▼
                               D1 (slk_alerts / slk_events / slk_kv / slk_scan_log)
@@ -25,20 +25,18 @@ Twelve Data (REST) ──► Cron */1 * * * * ──► scanAll()
   (`slk_bot/slk/`). Same state machine: `MAP → TOUCH → SWEEP → SHIFT →
   RETEST`, close-based invalidation, V-level flips, internal-then-external
   targets, per-pair ATR-derived tolerances (no universal pip constants).
-- **Providers** (`src/provider.ts`): Twelve Data `time_series` REST for
-  forex/metals; for index CFDs the default is the **Dukascopy public feed**
-  (`jetta.dukascopy.com` — keyless, realtime broker quotes from the Swiss
-  bank; `US30→USA30.IDX-USD`, `GER40→DEU.IDX-EUR`, `JAPAN225→JPN.IDX-JPY`),
-  with **OANDA practice v3 REST** taking precedence when `OANDA_API_TOKEN`
-  exists and **Yahoo Finance** (unofficial) as last resort. Routing is
-  automatic by canonical name; override per pair via the `PROVIDER_MAP` JSON
-  var. The Dukascopy wire format is columnar cumulative deltas over
-  UTC-bucketed files (minute→day files, hour→month files, day→year files);
-  closed files are immutable and cached in `slk_kv`, so a steady-state tick
-  costs ~2 requests per index pair. Gap periods are decoded as gaps — no
-  fabricated flat candles. (Yahoo alerted fine in tests, but its free index
-  feed lags broker quotes by minutes — keep it as escape hatch only, e.g.
-  `PROVIDER_MAP={"US30":"yahoo"}`.)
+- **Providers** (`src/provider.ts`): Twelve Data REST is the general FX/metals
+  source and a supported fallback. Configured institutional instruments use
+  OANDA v3 REST when available; supported index CFDs otherwise use the
+  Dukascopy public feed (`jetta.dukascopy.com`, e.g.
+  `US30→USA30.IDX-USD`, `GER40→DEU.IDX-EUR`,
+  `JAPAN225→JPN.IDX-JPY`). Deriv synthetics use the Vercel relay. `PROVIDER_MAP`
+  accepts only supported provider names; unknown values fall through to the
+  canonical routing rules. Dukascopy candles are columnar cumulative deltas
+  over UTC-bucketed files (minute→day, hour→month, day→year); closed files
+  are immutable and cached in `slk_kv`, so a steady-state tick costs about
+  two requests per index pair. Gaps remain gaps; the decoder never fabricates
+  flat candles.
 - **Data quality** (`validateAndClose`):
   1d context feed is cached in `slk_kv` per UTC day (rate-limit friendly);
   1h is resampled to the 4h map feed; entry timeframes are fetched directly.
@@ -101,7 +99,8 @@ npx wrangler d1 migrations apply slk-alert-db --remote
 
 # 4. set secrets (never commit these; they live only in the Worker's
 #    secret store)
-npx wrangler secret put TWELVEDATA_API_KEY
+npx wrangler secret put TWELVEDATA_API_KEY  # needed for Twelve Data routes/fallbacks
+npx wrangler secret put OANDA_API_TOKEN      # needed for explicit OANDA routes
 npx wrangler secret put TELEGRAM_BOT_TOKEN   # from @BotFather
 npx wrangler secret put TELEGRAM_CHAT_ID     # e.g. @userinfobot
 npx wrangler secret put DISCORD_WEBHOOK_URL  # channel → integrations → webhooks
@@ -117,11 +116,14 @@ Plain vars in `wrangler.jsonc` (safe to edit + commit):
 
 | var | default | meaning |
 | --- | --- | --- |
-| `PAIRS` | `EURUSD,GBPUSD,XAUUSD` | canonical pairs (canonical/symbol mapping via `SYMBOL_MAP` JSON var if your provider wants `EUR/USD`-style symbols) |
+| `PAIRS` | `EURUSD,GBPUSD,XAUUSD` | canonical watchlist; add only symbols with a verified provider route |
 | `ENTRY_TFS` | `30m,1h` | entry timeframes scanned (`loadConfig` drops `1d` entries and warns on <15m) |
-| `MODE` | `paper` | `paper` first; `live` only changes the alert badge |
-| `PAPER_NOTIFY` | `true` | paper alerts still send notifications (that's the point) |
-| `SYMBOL_MAP` | unset | optional JSON like `{"EURUSD":"EUR/USD"}` |
+| `SYNTH_ENTRY_TFS` | `1h` | primary entry intervals for Deriv synthetic indices |
+| `RETEST_DEPTH_PCT` | `100` | `100` preserves the legacy ATR-tolerant boundary check; `1–99` require that percent of penetration into the overlapping, direction-matched FVG (`50` is the midpoint) |
+| `MODE` | `paper` | paper simulation only; never enable live execution without explicit owner authorization |
+| `PAPER_NOTIFY` | `true` | allows paper-simulation alerts to be delivered |
+| `PROVIDER_MAP` | automatic routing | supported overrides: `twelvedata`, `oanda`, `dukascopy`, `deriv` |
+| `SYMBOL_MAP` | unset | optional JSON for a provider-specific symbol, such as `{"EURUSD":"EUR/USD"}` |
 
 ## Endpoints
 

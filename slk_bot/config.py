@@ -107,7 +107,7 @@ class Config:
     context_timeframe: str = CONTEXT_TF
     mode: str = "paper"          # "paper" (validation) | "live" (plain alerts)
     paper_notify: bool = True    # push paper alerts too (tagged 🧪 PAPER)
-    provider: str = "auto"       # auto | yfinance | twelvedata
+    provider: str = "twelvedata" # market data provider for the Python runner
     candles_limit: int = 400
     poll_seconds: int = 30
     scan_delay_seconds: int = 10
@@ -202,6 +202,6 @@ def load_config(path: str | None = None) -> Config:
     )
 
     if cfg.provider == "auto":
-        cfg.provider = "twelvedata" if cfg.twelvedata_api_key else "yfinance"
+        cfg.provider = "twelvedata"
 
     return cfg

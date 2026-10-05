@@ -58,7 +58,8 @@ def make_bot(tmp_path, monkeypatch):
     cfg.entry_timeframes = {"30m": 1800}
     cfg.mode = "paper"
     cfg.paper_notify = True
-    cfg.provider = "yfinance"          # replaced with the fake below
+    cfg.provider = "twelvedata"       # replaced with the fake below
+    cfg.twelvedata_api_key = "TEST_KEY"
     cfg.strategy.sessions_allowlist = []
     cfg.tracking.db_path = str(tmp_path / "signals.db")
 

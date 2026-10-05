@@ -35,7 +35,7 @@ export interface StrategyConfig {
   bosWindow: number;
   retestWindow: number;
   retestToleranceAtr: number;
-  /** Portion of the legacy post-BOS return required before confirmation, 1–100. */
+  /** 1–99 require that percent of the overlapping directional FVG; 100 preserves the legacy boundary check. */
   retestDepthPct?: number;
   setupWindow: number;
   slBufferAtr: number;
@@ -79,7 +79,7 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
-  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
+  providerMap: Record<string, "twelvedata" | "oanda" | "dukascopy" | "deriv">;
   derivAppId: string;
   derivProxyUrl?: string;
   filterHtfConflict: boolean;
@@ -138,7 +138,7 @@ interface EnvVars {
   TRAILING_BE_TRIGGER_R?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
-  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
+  PROVIDER_MAP?: string; // JSON object: canonical -> supported provider name
   DERIV_APP_ID?: string;
   DERIV_PROXY_URL?: string;
   FILTER_HTF_CONFLICT?: string;
@@ -187,7 +187,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
-  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"> = {};
+  let providerMap: Record<string, "twelvedata" | "oanda" | "dukascopy" | "deriv"> = {};
   if (env.PROVIDER_MAP) {
     try {
       providerMap = JSON.parse(env.PROVIDER_MAP);

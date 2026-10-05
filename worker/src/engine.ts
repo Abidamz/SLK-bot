@@ -58,6 +58,19 @@ function bisectRight(keys: number[], x: number): number {
   return lo;
 }
 
+function fvgRetestThreshold(s: Setup, isShort: boolean, depthPct: number): number | null {
+  const fvgDirection = isShort ? "bearish" : "bullish";
+  const fvg = [...s.imbalances]
+    .filter((imb) => imb.direction === fvgDirection && imb.hi >= s.level.zoneLo && imb.lo <= s.level.zoneHi)
+    .sort((a, b) => b.time - a.time)[0];
+  if (!fvg || !Number.isFinite(fvg.lo) || !Number.isFinite(fvg.hi) || fvg.hi <= fvg.lo) return null;
+
+  const width = fvg.hi - fvg.lo;
+  return isShort
+    ? fvg.lo + width * (depthPct / 100)
+    : fvg.hi - width * (depthPct / 100);
+}
+
 export function scanEntry(args: ScanEntryArgs): {
   alerts: Alert[];
   events: EngineEvent[];
@@ -125,7 +138,7 @@ export function scanEntry(args: ScanEntryArgs): {
             sweepIndex: 0, sweepTime: null,
             extreme: 0, refPrice: 0,
             bosIndex: 0, bosTime: null,
-            invLevel: 0, leftZone: false, leftZonePrice: null,
+            invLevel: 0, leftZone: false,
             environment: story.environment, phase: story.phase,
             htfAlignment: story.htfAlignment,
             drawOnLiquidity: story.drawOnLiquidity,
@@ -165,6 +178,7 @@ export function scanEntry(args: ScanEntryArgs): {
           const onSideNew = isShort ? c.c < origin.zoneLo : c.c > origin.zoneHi;
           if (onSideNew) {
             cur.level = origin;
+            cur.imbalances = [...story!.imbalances];
             cur.setupId = buildSetupId(pair, entryTf, d, origin);
             cur.mapIndex = i;
             cur.mapTime = c.t;
@@ -246,23 +260,15 @@ export function scanEntry(args: ScanEntryArgs): {
         if (violated) { kill(cur, "INVALID", c, "close beyond invalidation level"); continue; }
         if (i > cur.bosIndex) {
           const left = isShort ? c.c < z.zoneLo : c.c > z.zoneHi;
-          if (left && !cur.leftZone) {
-            cur.leftZone = true;
-            cur.leftZonePrice = c.c;
-          }
+          if (left) cur.leftZone = true;
           const tol = cfg.retestToleranceAtr * atrE;
-          // At 100%, retain the exact pre-flag boundary check. Lower values
-          // require only that fraction of the return from the first close
-          // beyond the zone back to the established RETEST threshold.
-          const legacyReturns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
-          let returns = legacyReturns;
-          if (retestDepthPct < 100 && cur.leftZonePrice !== null) {
-            const legacyThreshold = isShort ? z.zoneLo - tol : z.zoneHi + tol;
-            const anchor = isShort
-              ? Math.min(cur.leftZonePrice, legacyThreshold)
-              : Math.max(cur.leftZonePrice, legacyThreshold);
-            const partialThreshold = anchor + (legacyThreshold - anchor) * (retestDepthPct / 100);
-            returns = isShort ? c.h >= partialThreshold : c.l <= partialThreshold;
+          // 100 is the compatibility value and keeps the exact legacy,
+          // ATR-tolerant origin-zone boundary check. Values below 100 require
+          // literal penetration into the overlapping, direction-matched FVG.
+          let returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          if (retestDepthPct < 100) {
+            const partialThreshold = fvgRetestThreshold(cur, isShort, retestDepthPct);
+            returns = partialThreshold !== null && (isShort ? c.h >= partialThreshold : c.l <= partialThreshold);
           }
           if (cur.leftZone && returns) {
             // opposing liquidity must remain standing for reversal setups
@@ -282,7 +288,7 @@ export function scanEntry(args: ScanEntryArgs): {
             });
             if (alert) {
               const retestReason = retestDepthPct < 100
-                ? `partial return (${retestDepthPct}%) toward origin zone → confirmation entry @ ${c.c}`
+                ? `FVG retest depth ${retestDepthPct}% → confirmation entry @ ${c.c}`
                 : `return to origin zone → confirmation entry @ ${c.c}`;
               emit(cur, "RETEST", c, retestReason);
               alerts.push(alert);

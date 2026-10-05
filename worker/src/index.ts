@@ -432,9 +432,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   for (const pair of pairsToScan) {
     try {
-      // provider routing: forex/metals → Twelve Data, index CFDs → OANDA
-      // (if its token exists) → Dukascopy public feed → Yahoo last resort
-      // (a per-pair outage never blocks the other pairs — see catch below)
+      // Provider routing uses the configured map and supported feeds; a
+      // per-pair outage never blocks the other pairs (see catch below).
       const providerName = providerForPair(pair, cfg.providerMap, oandaTokenPresent);
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
@@ -1535,7 +1534,7 @@ export default {
       const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
       if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
       const allowedSort = ["candleCloseTime", "pair", "timeframe", "direction", "status", "provider"];
-      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","yahoo","oanda"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
+      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","oanda","deriv"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
       const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
       const fromMs = from ? Date.parse(from) : null; const toMs = to ? Date.parse(to) : null;
       if (bad) return json({ error: bad }, 400);

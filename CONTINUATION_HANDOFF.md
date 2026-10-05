@@ -26,7 +26,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 ### Runtime path
 
 1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
-2. `worker/src/provider.ts` routes OANDA-supported institutional instruments using the configured provider map, with tested provider fallbacks. The three newly added Forex instruments resolve explicitly as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv synthetics are fetched through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
+2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
 4. Cloudflare D1 stores alerts, events, scan diagnostics, notification state, and the isolated shadow ledger. SQL migrations are in `worker/migrations/` (`0001`–`0006`). The owner already applied `0006_shadow_ledger.sql` in production; shadow-ledger code also fails safe if that table is unavailable.
 5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive watch radar, bias cards, teaser cards, weekly recaps, and the Engine Discipline digest. Synthetic content is never sent to the Forex free channel.
@@ -37,7 +37,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - `worker/src/config.ts` — env parsing and strategy defaults.
 - `worker/src/provider.ts` — provider resolution and candle validation.
 - `worker/src/features.ts`, `worker/src/storyline.ts` — market structure and storyline.
-- `worker/src/engine.ts` — state machine, target/risk gates, optional partial-retest threshold.
+- `worker/src/engine.ts` — state machine, target/risk gates, optional FVG-depth retest threshold.
 - `worker/src/store.ts` — D1/MemStore behavior, delivered ledger, scan logs, shadow ledger.
 - `worker/src/shadow.ts` — directional-bias classification (separate from shadow-trade measurement).
 - `worker/src/notify.ts` — Telegram formatting, channel routing, recaps and digest.
@@ -105,7 +105,7 @@ These are effective production values on 2026-10-05, after the requested config 
 | `PAIRS` | `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S,USDCAD,NZDUSD,EURJPY` | Canonical watchlist (23 markets). | Only add symbols with a verified provider route and supported instrument mapping. Monitor scan capacity when widening. |
 | `ENTRY_TFS` | `15m,30m,1h` | Institutional entry timeframes. | Production-safe set is `15m`, `30m`, `1h`; finer intervals raise CPU/provider load. |
 | `SYNTH_ENTRY_TFS` | `30m,1h` | Primary entry timeframes for Deriv synthetics. | Must be valid entry intervals; current set is `30m,1h`. |
-| `RETEST_DEPTH_PCT` | `100` | Required fraction of the legacy post-BOS return toward the origin/FVG-overlap zone before RETEST can qualify. | Accepted range `1–100`. `100` is byte-identical to the legacy boundary check; `50` allows halfway back from the first post-BOS close outside the zone. Prefer `50–100` while studying; lower values can widen eligibility. Downstream gates are unchanged. |
+| `RETEST_DEPTH_PCT` | `100` | Below `100`, minimum penetration into the latest direction-matched, unmitigated FVG overlapping the origin. | Accepted range `1–100`. `100` is a compatibility sentinel and remains byte-identical to the legacy ATR-tolerant boundary check. Values `1–99` are literal percentages of the full FVG width (`50` requires the FVG midpoint). If there is no overlapping direction-matched FVG, values below `100` cannot qualify a retest. Downstream target-floor, risk, and stop gates remain unchanged. |
 | `MIN_TP_R` | `2.5` | Minimum target reward:risk. | **Locked at 2.5.** Revisit only after 2–3 weeks of shadow evidence and an explicit owner decision. |
 | `MIN_RISK_ATR` | `0.8` | Minimum stop width normalized to entry-timeframe ATR. | **Locked at 0.8.** |
 | `MIN_STOP_PIPS` | `10` | Asset-aware minimum stop-distance floor. | Keep at least `10`; any increase requires a paper test. |
@@ -120,7 +120,7 @@ These are effective production values on 2026-10-05, after the requested config 
 | `TRAILING_BE_ENABLED` | `true` (code default; not overridden in Wrangler) | Enables breakeven protection handling. | Keep enabled. Preserve the explicit BE notice, including pending BE order, at `+1.50R`. |
 | `TRAILING_BE_TRIGGER_R` | `1.5` (code default; not overridden in Wrangler) | Favorable excursion that arms breakeven handling. | **Keep exactly `1.50R`.** |
 | `PROVIDER_MAP` | OANDA for `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,USDCAD,NZDUSD,EURJPY,XAUUSD,US30,GER40,JAPAN225,NAS100` | Explicit routing for configured institutional instruments. | Only use source-supported mappings. New Forex symbols must resolve to real instruments in `worker/src/provider.ts`; do not add an unapproved provider. |
-| `SYMBOL_MAP` | `{"US30":"^DJI","GER40":"^GDAXI","JAPAN225":"^N225","NAS100":"^NDX"}` | Optional provider-specific symbol overrides; active configured routes use their canonical OANDA/Dukascopy mappings. | Leave unchanged unless a selected provider requires a tested canonical mapping. Never use it to introduce an unapproved data source. |
+| `SYMBOL_MAP` | unset (`{}` in code) | Optional provider-specific symbol overrides; current production routes use canonical instrument mappings. | Leave unset unless a selected supported provider requires a tested canonical mapping. |
 | `DERIV_PROXY_URL` | `https://slk-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
 | `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
 | `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
@@ -162,7 +162,7 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 5. Public journal/dashboard shows only signals actually delivered to Telegram; audit views stay admin-key-gated. Recap cards retain the paper simulation/research-only disclaimer.
 6. VIP receives confirmed entries and final outcomes only. Digests, teasers, and upgrade CTAs are FREE-channel only. No synthetic material goes to the Forex free channel.
 7. Never print, log, or commit secrets. Never ask the owner to paste secrets into chat.
-8. No Yahoo Finance anywhere: do not add it as a provider, route, fallback, or data source.
+8. Use only provider routes explicitly supported in `worker/src/provider.ts`; do not add an unapproved provider, route, fallback, or market-data source.
 9. Preserve explicit breakeven notification—including the pending BE order—at `+1.50R` favorable excursion.
 10. Preserve authentic candlesticks with green/red risk-reward boxes in the TradingView style.
 11. Do not merge, modify, or reopen PRs #3 and #8. The owner closes them manually.

@@ -1,6 +1,5 @@
 /** Market data: Twelve Data REST (fetch-based, Workers-compatible) plus
  *  OANDA v3 REST + Dukascopy tick data + Deriv WebSocket.
- *  Yahoo Finance is excluded from automated fallbacks and accessible only via explicit PROVIDER_MAP.
  *  Canonical symbol mapping is explicit: the research requires normalized
  *  symbols per provider. */
 import type { Candle } from "./types";
@@ -59,28 +58,6 @@ export async function fetchTwelveData(
     l: Number(row.low),
     c: Number(row.close),
   }));
-}
-
-// ---------------------------------------------------------------- Yahoo Finance
-// Fallback source for instruments Twelve Data's free plan lacks (index CFDs).
-// Unofficial free endpoint — can lag the broker or drop sessions; alerts from
-// this provider are research-grade, never broker-exact prices.
-
-/** Yahoo symbols for our canonical index names. */
-const YAHOO_INDEX_SYMBOLS: Record<string, string> = {
-  US30: "^DJI", GER40: "^GDAXI", DE40: "^GDAXI",
-  JAPAN225: "^N225", JP225: "^N225", N225: "^N225",
-  NAS100: "^NDX", US100: "^NDX", SPX500: "^GSPC", US500: "^GSPC", UK100: "^FTSE",
-};
-
-export function yahooSymbolFor(pair: string, symbolMap: Record<string, string> = {}): string {
-  if (symbolMap[pair]) return symbolMap[pair];
-  const p = pair.toUpperCase();
-  if (YAHOO_INDEX_SYMBOLS[p]) return YAHOO_INDEX_SYMBOLS[p];
-  if (p === "XAUUSD") return "GC=F";
-  if (p === "XAGUSD") return "SI=F";
-  if (p.length === 6) return `${p}=X`;
-  return p;
 }
 
 // --------------------------------------------------------------------- OANDA
@@ -185,9 +162,8 @@ const DUKA_INSTRUMENTS: Record<string, string> = {
 
 function dukaCode(pair: string, symbolMap: Record<string, string>): string {
   const p = pair.toUpperCase();
-  // curated map FIRST: SYMBOL_MAP is shared with Yahoo (^DJI-style) and would
-  // otherwise poison the URL; accept a SYMBOL_MAP override only if it looks
-  // like a Dukascopy code (e.g. USA30.IDX-USD, EUR-USD)
+  // Canonical instrument mappings take precedence. Accept a SYMBOL_MAP
+  // override only when it matches a Dukascopy code (e.g. USA30.IDX-USD, EUR-USD).
   if (DUKA_INSTRUMENTS[p]) return DUKA_INSTRUMENTS[p];
   const custom = symbolMap[pair] ?? symbolMap[p];
   if (custom && /^[A-Z0-9]{2,}(\.IDX)?-[A-Z]{3}$/.test(custom)) return custom;
@@ -896,13 +872,13 @@ export async function testDerivEndpoints(symbol = "R_75", requestedTarget?: stri
 
 export const METAL_PAIRS = new Set(["XAUUSD", "XAGUSD"]);
 
-export type ProviderName = "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv";
+export type ProviderName = "twelvedata" | "oanda" | "dukascopy" | "deriv";
 
 /** Which upstream serves a canonical pair. Index CFDs: OANDA when its token
  *  exists (geo-restricted signups), else the keyless Dukascopy public feed
  *  (realtime broker quotes), or Twelve Data. Deriv synthetics
  *  (e.g., V75, V100) route directly to Deriv. Everything else → Twelve Data.
- *  PROVIDER_MAP overrides (including explicit "yahoo"). */
+ *  PROVIDER_MAP can override the default for an explicitly supported provider. */
 export function providerForPair(
   pair: string,
   providerMap: Record<string, string> = {},
@@ -910,12 +886,12 @@ export function providerForPair(
   dukascopyEnabled = true,
 ): ProviderName {
   const override = providerMap[pair];
-  if (override === "twelvedata" || override === "yahoo" || override === "oanda" || override === "dukascopy" || override === "deriv") return override;
+  if (override === "twelvedata" || override === "oanda" || override === "dukascopy" || override === "deriv") return override;
   if (isDerivPair(pair)) return "deriv";
   const p = pair.toUpperCase();
   // NB: classify by the canonical index-name set only — OANDA_INSTRUMENTS
   // also lists metals (future all-OANDA option) and must NOT affect routing.
-  const isIndexCfd = INDEX_POINT_PAIRS.has(p) || Boolean(YAHOO_INDEX_SYMBOLS[p]);
+  const isIndexCfd = INDEX_POINT_PAIRS.has(p);
   if (isIndexCfd) {
     if (oandaTokenPresent) return "oanda";
     return dukascopyEnabled ? "dukascopy" : "twelvedata";
@@ -929,65 +905,6 @@ export function providerForPair(
     return "twelvedata";
   }
   return "twelvedata";
-}
-
-/** Range long enough to satisfy `limit` even with market-hours gaps. */
-const YAHOO_RANGES: Record<string, string> = {
-  "5m": "5d", "15m": "1mo", "30m": "3mo", "45m": "3mo", "1h": "6mo", "2h": "1y", "4h": "1y", "1d": "2y",
-};
-
-export async function fetchYahoo(
-  pair: string,
-  tf: string,
-  limit: number,
-  symbolMap: Record<string, string> = {},
-  fetchFn: FetchLike = fetch,
-): Promise<Candle[]> {
-  const primarySymbol = yahooSymbolFor(pair, symbolMap);
-  const candidates = [primarySymbol];
-  const p = pair.toUpperCase();
-  if (p === "XAUUSD" && !symbolMap[pair]) {
-    candidates.push("XAUUSD=X");
-  } else if (p === "XAGUSD" && !symbolMap[pair]) {
-    candidates.push("XAGUSD=X");
-  }
-
-  let lastErr: Error | null = null;
-  for (const symbol of candidates) {
-    try {
-      const range = YAHOO_RANGES[tf] ?? "3mo";
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`
-        + `?interval=${encodeURIComponent(tf)}&range=${range}&includePrePost=false`;
-      const resp = await fetchFn(url, {
-        headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
-        signal: AbortSignal.timeout(20_000),
-      });
-      const data = (await resp.json()) as {
-        chart?: {
-          error?: { description?: string } | null;
-          result?: {
-            timestamp?: number[];
-            indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[] }[] };
-          }[] | null;
-        };
-      };
-      if (data.chart?.error) throw new Error(`Yahoo error for ${symbol} ${tf}: ${data.chart.error.description ?? "unknown"}`);
-      const r = data.chart?.result?.[0];
-      const q = r?.indicators?.quote?.[0];
-      if (!r?.timestamp?.length || !q) throw new Error(`Yahoo returned no candles for ${symbol} ${tf}`);
-      const out: Candle[] = [];
-      for (let i = 0; i < r.timestamp.length; i++) {
-        const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i];
-        if (o == null || h == null || l == null || c == null) continue; // session gaps/holidays
-        out.push({ t: r.timestamp[i] * 1000, o, h, l, c });
-      }
-      if (out.length === 0) throw new Error(`Yahoo returned empty candles for ${symbol} ${tf}`);
-      return out.length > limit ? out.slice(-limit) : out;
-    } catch (err) {
-      lastErr = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-  throw lastErr ?? new Error(`Yahoo failed for ${pair}`);
 }
 
 /** Unified entry point: route by provider, one argument shape for all. */
@@ -1135,9 +1052,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
             throw dukaErr;
           }
         })()
-      : provider === "yahoo"
-        ? await fetchYahoo(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn)
-        : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+      : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
   return { provider, candles };
 }
 
