@@ -5,7 +5,7 @@ import { defaultStrategy, minStopDistance } from "../src/config";
 import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
-  LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
+  BASE, LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
 } from "./fixtures";
 
 const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
@@ -14,6 +14,14 @@ function runShort(rows = SHORT_ROWS, extra = {}) {
   return scanEntry({
     pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
     candles: mkCandles(rows, 30), snaps: snapsFor(SHORT_STORY),
+    cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
+  });
+}
+
+function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra = {}) {
+  return scanEntry({
+    pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+    candles: mkCandles(rows, 30), snaps: snapsFor(story),
     cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
   });
 }
@@ -114,6 +122,70 @@ describe("failure paths", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertStatus).toBe("SUPPRESSED");
     expect(alerts[0].suppressReason).toBe("outside session allowlist");
+  });
+});
+
+describe("near-miss shadow capture (research-only)", () => {
+  function storyWithSingleTarget(target: number) {
+    return {
+      ...SHORT_STORY,
+      internalPools: [
+        { price: target, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+        { price: 103.5, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+      ],
+      nearestExternalTarget: null,
+      drawOnLiquidity: null,
+    };
+  }
+
+  it("captures [2.0R, 2.5R) floor rejects without an alert or shadow-specific event", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.35));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      pair: "EURUSD", entryTf: "30m", direction: "SHORT", entry: 104.9,
+      tp1: 104.35, rejectReason: "TARGET_FLOOR",
+    });
+    expect(result.shadowTrades[0].rr).toBeGreaterThanOrEqual(2.0);
+    expect(result.shadowTrades[0].rr).toBeLessThan(2.5);
+    // The pre-existing MAP/TOUCH/SWEEP/SHIFT tape is unchanged. A shadow row
+    // does not fabricate a RETEST event or any alert.
+    expect(result.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+    expect(result.diagnostics.confirmedAlerts).toBe(0);
+  });
+
+  it("does not capture a floor-rejected candidate below 2.0R", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.45));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toEqual([]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+  });
+
+  it("captures an expired post-BOS chain as a NO_RETEST BOS-close approximation", () => {
+    const rows: [number, number, number, number][] = [
+      ...SHORT_ROWS.slice(0, 12),
+      [103.9, 104.0, 103.4, 103.5],
+      [103.5, 103.6, 103.3, 103.4],
+      [103.4, 103.5, 103.1, 103.2],
+    ];
+    const candles = mkCandles(rows, 30);
+    const result = runShort(rows, { retestWindow: 2 });
+    expect(result.alerts).toHaveLength(0);
+    expect(result.events[result.events.length - 1]).toMatchObject({ state: "EXPIRED", reason: "no retest of the origin zone" });
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      rejectReason: "NO_RETEST", entry: candles[11].c, pair: "EURUSD", entryTf: "30m",
+    });
+    expect(result.shadowTrades[0].candleCloseTime).toBe(candles[11].t + 30 * 60_000);
+
+    const noPoolsStory = {
+      ...SHORT_STORY, internalPools: [], externalPools: [],
+      nearestExternalTarget: null, drawOnLiquidity: null,
+    };
+    const noPoolResult = runShortWithStory(noPoolsStory, rows, { retestWindow: 2 });
+    expect(noPoolResult.shadowTrades).toHaveLength(1);
+    expect(noPoolResult.shadowTrades[0]).toMatchObject({ rejectReason: "NO_RETEST", rr: 2.5 });
   });
 });
 

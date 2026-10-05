@@ -1,8 +1,16 @@
 /** Store semantics: dedupe, idempotent events, cooldown source, outcomes. */
-import { describe, expect, it } from "vitest";
-import { MemStore } from "../src/store";
-import type { Alert } from "../src/types";
+import { describe, expect, it, vi } from "vitest";
+import { D1Store, MemStore, type D1Like } from "../src/store";
+import type { Alert, ShadowTradeCapture } from "../src/types";
 import { BASE } from "./fixtures";
+
+function mkShadowTrade(setupId: string, rejectReason: ShadowTradeCapture["rejectReason"] = "TARGET_FLOOR"): ShadowTradeCapture {
+  return {
+    setupId, pair: "EURUSD", entryTf: "30m", direction: "SHORT",
+    entry: 100, stopLoss: 101, tp1: 98, rr: 2, rejectReason,
+    candleCloseTime: BASE,
+  };
+}
 
 function mkAlert(setupId = "td:EURUSD:30m:SHORT:A:105.00000000:x"): Alert {
   return {
@@ -57,6 +65,51 @@ describe("MemStore", () => {
     expect(open).toHaveLength(0);
     const rows = await s.recentAlerts(10);
     expect(rows[0].status).toBe("TP_HIT");
+  });
+
+  it("dedupes shadow trades by setup identity and aggregates only shadow outcomes", async () => {
+    const s = new MemStore();
+    expect(await s.insertShadowTrade(mkShadowTrade("shadow-floor-a"))).toBe(true);
+    expect(await s.insertShadowTrade(mkShadowTrade("shadow-floor-a"))).toBe(false);
+    expect(await s.insertShadowTrade(mkShadowTrade("shadow-floor-b"))).toBe(true);
+    expect(await s.insertShadowTrade(mkShadowTrade("shadow-no-retest", "NO_RETEST"))).toBe(true);
+    await s.recordShadowOutcome("shadow-floor-a", {
+      status: "TP_HIT", exitPrice: 98, exitTime: BASE + 3600_000, rMultiple: 2,
+    });
+    await s.recordShadowOutcome("shadow-no-retest", {
+      status: "SL_HIT", exitPrice: 101, exitTime: BASE + 3600_000, rMultiple: -1,
+    });
+
+    const ledger = await s.getShadowLedger();
+    expect(ledger.available).toBe(true);
+    expect(ledger.rows).toHaveLength(3);
+    expect(ledger.aggregate.TARGET_FLOOR).toEqual({
+      count: 2, resolved: 1, wins: 1, losses: 0, netR: 2, winRate: 100,
+    });
+    expect(ledger.aggregate.NO_RETEST).toEqual({
+      count: 1, resolved: 1, wins: 0, losses: 1, netR: -1, winRate: 0,
+    });
+    // The research ledger remains disjoint from the alert/event surfaces.
+    expect(await s.recentAlerts(10)).toHaveLength(0);
+    expect(await s.recentEvents(10)).toHaveLength(0);
+  });
+
+  it("no-ops the shadow ledger when its D1 table is missing and caches the probe", async () => {
+    const prepare = vi.fn((sql: string) => ({
+      bind: (..._values: unknown[]) => ({
+        run: async () => ({ meta: { changes: 0 } }),
+        first: async () => null,
+        all: async () => {
+          if (sql.includes("slk_shadow_trades")) throw new Error("no such table: slk_shadow_trades");
+          return { results: [] };
+        },
+      }),
+    }));
+    const store = new D1Store({ prepare } as unknown as D1Like);
+    expect(await store.insertShadowTrade(mkShadowTrade("missing-table"))).toBe(false);
+    expect(await store.openShadowTrades()).toEqual([]);
+    expect((await store.getShadowLedger()).available).toBe(false);
+    expect(prepare).toHaveBeenCalledTimes(1);
   });
 
   it("filters and paginates alert queries with total count", async () => {
