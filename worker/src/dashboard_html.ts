@@ -254,7 +254,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div>
         <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
         <h1>Algorithmic Confirmation Engine & Research Ledger</h1>
-          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 20 institutional and 24/7 synthetic markets.</p>
+          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 23 markets (13 institutional and 10 synthetic).</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -307,10 +307,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
           <button type="button" class="segment-btn active" data-segment="all">
-            <span>🌍</span> All Markets <span class="seg-count">20</span>
+            <span>🌍</span> All Markets <span class="seg-count">23</span>
           </button>
           <button type="button" class="segment-btn" data-segment="institutional">
-            <span>🏛️</span> Institutional <span class="seg-count">10</span>
+            <span>🏛️</span> Institutional <span class="seg-count">13</span>
           </button>
           <button type="button" class="segment-btn" data-segment="synthetics">
             <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
@@ -326,10 +326,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">10 Markets</span>
+            <span class="pill" style="font-size:11px;">13 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
@@ -507,8 +507,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
-            <div><dt>Active Markets (20)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s)</dd></div>
-            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 10 Synthetics (24/7)</dd></div>
+            <div><dt>Active Markets (23)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s) · USDCAD · NZDUSD · EURJPY</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">13 Institutional · 10 Synthetics (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
@@ -624,10 +624,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
         <button type="button" class="segment-btn active" data-segment="all">
-          <span>🌍</span> All Markets <span class="seg-count">20</span>
+          <span>🌍</span> All Markets <span class="seg-count">23</span>
         </button>
         <button type="button" class="segment-btn" data-segment="institutional">
-          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
+          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">13</span>
         </button>
         <button type="button" class="segment-btn" data-segment="synthetics">
           <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
@@ -689,10 +689,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">10 Markets</span>
+            <span class="pill" style="font-size:11px;">13 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRate" class="profit-text">—</strong></div>
