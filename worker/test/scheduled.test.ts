@@ -206,6 +206,26 @@ describe("scheduled scan cycle", () => {
     expect(summary.errors.some((e) => e.startsWith("US30") && e.includes("stale feed"))).toBe(true);
   });
 
+  it("emits at most one pre-entry card, and only at SHIFT", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const summary = await scanAll(makeEnv({
+      WATCH_NOTIFY: "true",
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_RADAR",
+    }), {
+      now: T0 + 6.5 * 3600_000,
+      fetchFn: makeFakeFetch(calls),
+      force: true,
+      storeOverride: new MemStore(),
+    });
+    expect(summary.alerts).toBe(0); // the RETEST/entry has not happened yet
+    const watch = calls.telegram.filter((message) => message.startsWith("👀 WATCH"));
+    expect(watch).toHaveLength(1);
+    expect(watch[0]).toContain("State      : ⚡ SHIFT");
+    expect(watch[0]).toContain("NOT AN ENTRY");
+    expect(watch[0]).not.toContain("State      : 👆 TOUCH");
+    expect(watch[0]).not.toContain("State      : 🌊 SWEEP");
+  });
+
   it("watch toggle suppresses stale replayed heads-ups", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
@@ -236,7 +256,7 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram).toHaveLength(0);
   });
 
-  it("watch heads-ups are silent by default (toggle off)", async () => {
+  it("watch notifications are disabled by default", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     await scanAll(makeEnv(), {
@@ -245,7 +265,30 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram.filter((m) => m.startsWith("👀 WATCH"))).toHaveLength(0);
   });
 
-  it("delivers entry alerts and watch heads-ups cleanly to Telegram", async () => {
+  it("confirmed-only preference blocks the separate free-channel watch fan-out", async () => {
+    const rawBodies: { url: string; body: any }[] = [];
+    const testFetch: typeof fetch = async (input, init) => {
+      rawBodies.push({ url: String(input), body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 888 } }), { status: 200 });
+    };
+    await notifyWatch({
+      TELEGRAM_BOT_TOKEN: "mock-token",
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_RADAR",
+      WATCH_TELEGRAM: "false",
+      VIP_WATCH_TELEGRAM: "false",
+      fetchFn: testFetch,
+    }, {
+      setupId: "test:EURUSD:30m:SHORT:V:1.0850:2026-09-25",
+      pair: "EURUSD",
+      candleTime: Date.now(),
+      state: "SHIFT",
+      reason: "BOS structure shift",
+      price: 1.0850,
+    }, "30m");
+    expect(rawBodies).toHaveLength(0);
+  });
+
+  it("delivers labeled SHIFT context and confirmed-entry messages to Telegram", async () => {
     const rawBodies: { url: string; body: any }[] = [];
     const testFetch: typeof fetch = async (input, init) => {
       const url = String(input);
@@ -300,6 +343,8 @@ describe("scheduled scan cycle", () => {
 
     const watchCall = rawBodies.find((b) => b.body.text?.includes("👀 WATCH"));
     expect(watchCall).toBeDefined();
+    expect(watchCall?.body.text).toContain("WATCH — NOT AN ENTRY");
+    expect(watchCall?.body.text).toContain("Pre-entry context only. No entry exists unless");
     expect(watchCall?.body.disable_notification).toBe(true);
 
     const alertCall = rawBodies.find((b) => b.body.text?.includes("ACTION REQUIRED"));

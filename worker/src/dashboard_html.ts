@@ -832,7 +832,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <div>
               <span class="eyebrow">TELEGRAM</span>
               <h3>WATCH Heads-up Notifications</h3>
-              <p>Optional setup forming heads-up (TOUCH/SWEEP/SHIFT).</p>
+              <p>Optional pre-entry context only: one SHIFT-stage card per setup. Not an entry; also requires the server-level watch switch.
             </div>
             <input id="telegramWatch" type="checkbox" aria-label="Enable Telegram WATCH notifications">
           </label>

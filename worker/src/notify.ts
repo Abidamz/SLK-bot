@@ -818,8 +818,8 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
   });
 }
 
-/** "Setup forming" heads-up (WATCH_NOTIFY=true): a SWEEP or SHIFT
- *  transition on an entry timeframe. Delivered SILENTLY so phones do not vibrate. */
+/** Optional pre-entry context card. Production sends only SHIFT when enabled;
+ *  every card is explicitly marked as not being an entry. */
 export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFreeChannel?: boolean }): string {
   // Current identity format: pair:tf:direction:kind:price:originTime
   // (legacy provider-prefixed rows still exist in slk_events but are
@@ -831,7 +831,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
   const originPrice = parts[4] ? Number(parts[4]) : null;
   const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
   const lines = [
-    `👀 WATCH (Silent Radar) — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
+    `👀 WATCH — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
     `📍 Pair     : 🌟【 ${boldPair} 】🌟`,
     `State      : ${stateEmoji} ${ev.state}`,
     `Detail     : ${ev.reason}`,
@@ -845,14 +845,14 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
     `Candle     : ${new Date(ev.candleTime).toISOString().slice(0, 16).replace("T", " ")} UTC`,
     `Setup ID   : ${ev.setupId}`,
     ``,
-    `Quiet radar heads-up — real entry signal fires on confirmed retest candle close.`,
-    `Research signal only. No order was placed.`,
+    `Pre-entry context only. No entry exists unless a separate confirmed-entry alert is generated.`,
+    `Paper research only. No order was placed.`,
   );
   if (options?.isFreeChannel) {
     lines.push(
       ``,
       `────────────────────────`,
-      `👑 VIP receives the live entry alert the second confirmation triggers.`,
+      `👑 VIP receives any separate engine-confirmed entry alert. This is not one.`,
       `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     );
   }
@@ -880,7 +880,7 @@ export function formatBiasCard(
   const h4Status = diag.h4.breakoutStatus.replace(/_/g, " ").split(" ").map(capitalize).join(" ");
 
   const lines = [
-    `🧭 SLK BIAS CONFIRMATION (Silent Context) — 🌟【 ${boldPair} 】🌟`,
+    `🧭 SLK BIAS CONTEXT — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟`,
     `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
     `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${h4Status})`,
@@ -911,8 +911,8 @@ export function formatBiasCard(
 
   lines.push(
     ``,
-    `Higher timeframe structure is confirmed. Monitoring for pullback retest into zone.`,
-    `Research analysis only. No order was placed.`,
+    `Context only—not an entry. A separate alert is sent only if all confirmed-entry gates pass.`,
+    `Paper research only. No order was placed.`,
   );
 
   if (options?.isFreeChannel) {
@@ -930,8 +930,8 @@ export function formatBiasCard(
 export function getFreeChatIds(env: NotifyEnv, pair?: string): string[] {
   const isDeriv = pair ? isDerivPair(pair) : false;
   if (isDeriv) {
-    // Synthetic watch radar, bias confirmation cards, and win teasers route strictly
-    // to the dedicated Synthetics Free channel (TELEGRAM_DERIV_FREE_CHAT_ID) and never leak into the Forex Free channel
+    // Synthetic watch/context cards and actual win teasers route strictly to
+    // the dedicated Synthetics Free channel (TELEGRAM_DERIV_FREE_CHAT_ID).
     return parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID);
   }
   // Institutional (forex/indices) teasers route strictly to the Forex Free channel
@@ -950,9 +950,10 @@ export async function notifyBias(
   const card = formatBiasCard(pair, direction, diag, origin, currentPrice);
   const results = await broadcast({ ...env, watchOnly: true }, card, color, { silent: true, pin: false, sendToDm: false, pair });
 
-  // Broadcast bias card to Free Telegram Channel as educational market context
+  // Honor the same Telegram watch preference for free cards; never let this
+  // secondary fan-out bypass a user's confirmed-only setting.
   const freeChatIds = getFreeChatIds(env, pair);
-  if (env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
+  if (env.WATCH_TELEGRAM !== "false" && env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
     const freeCard = formatBiasCard(pair, direction, diag, origin, currentPrice, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {
@@ -973,9 +974,10 @@ export async function notifyWatch(
   const text = formatWatch(ev, entryTf);
   const results = await broadcast({ ...env, watchOnly: true }, text, AMBER, { silent: true, pin: false, sendToDm: false, pair: ev.pair });
 
-  // Broadcast watch heads-up to Free Telegram Channel
+  // Honor the same Telegram watch preference for free cards; this path must
+  // not bypass confirmed-only settings.
   const freeChatIds = getFreeChatIds(env, ev.pair);
-  if (env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
+  if (env.WATCH_TELEGRAM !== "false" && env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
     const freeText = formatWatch(ev, entryTf, { isFreeChannel: true });
     for (const freeId of freeChatIds) {
       try {

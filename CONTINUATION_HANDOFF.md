@@ -29,7 +29,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
 4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0007`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes.
-5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive watch radar, bias cards, teaser cards, weekly recaps, and the Engine Discipline digest. Synthetic content is never sent to the Forex free channel.
+5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive teaser cards, weekly recaps, and the Engine Discipline digest. Pre-entry watch cards (`WATCH_NOTIFY`) and bias-context cards (`BIAS_NOTIFY`) are separate opt-ins and are currently disabled to prevent noisy, misleading posts. Synthetic content is never sent to the Forex free channel.
 6. The public journal shows only signals actually delivered to Telegram. Audit/admin views are protected. Recap cards retain the explicit **“paper simulation — research only”** disclaimer.
 
 ### Important code locations
@@ -113,7 +113,7 @@ Always use a fresh query parameter. Never use a 401 from an unknown API route as
 
 ## 4. Production environment and tuning reference
 
-These are effective production values on 2026-10-05, after the requested config widening. `worker/wrangler.jsonc` is the source for non-secret Worker variables; `worker/src/config.ts` supplies code defaults. “Safe range” is an operational recommendation, not permission to override a standing rule.
+These are effective production values as of 2026-10-06, following the notification-routing safeguards in this release. `worker/wrangler.jsonc` is the source for non-secret Worker variables; `worker/src/config.ts` supplies code defaults. “Safe range” is an operational recommendation, not permission to override a standing rule.
 
 | Variable | Effective value | Purpose | Safe range / standing constraint |
 |---|---|---|---|
@@ -130,7 +130,8 @@ These are effective production values on 2026-10-05, after the requested config 
 | `PAIR_BATCH_SIZE` | `1` | Number of pairs handled per cron tick; balances capacity and scan freshness. | Keep `1` unless CPU/coverage evidence supports `2`; do not raise casually. |
 | `FILTER_HTF_CONFLICT` | `true` | Enables higher-timeframe conflict filtering. | Boolean. Test any change in paper mode first. |
 | `FILTER_HTF_CONFLICT_DERIV_ONLY` | `true` | Applies the hard conflict gate to Deriv synthetics. | Keep `true` unless the owner explicitly requests a measured paper experiment. |
-| `WATCH_NOTIFY` | `true` | Enables setup-forming watch radar. | Boolean; watch content remains FREE-channel only. |
+| `WATCH_NOTIFY` | `false` | Enables one pre-entry SHIFT card per setup when true. | Keep `false` until signal funnel review is complete; if enabled, one card at SHIFT only, clearly marked not an entry. |
+| `BIAS_NOTIFY` | `false` | Enables higher-timeframe context cards, independent of watch cards. | Keep `false`; context cards are not entry alerts. |
 | `VIP_WATCH_NOTIFY` | `false` | VIP watch-message override. | Keep `false`; VIP receives confirmed entries and final outcomes only. |
 | `ENGINE_DIGEST` | `true` | Enables the weekly Engine Discipline research digest. | Boolean; FREE channels only, never VIP. |
 | `CHART_SNAPSHOTS` | `true` | Enables Telegram chart snapshots. | Boolean; keep enabled in normal operation. Do not regress authentic candlesticks or green/red RR-box visuals. |
@@ -142,6 +143,10 @@ These are effective production values on 2026-10-05, after the requested config 
 | `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
 | `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
 
+### Alert-funnel evidence (pre-deploy snapshot)
+
+Public `/api/engine-pulse` sampled at `2026-10-06T11:57:07.994Z` reported 432 scans, 365 active scans, all 23 markets covered, 166 evaluated calls, one RETEST, and zero confirmed entries. The 113 TOUCH, 101 SWEEP, 56 SHIFT, and one RETEST are lifecycle transition counts, not Telegram delivery totals. Rejection totals (203 target-floor, 76 stop-width, 4 below minimum risk ATR) are replay-weighted and may count the same candidate on repeat scans; they are not unique setup counts. No delivery-audit records were inspected, so the owner's reported Free-channel message volume is not independently counted.
+
 ### Secret and credential handling
 
 Secrets are configured outside Git (Cloudflare secrets/D1 as appropriate). Values are deliberately not recorded here. Relevant names include `OANDA_API_TOKEN` (legacy `OANDA_API_KEY` is also read), `TWELVEDATA_API_KEY`, Telegram bot/channel credentials, `DISCORD_WEBHOOK_URL`, `ADMIN_KEY`, `DASHBOARD_READ_KEY`, `WHOP_WEBHOOK_SECRET`, `CHART_IMG_API_KEY`, `SIGNAL_API_KEY`, `SIGNAL_SIGNING_SECRET`, and `PROVIDER_WEBHOOK_SECRET`. MT5 bridge URL/HMAC settings must remain inert in paper mode. Never print, log, commit, or ask the owner to paste secret values.
@@ -152,8 +157,8 @@ Secrets are configured outside Git (Cloudflare secrets/D1 as appropriate). Value
 - `/api/shadow-ledger`, `/api/shadow-experiments`, `/api/scan-audit`, and administrative actions require the owner/admin key. Keep audit views protected. Treat public endpoint behavior as defined in `worker/src/index.ts`; do not infer route existence from a generic 401.
 - `VIP Institutional`: confirmed entries plus final outcomes only.
 - `VIP Synthetics`: confirmed synthetic entries plus final outcomes only.
-- `Forex Free`: watch radar, bias cards, allowed TP1 teasers (pair/timeframe/+R only), weekly digest/recap, and upgrade CTAs; **no synthetic content**.
-- `Synthetics Free`: synthetic watch/confirmation radar, allowed teasers, weekly digest/recap, and upgrade CTAs.
+- `Forex Free`: allowed TP1 teasers (pair/timeframe/+R only), weekly digest/recap, and upgrade CTAs; optional pre-entry watch/context cards are currently disabled; **no synthetic content**.
+- `Synthetics Free`: synthetic teasers, weekly digest/recap, and upgrade CTAs; optional watch/context cards are currently disabled.
 - Recaps stay clearly labelled paper simulation/research only. Shadow-ledger candidates are never alerts or event-tape rows.
 
 ## 6. Pull request history (#2–#8)

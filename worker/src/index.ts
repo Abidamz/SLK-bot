@@ -60,6 +60,7 @@ export interface Env {
   PAPER_NOTIFY?: string;
   ENGINE_DIGEST?: string;
   WATCH_NOTIFY?: string;
+  BIAS_NOTIFY?: string;
   VIP_WATCH_NOTIFY?: string;
   CHART_SNAPSHOTS?: string;
   MIN_RISK_ATR?: string;
@@ -526,8 +527,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const snaps = storylineSeries(d1, h4, cfg.strategy);
       pairsScanned.push(pair);
 
-      // 🧭 HTF directional bias confirmation: notifies when 4H and 1H structure align
-      if (cfg.watchNotify && d1 && d1.length >= 10 && h4.length >= 10 && feeds["1h"] && feeds["1h"].length >= 10) {
+      // Higher-timeframe context cards are separately opt-in. They are not
+      // entry alerts and are disabled by default to avoid confusing context
+      // with a confirmed paper entry.
+      if (cfg.biasNotify && d1 && d1.length >= 10 && h4.length >= 10 && feeds["1h"] && feeds["1h"].length >= 10) {
         const h4Vantage = evaluateH4VantageContext(h4, cfg.strategy);
         if (h4Vantage.direction !== "neutral") {
           const dir: Direction = h4Vantage.direction === "bullish" ? "LONG" : "SHORT";
@@ -642,8 +645,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           if (!inserted) continue; // already-known transition (dedupe)
           eventCount++;
           countTransition(diagnostics.recorded, ev.state);
-          // 👀 watch heads-up: setup forming on TOUCH/SWEEP/SHIFT — gated by
-          // WATCH_NOTIFY and the same boot gate as entry alerts
+          // 👀 Optional pre-entry context: only SHIFT is eligible for a card;
+          // TOUCH/SWEEP stay internal, and WATCH_NOTIFY plus the boot gate apply.
           if (cfg.watchNotify && WATCH_STATES.has(ev.state)
               && watchEventFresh(ev, tf, now)
               && deliverAllowed(cfg, isFirstScan, opts)) {
@@ -779,11 +782,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   };
 }
 
-/** Transition states that earn a pre-entry "watch" heads-up when enabled.
- *  TOUCH (origin zone reached), SWEEP (liquidity taken), and SHIFT (market structure break)
- *  provide high-probability context;
- *  RETEST has its own full confirmed entry alert. */
-const WATCH_STATES = new Set(["TOUCH", "SWEEP", "SHIFT"]);
+/** One pre-entry heads-up at the latest meaningful stage only. TOUCH and
+ *  SWEEP remain internal lifecycle events; RETEST has its own confirmed-entry
+ *  alert. This prevents up to three channel posts for one setup. */
+const WATCH_STATES = new Set(["SHIFT"]);
 
 /** Replay hygiene: the stateless engine re-walks up to `setupWindow` candles
  *  on every scan, so a cold start can surface transitions whose candles
@@ -808,9 +810,9 @@ export async function shouldRecordReplayEvent(
   return store.hasActiveAlert(ev.setupId);
 }
 
-/** Watch events are transient heads-ups, not durable alerts. Only notify when
- * the source candle closed recently; this prevents isolate cold-start replay
- * from re-sending stale TOUCH/SWEEP/SHIFT events hours later. */
+/** Watch cards are transient context, not durable alerts. The caller currently
+ * allows SHIFT only; require a recent source candle to avoid replaying stale
+ * pre-entry context after an isolate cold start. */
 export function watchEventFresh(ev: { candleTime: number }, tf: string, now: number): boolean {
   const secs = TF_SECONDS[tf];
   if (!secs) return false;
@@ -1355,6 +1357,7 @@ export default {
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
         watchNotify: cfg.watchNotify,
+        biasNotify: cfg.biasNotify,
         vipWatchNotify: (env.VIP_WATCH_NOTIFY ?? "false").toLowerCase() === "true",
         paperNotify: cfg.paperNotify,
         telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
@@ -1999,7 +2002,7 @@ export default {
       return json({
         ok: true,
         action: "confirmed_only",
-        message: "Successfully muted WATCH alerts and BIAS cards. Telegram will now ONLY receive Confirmed Entry Alerts and Outcomes.",
+        message: "Telegram watch preference muted. Confirmed entries and outcomes are unchanged; server-level WATCH_NOTIFY and BIAS_NOTIFY also control pre-entry context.",
         preferences: updated,
       });
     }
@@ -2012,7 +2015,7 @@ export default {
       return json({
         ok: true,
         action: "enable_watch",
-        message: "Successfully enabled WATCH alerts and BIAS cards. Telegram will now receive Bias Confirmation Cards, Watch heads-up alerts, and Confirmed Entry Alerts.",
+        message: "Telegram watch preference enabled. Pre-entry watch posts still require server-level WATCH_NOTIFY; bias-context cards are separately controlled by BIAS_NOTIFY.",
         preferences: updated,
       });
     }
@@ -2028,7 +2031,7 @@ export default {
       const { sendTelegram, toBold } = await import("./notify");
       const boldNas = toBold("NAS100");
       const text = [
-        `👀 WATCH (Silent Radar) — 🌟【 ${boldNas} 】🌟 · 15m · SHORT 🔽`,
+        `🧪 WATCH TEST — NOT AN ENTRY — 🌟【 ${boldNas} 】🌟 · 15m · SHORT 🔽`,
         `📍 Pair     : 🌟【 ${boldNas} 】🌟`,
         "State      : ⚡ SHIFT",
         "Detail     : BOS through pullback structure 20,430.50",
@@ -2038,7 +2041,7 @@ export default {
         `Candle     : ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`,
         "Setup ID   : test:NAS100:15m:SHORT:V:20480.0",
         "",
-        "Quiet radar heads-up — real entry signal fires on confirmed retest candle close.",
+        "WATCH TEST — NOT AN ENTRY. This sample verifies message delivery only; no setup or trade was generated.",
         "Testing SILENT notification mode (Phone should NOT vibrate or ring).",
       ].join("\n");
       try {
@@ -2047,7 +2050,7 @@ export default {
           ok: true,
           mode: "silent",
           status: "delivered",
-          message: "SILENT Watch Heads-up test sent to Telegram! Check that your phone did NOT vibrate or ring.",
+          message: "A silent WATCH delivery test (not a signal) was sent. Check that your phone did NOT vibrate or ring.",
         });
       } catch (err) {
         return json({
@@ -2155,30 +2158,22 @@ export default {
         await store.setKv("telegram_free_chat_id", freeChatId);
 
         const { sendTelegram } = await import("./notify");
-        const teaser = [
-          "🎯 TP1 HIT — XAUUSD Short (+2.57R)",
+        const verification = [
+          "✅ SLK Free Channel connection verified",
           "",
-          "• Timeframe : 30m",
-          "• Direction : SHORT 🔴",
-          "• Entry     : 4,331.370",
-          "• Target 1  : 4,297.933 (+2.57R) ✅",
-          "• Target 2  : Running risk-free toward external liquidity",
-          "",
-          "VIP members received this alert with exact entry, stop floor, and lot size calculations.",
-          "",
-          "Stop missing the moves.",
-          "👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals/",
-          "👉 Live Verified Journal: https://slk-radar.pages.dev",
+          "The bot can post to this channel.",
+          "This is a delivery check only — no setup, entry, or trade outcome was generated.",
+          "Paper research only. No order was placed.",
         ].join("\n");
 
-        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeChatId });
+        await sendTelegram(env, verification, { silent: false, pin: false, chatId: freeChatId });
 
         return json({
           ok: true,
           status: "connected",
           freeChatId,
           channelTitle: chosen.title || chosen.username || "Free Channel",
-          message: `Successfully linked Free Channel "${chosen.title || chosen.username}" (ID: ${freeChatId})! The Win Teaser was just delivered to it.`,
+          message: `Successfully linked Free Channel "${chosen.title || chosen.username}" (ID: ${freeChatId})! A neutral verification message was sent; no signal was generated.`,
         });
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
@@ -2238,7 +2233,7 @@ export default {
           "• Operational: 24 Hours / 7 Days a Week",
           "• Engine     : SLK Institutional Market Structure",
           "",
-          "All confirmed entries, bias cards, and execution setups for Deriv synthetics will be delivered here automatically.",
+          "VIP delivery is limited to engine-confirmed paper entries and final outcomes. Pre-entry WATCH and bias-context cards are not sent to VIP.",
         ].join("\n");
 
         await sendTelegram(env, welcome, { silent: false, pin: true, chatId: derivChatId });
@@ -2268,7 +2263,7 @@ export default {
       await store.setKv("telegram_deriv_chat_id", derivChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `🔔 SLK 24/7 Synthetics Hub linked to ${derivChatId}!\nAutomated Deriv synthetic setups and bias cards will be delivered here automatically.`, { silent: false, pin: true, chatId: derivChatId });
+        await sendTelegram(env, `✅ SLK Synthetics VIP channel linked to ${derivChatId}.\nPaper mode only. VIP delivery is limited to confirmed entries and final outcomes; pre-entry WATCH and bias-context cards are not sent to VIP.`, { silent: false, pin: true, chatId: derivChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2335,14 +2330,14 @@ export default {
         const { sendTelegram, toBold } = await import("./notify");
         const boldV75 = toBold("V75");
         const welcome = [
-          `⚡ SLK Free Synthetics Radar Connected! ⚡`,
+          `⚡ SLK Free Synthetics Channel Connected ⚡`,
           "",
-          `📍 Active Instrument: 🌟【 ${boldV75} 】🌟 (Volatility 75 Index)`,
-          "• Status     : Connected & Active ✅",
-          "• Operational: 24 Hours / 7 Days a Week",
-          "• Purpose    : Unverified Watch Radar & Bias Teasers",
+          `📍 Market group: 🌟【 ${boldV75} 】🌟 and supported synthetic markets`,
+          "• Status     : Connected ✅",
+          "• Mode       : Paper research only; no orders are placed",
+          "• Updates    : Eligible teasers and scheduled recaps",
           "",
-          "Automated V75 watch radar, bias confirmation cards, and verified win teasers will be delivered here automatically.",
+          "Pre-entry WATCH and bias-context posts are optional and currently disabled. They are never entry alerts.",
         ].join("\n");
 
         await sendTelegram(env, welcome, { silent: false, pin: false, chatId: derivFreeChatId });
@@ -2372,7 +2367,7 @@ export default {
       await store.setKv("telegram_deriv_free_chat_id", derivFreeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `🔔 SLK Free Synthetics Radar linked to ${derivFreeChatId}!\nAutomated 24/7 Deriv synthetic watch radar, bias cards, and win teasers will be delivered here automatically.`, { silent: false, pin: false, chatId: derivFreeChatId });
+        await sendTelegram(env, `✅ SLK Free Synthetics channel linked to ${derivFreeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: derivFreeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2399,32 +2394,24 @@ export default {
         return json({
           ok: true,
           status: "debounced",
-          message: "A test teaser was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+          message: "A test message was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
         });
       }
-      const { sendTelegram, toBold } = await import("./notify");
-      const boldV75 = toBold("Volatility 75 Index");
-      // Free-channel preview only: pair / timeframe / result — no levels.
-      const teaser = [
-        `🎯 TP1 HIT — 🌟【 ${boldV75} 】🌟 LONG (+3.12R)`,
+      const { sendTelegram } = await import("./notify");
+      const testMessage = [
+        "🧪 SLK SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
         "",
-        `📍 Pair      : 🌟【 ${boldV75} 】🌟 (V75)`,
-        "• Timeframe : 30m",
-        "• Direction : LONG 🟢",
-        "• Result    : TP1 reached at +3.12R ✅",
-        "",
-        "VIP members received this live alert with exact entry, stop floor, and targets.",
-        "",
-        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
-        "👉 Live Verified Journal: https://slk-radar.pages.dev",
+        "This message verifies Telegram delivery only.",
+        "No market setup, entry, or trade outcome was generated.",
+        "Paper research only. No order was placed.",
       ].join("\n");
       try {
-        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: derivFreeChatId });
+        await sendTelegram(env, testMessage, { silent: false, pin: false, chatId: derivFreeChatId });
         return json({
           ok: true,
           targetChatId: derivFreeChatId,
           status: "delivered",
-          message: "Automated Synthetics Win Teaser was successfully delivered to your Free Synthetics Channel!",
+          message: "A neutral delivery-test message was sent; no trade signal was generated.",
         });
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
@@ -2441,75 +2428,25 @@ export default {
         return json({
           ok: true,
           status: "debounced",
-          message: "A test signal was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+          message: "A test message was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
         });
       }
-      const doFetch = env.fetchFn ?? fetch;
-      const { notifyAlert } = await import("./notify");
-      const sampleAlert: Alert = {
-        setupId: `deriv:V75:1h:LONG:V:45038.50:${new Date().toISOString()}`,
-        pair: "V75",
-        entryTf: "1h",
-        mapTf: "4h",
-        direction: "LONG",
-        entry: 45038.50,
-        stopLoss: 44250.00,
-        tpInternal: 47400.00,
-        tpExternal: 48000.00,
-        candleCloseTime: Date.now(),
-        environment: "bullish",
-        phase: "expansion",
-        htfAlignment: "M:↑ W:↑ D:↑ H4:↑",
-        originKeyLevel: 44250.00,
-        keyLevelType: "V",
-        keyLevelBounds: [44200.00, 44300.00],
-        keyLevelTested: true,
-        keyLevelFlipped: false,
-        imbalanceContext: [{ top: 45100.00, bottom: 45000.00 }],
-        internalLiquidity: [],
-        externalLiquidity: [],
-        drawOnLiquidity: 48000.00,
-        nearestExternalTarget: 48000.00,
-        intermediateZones: [],
-        opposingLiquidityStanding: true,
-        sweepTime: Date.now() - 1800_000,
-        bosTime: Date.now() - 900_000,
-        returnTime: Date.now(),
-        invalidationLevel: 44200.00,
-        invalidationReason: null,
-        parameterVersion: "slk-w1.0",
-        alertStatus: "PAPER",
-        suppressReason: null,
-        session: "24/7 Continuous",
-        atrEntry: 250.0,
-        rrInternal: 2.62,
-        cycleStage: "entry_alert",
-        entryMode: "confirmation",
-        shadowClassification: "A_GRADE",
-        directionalBias: {
-          classification: "A_GRADE",
-          weekly: { weeklyHighSwept: false, weeklyLowSwept: true, opposingLiquidityStanding: true, primaryOpposingTarget: 454500.00 },
-          daily: { bias: "bullish", bodyToBodyBreakout: "bullish", liquiditySweepPlusStructureBreak: false, sweepDirection: null, incomplete: false },
-          h4: { direction: "bullish", breakoutStatus: "bullish_breakout", hasStructureBreak: true },
-          h1: { direction: "bullish", agreesWith4H: true },
-          entryQuality: { lowerTimeframeSweep: true, bosStructureShift: true, fvgDetected: true, fvgRebalanceDetected: true, retestDetected: true },
-          timeframeRole: {
-            entryTf: "30m",
-            structuralTf: "4h",
-            executionContextTf: "1h",
-          },
-        },
-      };
+      const { sendTelegram } = await import("./notify");
+      const testMessage = [
+        "🧪 SLK SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
+        "",
+        "This message verifies Telegram delivery only.",
+        "No market setup, entry, or trade outcome was generated.",
+        "Paper research only. No order was placed.",
+      ].join("\n");
 
       try {
-        const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
-        const results = await notifyAlert({ ...env, fetchFn: doFetch, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, sampleAlert);
+        await sendTelegram(env, testMessage, { silent: false, pin: false, chatId: derivChatId });
         return json({
           ok: true,
           status: "delivered",
           derivChatId,
-          results,
-          message: `Test V75 Confirmed Entry Signal delivered to Synthetics Channel!`,
+          message: "A neutral delivery-test message was sent; no trade signal was generated.",
         });
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
@@ -2554,19 +2491,13 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const text = [
-        "🚨🚨🚨 [ACTION REQUIRED] — SLK PRIVATE DM SIGNAL 🚨🚨🚨",
-        "🔴 SLK 🧪 PAPER ALERT — NAS100",
-        "Direction   : SHORT 🔴",
-        "Timeframe   : 15m (map 4h)",
-        "State       : RETEST → CONFIRMED (EXECUTE NOW)",
-        "Bias Grade  : 🌟 A_GRADE",
-        "Story       : BEARISH · EXPANSION · ALIGNED",
-        "Entry       : 20,465.00 (retest close)",
-        "Stop        : 20,495.00 (+30.0 pts)",
-        "Target 1    : 20,390.00 (-75.0 pts · 2.50R)",
-        "Target 2    : 20,315.00 nearest external liquidity",
+        "🧪 SLK PRIVATE DM DELIVERY TEST — NOT A SIGNAL",
         "",
-        "Testing PRIVATE DM direct notification! Your phone should have vibrated/rung directly.",
+        "This message verifies direct Telegram delivery only.",
+        "No market setup, entry, or trade outcome was generated.",
+        "Paper research only. No order was placed.",
+        "",
+        "This test is intentionally loud so you can verify phone notification settings.",
       ].join("\n");
       try {
         await sendTelegram(env, text, { silent: false, pin: false, chatId: dmChatId });
@@ -2575,7 +2506,7 @@ export default {
           mode: "loud_dm",
           targetChatId: dmChatId,
           status: "delivered",
-          message: "LOUD private signal test was successfully sent directly to your phone!",
+          message: "A loud private delivery-test message was sent directly to your phone; no trade signal was generated.",
         });
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
@@ -2596,7 +2527,7 @@ export default {
       await store.setKv("telegram_free_chat_id", freeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `🔔 SLK Free Trading Hub linked to ${freeChatId}!\nAutomated TP1 Win Teasers, Watch Alerts, and Daily Bias Cards will be delivered here automatically.`, { silent: false, pin: false, chatId: freeChatId });
+        await sendTelegram(env, `✅ SLK Free channel linked to ${freeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: freeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2623,32 +2554,24 @@ export default {
         return json({
           ok: true,
           status: "debounced",
-          message: "A test teaser was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+          message: "A test message was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
         });
       }
-      const { sendTelegram, toBold } = await import("./notify");
-      const boldGold = toBold("XAUUSD");
-      // Free-channel preview only: pair / timeframe / result — no levels.
-      const teaser = [
-        `🎯 TP1 HIT — 🌟【 ${boldGold} 】🌟 SHORT (+2.57R)`,
+      const { sendTelegram } = await import("./notify");
+      const testMessage = [
+        "🧪 SLK FREE CHANNEL DELIVERY TEST — NOT A SIGNAL",
         "",
-        `📍 Pair      : 🌟【 ${boldGold} 】🌟`,
-        "• Timeframe : 30m",
-        "• Direction : SHORT 🔴",
-        "• Result    : TP1 reached at +2.57R ✅",
-        "",
-        "VIP members received this live alert with exact entry, stop floor, and targets.",
-        "",
-        "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
-        "👉 Live Verified Journal: https://slk-radar.pages.dev",
+        "This message verifies Telegram delivery only.",
+        "No market setup, entry, or trade outcome was generated.",
+        "Paper research only. No order was placed.",
       ].join("\n");
       try {
-        await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeChatId });
+        await sendTelegram(env, testMessage, { silent: false, pin: false, chatId: freeChatId });
         return json({
           ok: true,
           targetChatId: freeChatId,
           status: "delivered",
-          message: "Automated Win Teaser was successfully delivered to your Free Telegram Channel!",
+          message: "A neutral delivery-test message was sent; no trade signal was generated.",
         });
       } catch (err) {
         return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
@@ -2860,11 +2783,11 @@ export default {
           setDerivManually: "Visit /admin/set-deriv-channel?chat_id=<channel_id>",
           connectDerivFreeChannel: "1. Add bot as Admin to Free Synthetics channel. 2. Post a message. 3. Visit /admin/connect-deriv-free-channel.",
           setDerivFreeManually: "Visit /admin/set-deriv-free-channel?chat_id=<channel_id_or_username>",
-          testDeriv: "Visit /admin/test-deriv to dispatch a sample V75 setup card to VIP.",
-          testDerivFreeTeaser: "Visit /admin/test-deriv-free-teaser to preview an automated V75 Win Teaser in the Free Synthetics channel.",
+          testDeriv: "Visit /admin/test-deriv to send a neutral delivery test to the Synthetics VIP channel; it does not create a signal.",
+          testDerivFreeTeaser: "Visit /admin/test-deriv-free-teaser to send a neutral delivery test to the Free Synthetics channel; it does not create a signal.",
           setFreeChannel: "Visit /admin/set-free-channel?chat_id=@your_free_channel_username",
-          testFreeTeaser: "Visit /admin/test-free-teaser to preview the automated TP1 Win Teaser in the free channel.",
-          testLoudBoth: "Visit /admin/test-loud to test simultaneous channel + DM delivery.",
+          testFreeTeaser: "Visit /admin/test-free-teaser to send a neutral delivery test to the free channel; it does not create a signal.",
+          testLoudBoth: "Visit /admin/test-loud to send a loud delivery test to the channel and optional DM; no signal is generated.",
           setOandaToken: "Visit /admin/set-oanda-token?token=<token>&env=practice (or env=live) to configure OANDA feed.",
           probeOanda: "Visit /admin/probe-oanda?pair=US30 to test real-time candle connectivity to OANDA.",
         },
@@ -3117,68 +3040,33 @@ export default {
         return json({
           ok: true,
           status: "debounced",
-          message: "A test entry alert was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
+          message: "A test message was already dispatched within the last 30 seconds. Skipping duplicate to prevent channel spam.",
         });
       }
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
-      const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
-      const { notifyAlert } = await import("./notify");
-
-      const sampleAlert: Alert = {
-        setupId: `oanda:NAS100:15m:SHORT:A:20465.00:${new Date().toISOString()}`,
-        pair: "NAS100",
-        entryTf: "15m",
-        mapTf: "4h",
-        direction: "SHORT",
-        entry: 20465.00,
-        stopLoss: 20495.00,
-        tpInternal: 20390.00,
-        tpExternal: 20315.00,
-        candleCloseTime: Date.now(),
-        environment: "bearish",
-        phase: "expansion",
-        htfAlignment: "M:↓ W:↓ D:↓ H4:↓",
-        originKeyLevel: 20495.00,
-        keyLevelType: "A",
-        keyLevelBounds: [20490.00, 20500.00],
-        keyLevelTested: true,
-        keyLevelFlipped: false,
-        imbalanceContext: [{ top: 20480.00, bottom: 20460.00 }],
-        internalLiquidity: [],
-        externalLiquidity: [],
-        drawOnLiquidity: 20150.00,
-        nearestExternalTarget: 20315.00,
-        intermediateZones: [],
-        opposingLiquidityStanding: true,
-        sweepTime: Date.now() - 900_000,
-        bosTime: Date.now() - 450_000,
-        returnTime: Date.now(),
-        invalidationLevel: 20500.00,
-        invalidationReason: null,
-        parameterVersion: "slk-w1.0",
-        alertStatus: "PAPER",
-        suppressReason: null,
-        session: "NEW_YORK",
-        atrEntry: 25.0,
-        rrInternal: 2.50,
-        cycleStage: "EXPANSION",
-        entryMode: "CONFIRMATION",
-        shadowClassification: "A_GRADE",
-      };
+      const { sendTelegram } = await import("./notify");
+      const testMessage = [
+        "🧪 SLK TELEGRAM DELIVERY TEST — NOT A SIGNAL",
+        "",
+        "This message verifies channel and optional direct-message delivery only.",
+        "No market setup, entry, or trade outcome was generated.",
+        "Paper research only. No order was placed.",
+      ].join("\n");
 
       try {
-        const results = await notifyAlert({
-          ...env,
-          TELEGRAM_CHAT_ID: primaryChatId,
-          TELEGRAM_DM_CHAT_ID: dmChatId,
-          CHART_IMG_API_KEY: chartImgKey,
-        }, sampleAlert);
+        const results: Record<string, string> = {};
+        await sendTelegram(env, testMessage, { silent: false, pin: false, chatId: primaryChatId });
+        results.telegram_channel = "ok";
+        if (dmChatId) {
+          await sendTelegram(env, testMessage, { silent: false, pin: false, chatId: dmChatId });
+          results.telegram_dm = "ok";
+        }
         return json({
           ok: true,
-          mode: "loud_simultaneous",
+          mode: "loud_delivery_test",
           results,
           dmConfigured: Boolean(dmChatId),
-          message: "LOUD Confirmed Entry test with live TradingView screenshot was successfully sent to your VIP Institutional channel AND direct DM!",
+          message: "A loud delivery-test message was sent; no trade signal was generated.",
         });
       } catch (err) {
         return json({

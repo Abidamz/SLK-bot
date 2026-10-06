@@ -59,11 +59,12 @@ Configured feeds (Twelve Data/OANDA/Dukascopy/Deriv) ──► Cron */1 * * * * 
   EURUSD/30m ≈ 10–14 pips today; indices self-scale). No universal pip
   constants: everything stays volatility-normalized per instrument.
 - **Boot gate**: the first-ever scan per pair+TF records transitions but
-- **Watch heads-ups** (`WATCH_NOTIFY=true` in `wrangler.jsonc` vars): an
-  optional 👀 message when a setup TOUCHes its zone, SWEEPs liquidity, or
-  SHIFTs structure — hours before the confirmed retest close would alert.
-  Same dedupe (UNIQUE events) and boot gate as entry alerts; default off.
   delivers nothing (mirrors the Python `alert_on_boot=false`).
+- **Pre-entry watch cards** (`WATCH_NOTIFY`, default off): if enabled, at most
+  one card is sent at SHIFT per setup. TOUCH and SWEEP remain internal events;
+  the card is explicitly marked “NOT AN ENTRY.”
+- **Bias context cards** (`BIAS_NOTIFY`, default off): separate opt-in context,
+  also explicitly not an entry. Production keeps both notification types off.
 
 ## Setup IDs
 
@@ -224,10 +225,10 @@ Changes:
 
 ## Scan diagnostics (schema version 1)
 
-Diagnostics are observational only. No strategy, risk, confirmation, freshness,
-notification, boundary, or broker-execution gates have changed. Keep production
-`MODE=paper`, `WATCH_NOTIFY=false`, `PAPER_NOTIFY=true`, `MIN_RISK_ATR=0.8`,
-and MT5/live execution disabled.
+The notification restructuring changes only pre-entry message volume and
+wording; entry, risk, target, freshness, and broker-execution rules stay intact.
+Keep production `MODE=paper`, `WATCH_NOTIFY=false`, `BIAS_NOTIFY=false`,
+`PAPER_NOTIFY=true`, `MIN_RISK_ATR=0.8`, and MT5/live execution disabled.
 
 Every scan row now carries `slk_scan_log.diagnostics_json`; `/scan-now` returns
 that same object as `diagnostics`. Non-idle scans also emit structured

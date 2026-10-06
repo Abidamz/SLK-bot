@@ -10,6 +10,17 @@ import {
 
 const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
 
+describe("notification channel controls", () => {
+  it("keeps watch and bias cards independently opt-in and off by default", () => {
+    expect(loadConfig({}).watchNotify).toBe(false);
+    expect(loadConfig({}).biasNotify).toBe(false);
+    expect(loadConfig({ WATCH_NOTIFY: "true" }).watchNotify).toBe(true);
+    expect(loadConfig({ WATCH_NOTIFY: "true" }).biasNotify).toBe(false);
+    expect(loadConfig({ BIAS_NOTIFY: "true" }).biasNotify).toBe(true);
+    expect(loadConfig({ BIAS_NOTIFY: "true" }).watchNotify).toBe(false);
+  });
+});
+
 function runShort(rows = SHORT_ROWS, extra = {}) {
   return scanEntry({
     pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,

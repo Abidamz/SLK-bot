@@ -71,7 +71,8 @@ export interface WorkerConfig {
   contextTimeframe: string; // "1d"
   mode: "paper" | "live";
   paperNotify: boolean;
-  watchNotify: boolean; // 👀 TOUCH/SWEEP/SHIFT heads-ups before confirmation close
+  watchNotify: boolean; // at most one SHIFT heads-up per setup
+  biasNotify: boolean; // separate, opt-in higher-timeframe context cards
   candlesLimit: number; // fetch size for non-base direct fetches (fallbacks)
   scanDelayMs: number;
   minCandles: number; // per-feed sanity floor
@@ -130,6 +131,7 @@ interface EnvVars {
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
+  BIAS_NOTIFY?: string;
   MIN_RISK_ATR?: string;
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
@@ -236,6 +238,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     mode,
     paperNotify,
     watchNotify: (env.WATCH_NOTIFY ?? "false").toLowerCase() === "true",
+    biasNotify: (env.BIAS_NOTIFY ?? "false").toLowerCase() === "true",
     candlesLimit: 400,
     scanDelayMs: 10_000,
     minCandles: 40,
