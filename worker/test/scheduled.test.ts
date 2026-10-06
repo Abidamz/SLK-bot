@@ -80,6 +80,14 @@ describe("scheduled scan cycle", () => {
     const risk = Math.abs(Number(alert.entry) - Number(alert.stop_loss));
     expect(Math.abs(Number(alert.tp_internal) - Number(alert.entry)) / risk).toBeGreaterThanOrEqual(3);
     expect(alert.alert_status).toBe("PAPER");
+    const deliveryAudits = store.preferenceAudit
+      .map((entry) => (entry as any).delivery)
+      .filter(Boolean);
+    expect(deliveryAudits).toEqual(expect.arrayContaining([
+      expect.objectContaining({ channel: "telegram", kind: "confirmed_entry", status: "delivered" }),
+      expect.objectContaining({ channel: "discord", kind: "confirmed_entry", status: "delivered" }),
+    ]));
+    expect(JSON.stringify(deliveryAudits)).not.toContain("TGT");
 
     // identical re-run: dedupe → nothing new, no extra messages
     const again = await scanAll(makeEnv(), {
@@ -89,29 +97,11 @@ describe("scheduled scan cycle", () => {
     expect(again.events).toBe(0);
     expect(calls.telegram).toHaveLength(1);
     expect(calls.discord).toHaveLength(1);
+    expect(store.scanLog[1].diagnostics?.recorded.duplicateConfirmationSkips).toBe(1);
+    expect(store.scanLog[1].diagnostics?.recorded.staleConfirmationSkips).toBe(0);
     // 6 events: stale pre-touch MAP (superseded origin) + winning setup's
     // MAP→TOUCH→SWEEP→SHIFT→RETEST — replay above inserted none of them again
     expect(store.events).toHaveLength(6);
-  });
-
-  it("multi-provider: explicit PROVIDER_MAP route to Yahoo, flat feed yields no alert, TD pair unaffected", async () => {
-    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
-    const store = new MemStore();
-    const env = makeEnv({ PAIRS: "EURUSD,US30", PROVIDER_MAP: "{\"US30\":\"yahoo\"}", SYMBOL_MAP: "{\"US30\":\"^DJI\"}" });
-    const summary = await scanAll(env, {
-      now: NOW, fetchFn: makeFakeFetch(calls), force: true, storeOverride: store,
-    });
-    expect(summary.ok).toBe(true);
-    expect(summary.pairs).toEqual(["EURUSD", "US30"]);
-    expect(summary.alerts).toBe(1);                    // EURUSD storyline only
-    expect(calls.telegram).toHaveLength(1);            // (boot gate off: forced)
-    const yahoo = (calls.dataCalls ?? []).filter((u) => u.includes("finance.yahoo.com"));
-    expect(yahoo.length).toBeGreaterThanOrEqual(2);    // 1d context + 30m base
-    expect(yahoo.every((u) => u.includes("%5EDJI"))).toBe(true);
-    expect((calls.dataCalls ?? []).some((u) => u.includes("api.twelvedata.com"))).toBe(true);
-    expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
-    // setup id is provider-free (provider stays a stored column, not identity)
-    expect(calls.telegram[0]).toContain("EURUSD:30m:SHORT:V:104.200000:");
   });
 
   it("default index CFD route is the Dukascopy public feed (no token needed)", async () => {
@@ -127,11 +117,10 @@ describe("scheduled scan cycle", () => {
     const duka = (calls.dataCalls ?? []).filter((u) => u.includes("jetta.dukascopy.com"));
     expect(duka.length).toBeGreaterThanOrEqual(3);    // day-file buckets + 1d year-file
     expect(duka.every((u) => u.includes("USA30.IDX-USD"))).toBe(true);
-    expect((calls.dataCalls ?? []).some((u) => u.includes("finance.yahoo.com"))).toBe(false);
     expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
   });
 
-  it("auto-routes index CFDs to OANDA when its token exists (preferred over Dukascopy/Yahoo)", async () => {
+  it("auto-routes index CFDs to OANDA when its token exists (preferred over the public index feed)", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();
     const env = makeEnv({ PAIRS: "EURUSD,US30", OANDA_API_TOKEN: "OANDA_TEST_TOKEN" });
@@ -144,7 +133,6 @@ describe("scheduled scan cycle", () => {
     expect(oanda.length).toBeGreaterThanOrEqual(2);    // 1d context + 30m base
     expect(oanda.every((u) => u.includes("US30_USD"))).toBe(true);
     expect((calls.dataCalls ?? []).some((u) => u.includes("jetta.dukascopy.com"))).toBe(false);
-    expect((calls.dataCalls ?? []).some((u) => u.includes("finance.yahoo.com"))).toBe(false);
     expect(summary.errors.filter((e) => e.startsWith("US30"))).toHaveLength(0);
   });
 
@@ -158,6 +146,21 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBe(0);
     expect(calls.telegram).toHaveLength(0);
+  });
+
+  it("records stale-confirmation skip telemetry without changing the alert gate", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    // The fixture still replays its confirmation; it is two hours old, beyond
+    // the live-entry freshness window, but inside the feed-quality window.
+    const summary = await scanAll(makeEnv(), {
+      now: NOW + 2 * 3600_000, fetchFn: makeFakeFetch(calls), force: true,
+      storeOverride: store,
+    });
+    expect(summary.alerts).toBe(0);
+    expect(calls.telegram).toHaveLength(0);
+    expect(store.scanLog[0].diagnostics?.recorded.staleConfirmationSkips).toBe(1);
+    expect(store.scanLog[0].diagnostics?.recorded.confirmedAlerts).toBe(0);
   });
 
   it("provider outage fails safe: no alerts, visible error, scan logged", async () => {

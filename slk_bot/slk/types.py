@@ -47,7 +47,8 @@ class Imbalance:
 @dataclass
 class KeyLevel:
     """An origin key level. kind: "A" (A-shaped top), "V" (V-shaped bottom),
-    "OC" (open-close / decision-candle zone)."""
+    "OC" (overlap of consecutive candle bodies), or "DECISION" (wide-range
+    decision-candle body)."""
 
     kind: str
     origin_price: float

@@ -248,8 +248,8 @@ export function fvgZones(candles: Candle[], lookback: number): Imbalance[] {
   return out;
 }
 
-/** A/V line-chart extrema (on closes) + Open-Close decision zones, with
- *  touch counting and flip detection. */
+/** A/V line-chart extrema, consecutive-body OC overlaps, and separate
+ *  wide-range decision-candle zones, with touch counting and flip detection. */
 export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
   const n = candles.length;
   const atrVal = atr(candles, cfg.atrPeriod);
@@ -277,10 +277,19 @@ export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
     }
   }
 
+  // The playlist's OC level is the positive-width intersection of two
+  // consecutive candle bodies. A single wide-range candle remains a separate
+  // DECISION zone so the previous behavior is not silently discarded.
   for (let i = Math.max(1, n - cfg.levelLookback); i < n; i++) {
+    const prev = candles[i - 1];
     const c = candles[i];
+    const overlapLo = Math.max(Math.min(prev.o, prev.c), Math.min(c.o, c.c));
+    const overlapHi = Math.min(Math.max(prev.o, prev.c), Math.max(c.o, c.c));
+    if (overlapHi > overlapLo) {
+      levels.push({ kind: "OC", originPrice: (overlapLo + overlapHi) / 2, zoneLo: overlapLo, zoneHi: overlapHi, originTime: c.t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+    }
     if (atrVal > 0 && c.h - c.l >= cfg.decisionAtrMult * atrVal) {
-      levels.push({ kind: "OC", originPrice: c.c, zoneLo: Math.min(c.o, c.c), zoneHi: Math.max(c.o, c.c), originTime: c.t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+      levels.push({ kind: "DECISION", originPrice: c.c, zoneLo: Math.min(c.o, c.c), zoneHi: Math.max(c.o, c.c), originTime: c.t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
     }
   }
 

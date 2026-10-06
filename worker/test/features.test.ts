@@ -101,6 +101,36 @@ describe("key levels & imbalances", () => {
     expect(aTop).toBeTruthy();
     expect(aTop!.flipped).toBe(true);
   });
+
+  it("defines OC as consecutive candle-body overlap, not a single wide candle", () => {
+    const strat = {
+      atrPeriod: 14, avLen: 2, levelToleranceAtr: 0.25, levelLookback: 120,
+      decisionAtrMult: 1.5, flipMarginAtr: 0.5,
+    };
+    const overlapCandles = mkCandles([
+      [100.0, 100.8, 99.6, 100.4],
+      [100.3, 101.0, 100.1, 100.8],
+      [100.8, 101.5, 100.5, 101.3],
+      [101.3, 102.0, 101.0, 101.8],
+      [101.8, 102.5, 101.5, 102.3],
+    ], 240);
+    const overlap = F.keyLevels(overlapCandles, strat as never)
+      .find((l) => l.kind === "OC" && l.originIndex === 1);
+    expect(overlap).toBeTruthy();
+    expect(overlap!.zoneLo).toBeCloseTo(100.3);
+    expect(overlap!.zoneHi).toBeCloseTo(100.4);
+    expect(overlap!.originPrice).toBeCloseTo(100.35);
+
+    const decisionCandles = mkCandles(
+      Array.from({ length: 10 }, (_, i) => [100 + i, 100.6 + i, 99.5 + i, 100.4 + i] as [number, number, number, number]),
+      240,
+    );
+    decisionCandles[6] = { ...decisionCandles[6], o: 100.4, h: 105.0, l: 100.2, c: 104.6 };
+    const decisionLevels = F.keyLevels(decisionCandles, strat as never);
+    expect(decisionLevels.some((l) => l.kind === "OC" && l.originIndex === 6)).toBe(false);
+    expect(decisionLevels.some((l) => l.kind === "DECISION" && l.originIndex === 6
+      && Math.abs(l.zoneLo - 100.4) < 1e-9 && Math.abs(l.zoneHi - 104.6) < 1e-9)).toBe(true);
+  });
 });
 
 describe("misc gates", () => {

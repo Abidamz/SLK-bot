@@ -413,6 +413,14 @@ export function classifyShadowSetup(args: {
     return "OBSERVATION_ONLY";
   }
 
+  // The source material treats daily breakout or sweep-plus-structure-shift
+  // as confirmation. A neutral or opposite daily read remains observation-only;
+  // it must not receive an aligned A/B grade from lower-timeframe confluence.
+  const requiredDailyBias = direction === "LONG" ? "bullish" : "bearish";
+  if (daily.bias !== requiredDailyBias) {
+    return "OBSERVATION_ONLY";
+  }
+
   // Neutral 1H execution context (no directional trend alignment)
   if (h1.direction === "neutral" || !h1.agreesWith4H) {
     return "OBSERVATION_ONLY";

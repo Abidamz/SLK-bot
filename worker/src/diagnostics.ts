@@ -17,6 +17,10 @@ export interface ReplayDiagnostics extends LifecycleCounts {
 
 export interface RecordedDiagnostics extends LifecycleCounts {
   confirmedAlerts: number;
+  /** Confirmation candidates rejected as stale at the live freshness gate. */
+  staleConfirmationSkips: number;
+  /** Fresh candidates rejected because the logical setup was already stored. */
+  duplicateConfirmationSkips: number;
 }
 
 export interface ScanDiagnostics {
@@ -24,6 +28,189 @@ export interface ScanDiagnostics {
   replay: ReplayDiagnostics;
   recorded: RecordedDiagnostics;
   byPairTimeframe: { pair: string; timeframe: string; replay: ReplayDiagnostics }[];
+}
+
+export interface ScanAuditFunnelRow {
+  pair: string;
+  timeframe: string;
+  scanRows: number;
+  replay: ReplayDiagnostics;
+}
+
+export interface ScanAuditDaySummary {
+  utcDay: string;
+  scanRows: number;
+  activeScanRows: number;
+  scanErrorRows: number;
+  errorCategories: { staleFeed: number; rateLimitOrCredits: number; networkOrTimeout: number; other: number };
+  diagnosticRows: number;
+  invalidDiagnosticRows: number;
+  gateMetricsRows: number;
+  alertRowsWritten: number;
+  eventRowsWritten: number;
+  recordedConfirmedAlerts: number;
+  replayRetestTransitions: number;
+  retestCandidates: number;
+  targetRejects: number;
+  riskRejects: number;
+  staleConfirmationSkips: number;
+  duplicateConfirmationSkips: number;
+  firstScanUtc: string | null;
+  lastScanUtc: string | null;
+}
+
+export interface StoredAlertAuditGroup {
+  utcDay: string;
+  pair: string;
+  timeframe: string;
+  direction: string;
+  alertStatus: string;
+  tradeStatus: string;
+  suppressReason: string | null;
+  count: number;
+}
+
+export interface StoredAlertAuditInputRow {
+  created_utc?: unknown;
+  canonical_symbol?: unknown;
+  entry_timeframe?: unknown;
+  direction?: unknown;
+  alert_status?: unknown;
+  status?: unknown;
+  suppress_reason?: unknown;
+}
+
+/** Read-only historical scan summary. Replay funnel counts include replays and
+ *  are not unique setups; `recordedConfirmedAlerts` counts first-write rows. */
+export interface ScanAuditSummary {
+  scanRows: number;
+  activeScanRows: number;
+  scanErrorRows: number;
+  errorCategories: { staleFeed: number; rateLimitOrCredits: number; networkOrTimeout: number; other: number };
+  alertRowsWritten: number;
+  eventRowsWritten: number;
+  firstScanUtc: string | null;
+  lastScanUtc: string | null;
+  diagnosticsAvailable: boolean;
+  diagnosticRows: number;
+  invalidDiagnosticRows: number;
+  recordedConfirmedAlerts: number;
+  byPairTimeframe: ScanAuditFunnelRow[];
+  byDay: ScanAuditDaySummary[];
+  storedAlertsAvailable: boolean;
+  storedAlertsByDay: StoredAlertAuditGroup[];
+}
+
+export interface DeliveryAuditBucket {
+  channel: string;
+  kind: "confirmed_entry" | "final_outcome";
+  delivered: number;
+  partial: number;
+  failed: number;
+  notConfigured: number;
+  total: number;
+}
+
+/** Counts of channel-level notifier results. These are not proof of user
+ *  receipt; only successful provider API responses are counted as delivered. */
+export interface NotificationDeliveryAuditSummary {
+  available: boolean;
+  firstTrackedUtc: string | null;
+  totalResults: number;
+  byChannel: DeliveryAuditBucket[];
+}
+
+export interface NotificationDeliveryAuditGroup {
+  channel: string;
+  kind: "confirmed_entry" | "final_outcome";
+  status: string;
+  count: number;
+}
+
+export function buildNotificationDeliveryAuditSummary(
+  available: boolean,
+  firstTrackedUtc: string | null,
+  groups: NotificationDeliveryAuditGroup[],
+): NotificationDeliveryAuditSummary {
+  const buckets = new Map<string, DeliveryAuditBucket>();
+  for (const group of groups) {
+    const key = `${group.kind}:${group.channel}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        channel: group.channel, kind: group.kind,
+        delivered: 0, partial: 0, failed: 0, notConfigured: 0, total: 0,
+      };
+      buckets.set(key, bucket);
+    }
+    const count = Number.isFinite(Number(group.count)) ? Math.max(0, Number(group.count)) : 0;
+    bucket.total += count;
+    switch (group.status) {
+      case "delivered": bucket.delivered += count; break;
+      case "partial": bucket.partial += count; break;
+      case "not_configured": bucket.notConfigured += count; break;
+      default: bucket.failed += count; break;
+    }
+  }
+  const byChannel = [...buckets.values()].sort((a, b) =>
+    a.kind.localeCompare(b.kind) || a.channel.localeCompare(b.channel),
+  );
+  return {
+    available, firstTrackedUtc,
+    totalResults: byChannel.reduce((total, bucket) => total + bucket.total, 0),
+    byChannel,
+  };
+}
+
+export interface EngineDisciplineTotals {
+  scans: number;
+  setupsEvaluated: number;
+  sweep: number;
+  shift: number;
+  retest: number;
+  confirmed: number;
+  rejectionCounts: {
+    targetFloor: number;
+    belowMinRiskAtr: number;
+    aboveMaxStopAtr: number;
+    nonPositiveRisk: number;
+    invalid: number;
+    expired: number;
+  };
+}
+
+export function summarizeScanLogs(rows: { diagnostics?: ScanDiagnostics }[]): EngineDisciplineTotals | null {
+  const totals: EngineDisciplineTotals = {
+    scans: 0, setupsEvaluated: 0, sweep: 0, shift: 0, retest: 0, confirmed: 0,
+    rejectionCounts: {
+      targetFloor: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0,
+      nonPositiveRisk: 0, invalid: 0, expired: 0,
+    },
+  };
+  const count = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  for (const row of rows) {
+    const diagnostics = row.diagnostics;
+    if (!diagnostics || !diagnostics.replay || !diagnostics.recorded) continue;
+    const replay = diagnostics.replay;
+    totals.scans++;
+    totals.setupsEvaluated += count(replay.MAP);
+    totals.sweep += count(replay.SWEEP);
+    totals.shift += count(replay.SHIFT);
+    // A retest candidate is counted before risk/target gates. RETEST itself
+    // retains its existing meaning: an accepted confirmation.
+    totals.retest += count(replay.retestCandidates);
+    totals.confirmed += count(diagnostics.recorded.confirmedAlerts);
+    totals.rejectionCounts.targetFloor += count(replay.targetRejects);
+    totals.rejectionCounts.belowMinRiskAtr += count(replay.riskRejectReasons?.belowMinRiskAtr);
+    totals.rejectionCounts.aboveMaxStopAtr += count(replay.riskRejectReasons?.aboveMaxStopAtr);
+    totals.rejectionCounts.nonPositiveRisk += count(replay.riskRejectReasons?.nonPositiveRisk);
+    totals.rejectionCounts.invalid += count(replay.INVALID);
+    totals.rejectionCounts.expired += count(replay.EXPIRED);
+  }
+  return totals.scans ? totals : null;
 }
 
 export function emptyLifecycleCounts(): LifecycleCounts {
@@ -42,10 +229,260 @@ export function emptyReplayDiagnostics(): ReplayDiagnostics {
   };
 }
 
+export function addReplayCounts(target: ReplayDiagnostics, source: Partial<ReplayDiagnostics>): void {
+  for (const state of LIFECYCLE_STATES) {
+    target[state] += Number.isFinite(Number(source[state])) ? Math.max(0, Number(source[state])) : 0;
+  }
+  for (const key of ["retestCandidates", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
+    target[key] += Number.isFinite(Number(source[key])) ? Math.max(0, Number(source[key])) : 0;
+  }
+  for (const key of ["nonPositiveRisk", "belowMinRiskAtr", "aboveMaxStopAtr"] as const) {
+    const value = source.riskRejectReasons?.[key];
+    target.riskRejectReasons[key] += Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+  }
+}
+
+export interface ScanAuditInputRow {
+  ts: string;
+  pairs?: string | null;
+  errors?: string | null;
+  alerts?: number | null;
+  events?: number | null;
+  diagnostics?: ScanDiagnostics | null;
+  diagnostics_json?: string | null;
+}
+
+export function emptyScanAuditDay(utcDay: string): ScanAuditDaySummary {
+  return {
+    utcDay, scanRows: 0, activeScanRows: 0, scanErrorRows: 0,
+    errorCategories: { staleFeed: 0, rateLimitOrCredits: 0, networkOrTimeout: 0, other: 0 },
+    diagnosticRows: 0, invalidDiagnosticRows: 0, gateMetricsRows: 0,
+    alertRowsWritten: 0, eventRowsWritten: 0, recordedConfirmedAlerts: 0,
+    replayRetestTransitions: 0, retestCandidates: 0, targetRejects: 0, riskRejects: 0,
+    staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
+    firstScanUtc: null, lastScanUtc: null,
+  };
+}
+
+/** Fill missing UTC days with zeroes so a missing log day is visible. */
+export function completeScanAuditDays(
+  rows: ScanAuditDaySummary[], fromIso: string, toIso: string,
+): ScanAuditDaySummary[] {
+  const byDay = new Map(rows.map((row) => [row.utcDay, row]));
+  const fromMs = Date.parse(fromIso);
+  const toMs = Date.parse(toIso);
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs > toMs) {
+    return [...byDay.values()].sort((a, b) => a.utcDay.localeCompare(b.utcDay));
+  }
+  const start = new Date(fromMs);
+  const end = new Date(toMs);
+  let cursor = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+  const finalDay = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  while (cursor <= finalDay) {
+    const day = new Date(cursor).toISOString().slice(0, 10);
+    if (!byDay.has(day)) byDay.set(day, emptyScanAuditDay(day));
+    cursor += 86400_000;
+  }
+  return [...byDay.values()].sort((a, b) => a.utcDay.localeCompare(b.utcDay));
+}
+
+export function mapScanAuditDayAggregateRows(
+  rows: Record<string, unknown>[], fromIso: string, toIso: string,
+): ScanAuditDaySummary[] {
+  const asCount = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const days = rows.flatMap((row) => {
+    const utcDay = String(row.utc_day ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDay)) return [];
+    return [{
+      utcDay,
+      scanRows: asCount(row.scan_rows),
+      activeScanRows: asCount(row.active_scan_rows),
+      scanErrorRows: asCount(row.scan_error_rows),
+      errorCategories: {
+        staleFeed: asCount(row.stale_feed_errors),
+        rateLimitOrCredits: asCount(row.rate_limit_errors),
+        networkOrTimeout: asCount(row.network_timeout_errors),
+        other: asCount(row.other_errors),
+      },
+      diagnosticRows: asCount(row.diagnostic_rows),
+      invalidDiagnosticRows: asCount(row.invalid_diagnostic_rows),
+      gateMetricsRows: asCount(row.gate_metrics_rows),
+      alertRowsWritten: asCount(row.alert_rows_written),
+      eventRowsWritten: asCount(row.event_rows_written),
+      recordedConfirmedAlerts: asCount(row.recorded_confirmed_alerts),
+      replayRetestTransitions: asCount(row.replay_retest_transitions),
+      retestCandidates: asCount(row.retest_candidates),
+      targetRejects: asCount(row.target_rejects),
+      riskRejects: asCount(row.risk_rejects),
+      staleConfirmationSkips: asCount(row.stale_confirmation_skips),
+      duplicateConfirmationSkips: asCount(row.duplicate_confirmation_skips),
+      firstScanUtc: row.first_scan_utc == null ? null : String(row.first_scan_utc),
+      lastScanUtc: row.last_scan_utc == null ? null : String(row.last_scan_utc),
+    }];
+  });
+  return completeScanAuditDays(days, fromIso, toIso);
+}
+
+export function buildStoredAlertAuditGroups(rows: StoredAlertAuditInputRow[]): StoredAlertAuditGroup[] {
+  const groups = new Map<string, StoredAlertAuditGroup>();
+  for (const row of rows) {
+    const createdUtc = String(row.created_utc ?? "");
+    const utcDay = createdUtc.slice(0, 10);
+    const pair = String(row.canonical_symbol ?? "").trim();
+    const timeframe = String(row.entry_timeframe ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(utcDay) || !pair || !timeframe) continue;
+    const direction = String(row.direction ?? "unknown");
+    const alertStatus = String(row.alert_status ?? "unknown");
+    const tradeStatus = String(row.status ?? "unknown");
+    const suppressReason = row.suppress_reason == null || String(row.suppress_reason).trim() === ""
+      ? null : String(row.suppress_reason);
+    const key = [utcDay, pair, timeframe, direction, alertStatus, tradeStatus, suppressReason ?? ""].join("\u0000");
+    const existing = groups.get(key);
+    if (existing) existing.count++;
+    else groups.set(key, { utcDay, pair, timeframe, direction, alertStatus, tradeStatus, suppressReason, count: 1 });
+  }
+  return [...groups.values()].sort((a, b) =>
+    a.utcDay.localeCompare(b.utcDay) || a.pair.localeCompare(b.pair)
+      || a.timeframe.localeCompare(b.timeframe) || a.alertStatus.localeCompare(b.alertStatus),
+  );
+}
+
+function scanErrorCategory(errors: string): "staleFeed" | "rateLimitOrCredits" | "networkOrTimeout" | "other" {
+  const normalized = errors.toLowerCase();
+  if (normalized.includes("stale feed")) return "staleFeed";
+  if (normalized.includes("rate limit") || normalized.includes("credit")) return "rateLimitOrCredits";
+  if (normalized.includes("network") || normalized.includes("timeout")) return "networkOrTimeout";
+  return "other";
+}
+
+export function buildScanAuditSummary(
+  rows: ScanAuditInputRow[], diagnosticsAvailable: boolean,
+  fromIso?: string, toIso?: string,
+): ScanAuditSummary {
+  const summary: ScanAuditSummary = {
+    scanRows: 0, activeScanRows: 0, scanErrorRows: 0,
+    errorCategories: { staleFeed: 0, rateLimitOrCredits: 0, networkOrTimeout: 0, other: 0 },
+    alertRowsWritten: 0, eventRowsWritten: 0, firstScanUtc: null, lastScanUtc: null,
+    diagnosticsAvailable, diagnosticRows: 0, invalidDiagnosticRows: 0,
+    recordedConfirmedAlerts: 0, byPairTimeframe: [], byDay: [],
+    storedAlertsAvailable: false, storedAlertsByDay: [],
+  };
+  const funnel = new Map<string, ScanAuditFunnelRow>();
+  const dayMap = new Map<string, ScanAuditDaySummary>();
+  const asCount = (value: unknown): number => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const dayFor = (utcDay: string) => {
+    let day = dayMap.get(utcDay);
+    if (!day) { day = emptyScanAuditDay(utcDay); dayMap.set(utcDay, day); }
+    return day;
+  };
+  for (const row of rows) {
+    const utcDay = String(row.ts ?? "").slice(0, 10);
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(utcDay) ? dayFor(utcDay) : null;
+    summary.scanRows++;
+    if (day) day.scanRows++;
+    const pairs = String(row.pairs ?? "").trim();
+    if (pairs && pairs !== "[]" && pairs.toLowerCase() !== "null") {
+      summary.activeScanRows++;
+      if (day) day.activeScanRows++;
+    }
+    const errors = String(row.errors ?? "").trim();
+    if (errors && errors !== "[]" && errors.toLowerCase() !== "null") {
+      summary.scanErrorRows++;
+      if (day) day.scanErrorRows++;
+      const category = scanErrorCategory(errors);
+      summary.errorCategories[category]++;
+      if (day) day.errorCategories[category]++;
+    }
+    summary.alertRowsWritten += asCount(row.alerts);
+    summary.eventRowsWritten += asCount(row.events);
+    if (day) {
+      day.alertRowsWritten += asCount(row.alerts);
+      day.eventRowsWritten += asCount(row.events);
+      if (row.ts && (!day.firstScanUtc || row.ts < day.firstScanUtc)) day.firstScanUtc = row.ts;
+      if (row.ts && (!day.lastScanUtc || row.ts > day.lastScanUtc)) day.lastScanUtc = row.ts;
+    }
+    if (row.ts && (!summary.firstScanUtc || row.ts < summary.firstScanUtc)) summary.firstScanUtc = row.ts;
+    if (row.ts && (!summary.lastScanUtc || row.ts > summary.lastScanUtc)) summary.lastScanUtc = row.ts;
+
+    let raw: unknown = row.diagnostics ?? row.diagnostics_json ?? null;
+    if (typeof raw === "string") {
+      try { raw = JSON.parse(raw); } catch { raw = false; }
+    }
+    if (raw == null) continue;
+    if (!raw || typeof raw !== "object") {
+      summary.invalidDiagnosticRows++;
+      if (day) day.invalidDiagnosticRows++;
+      continue;
+    }
+    const diagnostics = raw as ScanDiagnostics;
+    if (diagnostics.version !== 1 || !diagnostics.replay || !diagnostics.recorded) {
+      summary.invalidDiagnosticRows++;
+      if (day) day.invalidDiagnosticRows++;
+      continue;
+    }
+    summary.diagnosticRows++;
+    if (day) day.diagnosticRows++;
+    const recorded = diagnostics.recorded as RecordedDiagnostics;
+    const recordedConfirms = asCount(recorded.confirmedAlerts);
+    summary.recordedConfirmedAlerts += recordedConfirms;
+    if (day) {
+      day.recordedConfirmedAlerts += recordedConfirms;
+      day.replayRetestTransitions += asCount(diagnostics.replay.RETEST);
+      day.retestCandidates += asCount(diagnostics.replay.retestCandidates);
+      day.targetRejects += asCount(diagnostics.replay.targetRejects);
+      day.riskRejects += asCount(diagnostics.replay.riskRejects);
+      day.staleConfirmationSkips += asCount(recorded.staleConfirmationSkips);
+      day.duplicateConfirmationSkips += asCount(recorded.duplicateConfirmationSkips);
+      if (recorded.staleConfirmationSkips != null && recorded.duplicateConfirmationSkips != null) day.gateMetricsRows++;
+    }
+    for (const item of Array.isArray(diagnostics.byPairTimeframe) ? diagnostics.byPairTimeframe : []) {
+      const pair = String(item?.pair ?? "").trim();
+      const timeframe = String(item?.timeframe ?? "").trim();
+      if (!pair || !timeframe || !item?.replay) continue;
+      const key = `${pair}\u0000${timeframe}`;
+      let entry = funnel.get(key);
+      if (!entry) {
+        entry = { pair, timeframe, scanRows: 0, replay: emptyReplayDiagnostics() };
+        funnel.set(key, entry);
+      }
+      entry.scanRows++;
+      addReplayCounts(entry.replay, item.replay);
+    }
+  }
+  summary.byPairTimeframe = [...funnel.values()].sort((a, b) =>
+    a.pair.localeCompare(b.pair) || a.timeframe.localeCompare(b.timeframe),
+  );
+  summary.byDay = fromIso && toIso
+    ? completeScanAuditDays([...dayMap.values()], fromIso, toIso)
+    : [...dayMap.values()].sort((a, b) => a.utcDay.localeCompare(b.utcDay));
+  if (!diagnosticsAvailable) {
+    summary.diagnosticRows = 0;
+    summary.invalidDiagnosticRows = 0;
+    summary.recordedConfirmedAlerts = 0;
+    summary.byPairTimeframe = [];
+    summary.byDay = summary.byDay.map((day) => ({
+      ...day, diagnosticRows: 0, invalidDiagnosticRows: 0, gateMetricsRows: 0,
+      recordedConfirmedAlerts: 0, replayRetestTransitions: 0, retestCandidates: 0,
+      targetRejects: 0, riskRejects: 0, staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
+    }));
+  }
+  return summary;
+}
+
 export function emptyScanDiagnostics(): ScanDiagnostics {
   return {
     version: 1, replay: emptyReplayDiagnostics(),
-    recorded: { ...emptyLifecycleCounts(), confirmedAlerts: 0 }, byPairTimeframe: [],
+    recorded: {
+      ...emptyLifecycleCounts(), confirmedAlerts: 0,
+      staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
+    },
+    byPairTimeframe: [],
   };
 }
 

@@ -19,14 +19,14 @@ import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagn
 import { evaluateSignal, beArmedTime } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
-import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
+import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendEngineDisciplineDigest, parseChatIds, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
 import type { AlertRowish, OutcomeLike } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias } from "./shadow";
-import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery } from "./store";
-import type { Alert, Candle, Direction } from "./types";
+import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
+import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
 export interface Env {
   DB?: D1Like;
@@ -55,8 +55,10 @@ export interface Env {
   PAIRS?: string;
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
+  RETEST_DEPTH_PCT?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
+  ENGINE_DIGEST?: string;
   WATCH_NOTIFY?: string;
   VIP_WATCH_NOTIFY?: string;
   CHART_SNAPSHOTS?: string;
@@ -64,6 +66,8 @@ export interface Env {
   MIN_STOP_PIPS?: string;
   MIN_TP_R?: string;
   SL_BUFFER_ATR?: string;
+  TRAILING_BE_ENABLED?: string;
+  TRAILING_BE_TRIGGER_R?: string;
   PAIR_BATCH_SIZE?: string;
   PROVIDER_MAP?: string;
   SYMBOL_MAP?: string;
@@ -111,6 +115,35 @@ function isTraditionalMarketWeekend(nowMs: number): boolean {
   return false;
 }
 
+export function captureFvgRetest50Experiments(
+  pair: string, entryTf: string, tfSeconds: number, candles: Candle[], candidates: Alert[],
+): ShadowExperimentCapture[] {
+  if (!candles.length) return [];
+  const latestCloseTime = candles[candles.length - 1].t + tfSeconds * 1000;
+  const captures: ShadowExperimentCapture[] = [];
+  for (const candidate of candidates) {
+    if (candidate.candleCloseTime !== latestCloseTime || candidate.alertStatus === "SUPPRESSED") continue;
+    const risk = candidate.direction === "SHORT"
+      ? candidate.stopLoss - candidate.entry
+      : candidate.entry - candidate.stopLoss;
+    const reward = candidate.direction === "SHORT"
+      ? candidate.entry - candidate.tpInternal
+      : candidate.tpInternal - candidate.entry;
+    const rr = risk > 0 ? reward / risk : 0;
+    if (!Number.isFinite(rr) || rr <= 0) continue;
+    captures.push({
+      experimentId: `FVG_RETEST_50:${candidate.setupId}`,
+      sourceSetupId: candidate.setupId,
+      variant: "FVG_RETEST_50",
+      pair, entryTf, direction: candidate.direction,
+      entry: candidate.entry, stopLoss: candidate.stopLoss,
+      target: candidate.tpInternal, rr,
+      candleCloseTime: candidate.candleCloseTime,
+    });
+  }
+  return captures;
+}
+
 // -------------------------------------------------------------- performance recaps
 
 /**
@@ -133,6 +166,7 @@ export async function checkAndDispatchScheduledRecaps(
   dailySyntheticsSent: boolean;
   weeklyInstitutionalSent: boolean;
   weeklySyntheticsSent: boolean;
+  engineDigestSent: boolean;
 }> {
   const d = new Date(nowMs);
   const hour = d.getUTCHours();
@@ -148,9 +182,10 @@ export async function checkAndDispatchScheduledRecaps(
   let dailySyntheticsSent = false;
   let weeklyInstitutionalSent = false;
   let weeklySyntheticsSent = false;
+  let engineDigestSent = false;
 
   if (!isDailyDue && !isWeeklyDue) {
-    return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent };
+    return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent, engineDigestSent };
   }
 
   const dateStr = d.toISOString().slice(0, 10);
@@ -233,7 +268,32 @@ export async function checkAndDispatchScheduledRecaps(
     }
   }
 
-  return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent };
+  // Separate, low-volume research digest: only explicit FREE channel IDs are
+  // eligible. Never honor targetChatId overrides or fall back to VIP IDs here.
+  const engineDigestEnabled = (env.ENGINE_DIGEST ?? "true").toLowerCase() !== "false";
+  if (isWeeklyDue && engineDigestEnabled) {
+    const kvKey = `recap:weekly:engine_digest:${weekKey}`;
+    const already = options.forceWeekly ? null : await store.getKv(kvKey);
+    if (!already) {
+      const totals = await store.scanDiagnosticsSince(nowMs - 7 * 86400_000);
+      if (totals) {
+        const freeChannelIds = [...parseChatIds(freeChatId), ...parseChatIds(derivFreeChatId)];
+        const result = await sendEngineDisciplineDigest(
+          { ...recapEnv, fetchFn: env.fetchFn },
+          formatEngineDisciplineDigest(totals),
+          freeChannelIds,
+        );
+        if (result.sent) {
+          engineDigestSent = true;
+          await store.setKv(kvKey, new Date(nowMs).toISOString());
+        }
+      } else {
+        console.info(JSON.stringify({ level: "info", msg: "engine digest skipped: no persisted scan diagnostics in weekly window" }));
+      }
+    }
+  }
+
+  return { dailyInstitutionalSent, dailySyntheticsSent, weeklyInstitutionalSent, weeklySyntheticsSent, engineDigestSent };
 }
 
 // -------------------------------------------------------------- scan cycle
@@ -278,6 +338,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   }
 
   if (!due.length) {
+    // Run shadow fetches after all live/paper work in this invocation so its
+    // provider circuit-breaker state cannot influence entry routing.
+    await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn);
     await store.insertScanLog({
       ts: new Date(now).toISOString(), timeframes: "", pairs: "",
       alerts: 0, events: 0, errors: "", durationMs: Date.now() - startedAt,
@@ -398,9 +461,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   for (const pair of pairsToScan) {
     try {
-      // provider routing: forex/metals → Twelve Data, index CFDs → OANDA
-      // (if its token exists) → Dukascopy public feed → Yahoo last resort
-      // (a per-pair outage never blocks the other pairs — see catch below)
+      // Provider routing uses the configured map and supported feeds; a
+      // per-pair outage never blocks the other pairs (see catch below).
       const providerName = providerForPair(pair, cfg.providerMap, oandaTokenPresent);
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
@@ -534,15 +596,34 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
 
         const pairStrategy = strategyForPair(pair, cfg.strategy);
-        const { alerts, events, diagnostics: replay } = scanEntry({
+        const scanResult = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
           cfg: pairStrategy, mode: cfg.mode, provider: providerName,
           d1Candles: d1 ?? undefined,
           h1Candles: feeds["1h"],
           h4Candles: h4,
         });
+        const { alerts, events, diagnostics: replay, shadowTrades } = scanResult;
+        const shadowExperiments = [...scanResult.shadowExperiments];
+
+        // Side-by-side 50% FVG retest research is limited to 30m and paper
+        // mode to cap CPU cost. Its alerts are converted to shadow rows only;
+        // they never enter the normal alert/event/delivery path.
+        if (cfg.mode === "paper" && tf === "30m" && (pairStrategy.retestDepthPct ?? 100) === 100 && candles.length) {
+          const retest50 = scanEntry({
+            pair, entryTf: tf, tfSeconds: secs, candles, snaps,
+            cfg: { ...pairStrategy, retestDepthPct: 50 }, mode: "paper", provider: providerName,
+            d1Candles: d1 ?? undefined,
+            h1Candles: feeds["1h"],
+            h4Candles: h4,
+            shadowOnly: true,
+          });
+          shadowExperiments.push(...captureFvgRetest50Experiments(pair, tf, secs, candles, retest50.alerts));
+        }
 
         addReplayDiagnostics(diagnostics, pair, tf, replay);
+        await persistShadowCaptures(store, shadowTrades);
+        await persistShadowExperiments(store, shadowExperiments);
 
         const lastBefore = await store.getKv(`last_scan:${pair}:${tf}`);
         const isFirstScan = lastRawIsEmpty(lastBefore);
@@ -604,17 +685,22 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           // Historical replay can discover a confirmation long after its
           // candle closed. Never record stale historical replay into the live trade ledger.
           if (!alertEventFresh(alert, tf, now)) {
+            diagnostics.recorded.staleConfirmationSkips++;
             console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId }));
             continue;
           }
           const inserted = await store.insertAlert(alert, providerName);
-          if (!inserted) continue; // duplicate setup — already alerted/logged
+          if (!inserted) {
+            diagnostics.recorded.duplicateConfirmationSkips++;
+            continue; // duplicate setup — already alerted/logged
+          }
           alertCount++;
           diagnostics.recorded.confirmedAlerts++;
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
         }
 
-        // resolve open alerts on this pair/tf against fresh candles
+        // Resolve paper outcomes as before. Shadow outcomes are resolved only
+        // after all live/paper scans for this invocation have completed.
         await resolveOutcomes(env, store, cfg, pair, tf, candles, fetchFn);
         await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
       }
@@ -661,6 +747,11 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       }
     }
   }
+
+  // Resolve shadow rows after all established scanning, suppression, and
+  // delivery work has finished; observation fetches cannot alter this scan's
+  // provider routing or live behavior.
+  await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn);
 
   await store.insertScanLog({
     ts: new Date(now).toISOString(),
@@ -777,6 +868,35 @@ export function applyHtfConflictGate(
   return false;
 }
 
+async function persistNotificationDeliveryResults(
+  store: Store,
+  kind: "confirmed_entry" | "final_outcome",
+  context: { pair: string; timeframe: string; setupId: string },
+  results: Record<string, string>,
+): Promise<void> {
+  const entries = Object.entries(results);
+  const records = entries.length
+    ? entries.map(([channel, result]) => ({ channel, result }))
+    : [{ channel: "none", result: "not_configured" }];
+  for (const { channel, result } of records) {
+    const status = result === "ok" ? "delivered"
+      : result === "partial" ? "partial"
+      : result === "not_configured" ? "not_configured"
+      : "failed";
+    try {
+      // Store only non-secret identifiers and a normalized result; raw
+      // provider error text, chat IDs, and message content are never retained.
+      await store.insertNotificationDeliveryAudit({
+        channel, kind, status,
+        detail: JSON.stringify(context),
+      });
+    } catch (err) {
+      // Audit persistence is observational and must never block paper delivery.
+      console.warn(JSON.stringify({ level: "warn", msg: "notification delivery audit write failed", kind, channel, error: String(err) }));
+    }
+  }
+}
+
 export async function deliver(
   env: Env, store: Store, alert: Alert,
   cfg: ReturnType<typeof loadConfig>, allowed: boolean,
@@ -826,7 +946,13 @@ export async function deliver(
   const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
   const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
-  await notifyAlert({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey }, alert);
+  const deliveryResults = await notifyAlert(
+    { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey },
+    alert,
+  );
+  await persistNotificationDeliveryResults(store, "confirmed_entry", {
+    pair: alert.pair, timeframe: alert.entryTf, setupId: alert.setupId,
+  }, deliveryResults);
 
   // Roadmap #6: forward confirmed entries to the MT5 execution bridge.
   // Hard-gated: paper mode (production default) never touches the bridge.
@@ -878,10 +1004,188 @@ async function resolveOutcomes(
       const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
       const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
       const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
-      await notifyOutcome({ ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId }, rec, oc);
+      const deliveryResults = await notifyOutcome(
+        { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId },
+        rec, oc,
+      );
+      await persistNotificationDeliveryResults(store, "final_outcome", {
+        pair: String(rec.canonical_symbol), timeframe: String(rec.entry_timeframe), setupId: String(rec.setup_id),
+      }, deliveryResults);
     }
   }
   return resolvedCount;
+}
+
+/** Persist only in the isolated shadow table. Any DB/schema/serialization
+ *  failure is logged and swallowed so a scan can never fail because of
+ *  research capture. */
+export async function persistShadowCaptures(store: Store, captures: ShadowTradeCapture[]): Promise<void> {
+  for (const capture of captures) {
+    try {
+      await store.insertShadowTrade(capture);
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow capture persistence failed", setupId: capture.setupId, rejectReason: capture.rejectReason, error: String(err) }));
+    }
+  }
+}
+
+/** Persist experiment candidates in their own isolated ledger. Missing D1
+ *  migrations and storage errors never affect live/paper entry handling. */
+export async function persistShadowExperiments(store: Store, experiments: ShadowExperimentCapture[]): Promise<void> {
+  for (const experiment of experiments) {
+    try {
+      await store.insertShadowExperiment(experiment);
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment persistence failed", experimentId: experiment.experimentId, variant: experiment.variant, error: String(err) }));
+    }
+  }
+}
+
+/** Reuse the paper engine's touch-based TP, stop, and 120-bar expiry checks
+ *  for research rows only. Breakeven is disabled because the requested shadow
+ *  schema deliberately has only OPEN/TP_HIT/SL_HIT/EXPIRED states. */
+export async function resolveShadowOutcomes(
+  store: Store, cfg: ReturnType<typeof loadConfig>, pair: string, tf: string, candles: Candle[],
+): Promise<number> {
+  let open: ShadowTradeRow[];
+  try {
+    open = await store.openShadowTrades(pair, tf);
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "open shadow rows unavailable", pair, tf, error: String(err) }));
+    return 0;
+  }
+  let resolved = 0;
+  for (const row of open) {
+    try {
+      const entryTime = Date.parse(row.candle_close_time);
+      if (!Number.isFinite(entryTime)) continue;
+      const after = candles.filter((c) => c.t >= entryTime);
+      if (!after.length) continue;
+      const outcome = evaluateSignal(
+        row.direction,
+        Number(row.hypothetical_entry),
+        Number(row.hypothetical_stop_loss),
+        Number(row.hypothetical_tp1),
+        after,
+        120,
+        cfg.slOnClose,
+        cfg.strategy.trailingBeTriggerR ?? 1.5,
+        false,
+      );
+      if (!outcome || outcome.status === "OPEN" || outcome.status === "BE_HIT") continue;
+      await store.recordShadowOutcome(row.setup_id, {
+        status: outcome.status,
+        exitPrice: outcome.exitPrice,
+        exitTime: outcome.exitTime,
+        rMultiple: outcome.rMultiple,
+      });
+      resolved++;
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow outcome row resolution failed", setupId: row.setup_id, error: String(err) }));
+    }
+  }
+  return resolved;
+}
+
+export async function resolveShadowExperimentOutcomes(
+  store: Store, cfg: ReturnType<typeof loadConfig>, pair: string, tf: string, candles: Candle[],
+): Promise<number> {
+  let open: ShadowExperimentRow[];
+  try {
+    open = await store.openShadowExperiments(pair, tf);
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "open shadow experiments unavailable", pair, tf, error: String(err) }));
+    return 0;
+  }
+  let resolved = 0;
+  for (const row of open) {
+    try {
+      const entryTime = Date.parse(row.candle_close_time);
+      if (!Number.isFinite(entryTime)) continue;
+      const after = candles.filter((c) => c.t >= entryTime);
+      if (!after.length) continue;
+      const outcome = evaluateSignal(
+        row.direction,
+        Number(row.hypothetical_entry),
+        Number(row.hypothetical_stop_loss),
+        Number(row.hypothetical_target),
+        after,
+        120,
+        cfg.slOnClose,
+        cfg.strategy.trailingBeTriggerR ?? 1.5,
+        false,
+      );
+      if (!outcome || outcome.status === "OPEN" || outcome.status === "BE_HIT") continue;
+      await store.recordShadowExperimentOutcome(row.experiment_id, {
+        status: outcome.status,
+        exitPrice: outcome.exitPrice,
+        exitTime: outcome.exitTime,
+        rMultiple: outcome.rMultiple,
+      });
+      resolved++;
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment outcome resolution failed", experimentId: row.experiment_id, error: String(err) }));
+    }
+  }
+  return resolved;
+}
+
+/** Real-time shadow resolver mirrors the paper-trade cadence but uses its own
+ *  fetches and ledger. A 121-candle window preserves the requested 120-bar
+ *  expiry horizon without changing the paper resolver's existing 30-candle reads. */
+export async function resolveAllOpenShadowTrades(
+  env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
+  now = Date.now(), fetchFn: typeof fetch = fetch,
+): Promise<number> {
+  let open: ShadowTradeRow[] = [];
+  let openExperiments: ShadowExperimentRow[] = [];
+  try {
+    open = await store.openShadowTrades();
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "shadow resolver lookup failed", error: String(err) }));
+  }
+  try {
+    openExperiments = await store.openShadowExperiments();
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "shadow experiment resolver lookup failed", error: String(err) }));
+  }
+  if (!open.length && !openExperiments.length) return 0;
+  const groups = new Map<string, { pair: string; tf: string }>();
+  for (const row of [...open, ...openExperiments]) {
+    const key = `${row.canonical_symbol}:${row.entry_timeframe}`;
+    if (!groups.has(key)) groups.set(key, { pair: row.canonical_symbol, tf: row.entry_timeframe });
+  }
+
+  let totalResolved = 0;
+  try {
+    const apiKey = env.TWELVEDATA_API_KEY ?? "";
+    const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
+    const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
+    const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
+    const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
+    const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
+    const kv = { get: (key: string) => store.getKv(key), set: (key: string, value: string) => store.setKv(key, value) };
+    for (const { pair, tf } of groups.values()) {
+      try {
+        const tfSec = TF_SECONDS[tf] ?? 1800;
+        const res = await fetchMarketData({
+          pair, tf, limit: 121,
+          tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
+          symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
+        });
+        const candles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
+        if (candles.length) {
+          totalResolved += await resolveShadowOutcomes(store, cfg, pair, tf, candles);
+          totalResolved += await resolveShadowExperimentOutcomes(store, cfg, pair, tf, candles);
+        }
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: "shadow market data resolution failed", pair, tf, error: String(err) }));
+      }
+    }
+  } catch (err) {
+    console.warn(JSON.stringify({ level: "warn", msg: "shadow outcome resolution setup failed", error: String(err) }));
+  }
+  return totalResolved;
 }
 
 /** Instant outcome resolution for all currently open trades across any pair.
@@ -1286,6 +1590,77 @@ export default {
       });
     }
 
+    if (url.pathname === "/api/shadow-ledger" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const requestedLimit = Number(url.searchParams.get("limit") ?? 500);
+      if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 5000) {
+        return json({ error: "limit must be between 1 and 5000" }, 400);
+      }
+      try {
+        const ledger = await makeStore(env.DB).getShadowLedger(requestedLimit);
+        return json({
+          available: ledger.available,
+          rows: ledger.rows.map((row) => ({
+            setupId: row.setup_id,
+            pair: row.canonical_symbol,
+            timeframe: row.entry_timeframe,
+            direction: row.direction,
+            hypotheticalEntry: row.hypothetical_entry,
+            hypotheticalStopLoss: row.hypothetical_stop_loss,
+            hypotheticalTp1: row.hypothetical_tp1,
+            hypotheticalRr: row.hypothetical_rr,
+            rejectReason: row.reject_reason,
+            createdUtc: row.created_utc,
+            candleCloseTime: row.candle_close_time,
+            status: row.status,
+            exitTime: row.exit_time,
+            exitPrice: row.exit_price,
+            rMultiple: row.r_multiple,
+          })),
+          aggregate: ledger.aggregate,
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "shadow ledger read failed", error: String(err) }));
+        return json({ error: "shadow ledger unavailable" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/shadow-experiments" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const requestedLimit = Number(url.searchParams.get("limit") ?? 500);
+      if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 5000) {
+        return json({ error: "limit must be between 1 and 5000" }, 400);
+      }
+      try {
+        const ledger = await makeStore(env.DB).getShadowExperimentLedger(requestedLimit);
+        return json({
+          available: ledger.available,
+          rows: ledger.rows.map((row) => ({
+            experimentId: row.experiment_id,
+            sourceSetupId: row.source_setup_id,
+            variant: row.variant,
+            pair: row.canonical_symbol,
+            timeframe: row.entry_timeframe,
+            direction: row.direction,
+            hypotheticalEntry: row.hypothetical_entry,
+            hypotheticalStopLoss: row.hypothetical_stop_loss,
+            hypotheticalTarget: row.hypothetical_target,
+            hypotheticalRr: row.hypothetical_rr,
+            createdUtc: row.created_utc,
+            candleCloseTime: row.candle_close_time,
+            status: row.status,
+            exitTime: row.exit_time,
+            exitPrice: row.exit_price,
+            rMultiple: row.r_multiple,
+          })),
+          aggregate: ledger.aggregate,
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "shadow experiments read failed", error: String(err) }));
+        return json({ error: "shadow experiments unavailable" }, 500);
+      }
+    }
+
     if (url.pathname === "/api/monte-carlo" && request.method === "GET") {
       // Quant Lab: bootstrap stress-test over the verified closed-trade R series.
       // Seeded → deterministic; iteration×horizon capped to protect Free-tier CPU.
@@ -1344,13 +1719,54 @@ export default {
       return json({ ok: true, ...pulse, asof: new Date(nowMs).toISOString() });
     }
 
+    if (url.pathname === "/api/scan-audit" && request.method === "GET") {
+      // Private 1–31 day scan/funnel/delivery audit. Do not add this route to
+      // the public API allowlist above; `authed()` is required even though
+      // other portfolio reads are public.
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const days = Number(url.searchParams.get("days") ?? 21);
+      if (!Number.isInteger(days) || days < 1 || days > 31) {
+        return json({ error: "days must be an integer between 1 and 31" }, 400);
+      }
+      const toMs = Date.now();
+      const fromMs = toMs - days * 24 * 3600_000;
+      const fromUtc = new Date(fromMs).toISOString();
+      const toUtc = new Date(toMs).toISOString();
+      try {
+        const store = makeStore(env.DB);
+        const [scan, delivery] = await Promise.all([
+          store.scanAuditBetween(fromUtc, toUtc),
+          store.deliveryAuditBetween(fromUtc, toUtc),
+        ]);
+        return json({
+          ok: true,
+          window: { days, fromUtc, toUtc },
+          scan,
+          delivery,
+          caveats: [
+            "Per-pair/timeframe funnel figures are replay counts, not unique setup counts.",
+            "Daily replay transitions and candidates are scan-time replay counts, not distinct opportunities.",
+            "Scan error categories are keyword-based row counts, not confirmed root causes or unique incidents.",
+            "Daily scan-log alert totals and grouped stored-alert rows are separate views; neither proves a message was delivered.",
+            "Stale-confirmation and duplicate-insert counters start with this release; older rows have no coverage, not zero skips.",
+            "Stored alert status and suppress reason describe database rows, not Telegram or Discord receipt.",
+            "Delivery audit writes are best-effort; a missing result does not prove a message was not sent.",
+            "Delivery API-result tracking starts with this release; older delivery outcomes cannot be reconstructed.",
+          ],
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "private scan audit failed", error: String(err) }));
+        return json({ error: "scan audit unavailable" }, 500);
+      }
+    }
+
     if (url.pathname === "/alerts" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const invalid = (name: string, value: string | null, allowed?: string[]) => value && allowed && !allowed.includes(value) ? `${name} must be one of ${allowed.join(", ")}` : null;
       const page = Number(url.searchParams.get("page") ?? 1); const pageSize = Number(url.searchParams.get("pageSize") ?? url.searchParams.get("limit") ?? 50);
       if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) return json({ error: "page must be >= 1 and pageSize must be 1..200" }, 400);
       const allowedSort = ["candleCloseTime", "pair", "timeframe", "direction", "status", "provider"];
-      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","yahoo","oanda"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
+      const bad = invalid("order",url.searchParams.get("order"),["asc","desc"]) || invalid("direction",url.searchParams.get("direction"),["LONG","SHORT"]) || invalid("channel",url.searchParams.get("channel"),["CONFIRMED","WATCH"]) || invalid("lifecycle",url.searchParams.get("lifecycle"),["OPEN","TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("outcome",url.searchParams.get("outcome"),["TP_HIT","BE_HIT","SL_HIT","EXPIRED"]) || invalid("timeframe",url.searchParams.get("timeframe"),["30m","1h","H1"]) || invalid("provider",url.searchParams.get("provider"),["twelvedata","dukascopy","oanda","deriv"]) || invalid("sort",url.searchParams.get("sort"),allowedSort);
       const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
       const fromMs = from ? Date.parse(from) : null; const toMs = to ? Date.parse(to) : null;
       if (bad) return json({ error: bad }, 400);

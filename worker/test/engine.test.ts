@@ -1,11 +1,11 @@
 /** State-machine parity tests — row-for-row ports of the Python engine
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
-import { defaultStrategy, minStopDistance } from "../src/config";
+import { defaultStrategy, loadConfig, minStopDistance, type StrategyConfig } from "../src/config";
 import { scanEntry, selectTargets } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
-  LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
+  BASE, LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
 } from "./fixtures";
 
 const cfg = { ...defaultStrategy(), minRiskAtr: 0.1 }; // parity fixtures include a tiny stop
@@ -17,6 +17,86 @@ function runShort(rows = SHORT_ROWS, extra = {}) {
     cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
   });
 }
+
+function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra = {}) {
+  return scanEntry({
+    pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+    candles: mkCandles(rows, 30), snaps: snapsFor(story),
+    cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
+  });
+}
+
+describe("RETEST_DEPTH_PCT compatibility and FVG penetration", () => {
+  it("defaults to 100 and is byte-identical to the legacy config without the flag", () => {
+    const legacyCfg = { ...cfg } as StrategyConfig;
+    delete legacyCfg.retestDepthPct;
+    const legacy = scanEntry({
+      pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(SHORT_ROWS, 30), snaps: snapsFor(SHORT_STORY),
+      cfg: legacyCfg, mode: "paper", provider: "test",
+    });
+
+    expect(defaultStrategy().retestDepthPct).toBe(100);
+    expect(loadConfig({}).strategy.retestDepthPct).toBe(100);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "50" }).strategy.retestDepthPct).toBe(50);
+    expect(loadConfig({ RETEST_DEPTH_PCT: "0" }).strategy.retestDepthPct).toBe(100);
+    expect(runShort()).toEqual(legacy);
+  });
+
+  it("requires a 50% penetration to the bearish FVG midpoint, while 100 keeps the legacy edge gate", () => {
+    const story = {
+      ...SHORT_STORY,
+      imbalances: [{ lo: 104.95, hi: 105.05, direction: "bearish" as const, time: BASE }],
+    };
+    const rows = [...SHORT_ROWS];
+    rows[14] = [103.55, 104.99, 103.50, 104.90]; // past legacy edge, just shy of FVG midpoint
+    rows[15] = [104.90, 105.00, 104.85, 104.92]; // reaches FVG midpoint
+
+    const legacy = runShortWithStory(story, rows.slice(0, 15), { retestDepthPct: 100 });
+    const beforeMidpoint = runShortWithStory(story, rows.slice(0, 15), { retestDepthPct: 50 });
+    const partial = runShortWithStory(story, rows, { retestDepthPct: 50 });
+
+    expect(legacy.alerts).toHaveLength(1);
+    expect(beforeMidpoint.alerts).toHaveLength(0);
+    expect(partial.alerts).toHaveLength(1);
+    expect(partial.alerts[0].returnTime).toBe(BASE + 15 * 30 * 60_000);
+    expect(partial.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
+  });
+
+  it("applies the same FVG-depth measurement symmetrically to longs", () => {
+    const story = {
+      ...LONG_STORY,
+      imbalances: [{ lo: 97.75, hi: 98.05, direction: "bullish" as const, time: BASE }],
+    };
+    const rows = [...LONG_ROWS];
+    rows[14] = [98.45, 98.52, 97.91, 98.10]; // legacy edge reached, midpoint not yet tagged
+    rows[15] = [98.10, 98.15, 97.90, 98.10]; // reaches FVG midpoint
+    const run = (retestDepthPct: number, candles = rows) => scanEntry({
+      pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+      candles: mkCandles(candles, 30), snaps: snapsFor(story),
+      cfg: { ...cfg, retestDepthPct }, mode: "paper", provider: "test",
+    });
+
+    expect(run(100, rows.slice(0, 15)).alerts).toHaveLength(1);
+    expect(run(50, rows.slice(0, 15)).alerts).toHaveLength(0);
+    expect(run(50).alerts).toHaveLength(1);
+  });
+
+  it("requires an overlapping, direction-matched FVG below 100", () => {
+    const rows = [...SHORT_ROWS];
+    rows[14] = [103.55, 104.99, 103.50, 104.90];
+    const unmatchedImbalances = [
+      [],
+      [{ lo: 104.2, hi: 105.05, direction: "bullish" as const, time: BASE }],
+      [{ lo: 104.0, hi: 104.5, direction: "bearish" as const, time: BASE }],
+    ];
+
+    for (const imbalances of unmatchedImbalances) {
+      const story = { ...SHORT_STORY, imbalances };
+      expect(runShortWithStory(story, rows, { retestDepthPct: 50 }).alerts).toHaveLength(0);
+    }
+  });
+});
 
 describe("short confirmation path", () => {
   it("fires exactly once with full context", () => {
@@ -114,6 +194,70 @@ describe("failure paths", () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertStatus).toBe("SUPPRESSED");
     expect(alerts[0].suppressReason).toBe("outside session allowlist");
+  });
+});
+
+describe("near-miss shadow capture (research-only)", () => {
+  function storyWithSingleTarget(target: number) {
+    return {
+      ...SHORT_STORY,
+      internalPools: [
+        { price: target, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+        { price: 103.5, side: "sellside" as const, kind: "structural", sourceTime: BASE },
+      ],
+      nearestExternalTarget: null,
+      drawOnLiquidity: null,
+    };
+  }
+
+  it("captures [2.0R, 2.5R) floor rejects without an alert or shadow-specific event", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.35));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      pair: "EURUSD", entryTf: "30m", direction: "SHORT", entry: 104.9,
+      tp1: 104.35, rejectReason: "TARGET_FLOOR",
+    });
+    expect(result.shadowTrades[0].rr).toBeGreaterThanOrEqual(2.0);
+    expect(result.shadowTrades[0].rr).toBeLessThan(2.5);
+    // The pre-existing MAP/TOUCH/SWEEP/SHIFT tape is unchanged. A shadow row
+    // does not fabricate a RETEST event or any alert.
+    expect(result.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+    expect(result.diagnostics.confirmedAlerts).toBe(0);
+  });
+
+  it("does not capture a floor-rejected candidate below 2.0R", () => {
+    const result = runShortWithStory(storyWithSingleTarget(104.45));
+    expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toEqual([]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+  });
+
+  it("captures an expired post-BOS chain as a NO_RETEST BOS-close approximation", () => {
+    const rows: [number, number, number, number][] = [
+      ...SHORT_ROWS.slice(0, 12),
+      [103.9, 104.0, 103.4, 103.5],
+      [103.5, 103.6, 103.3, 103.4],
+      [103.4, 103.5, 103.1, 103.2],
+    ];
+    const candles = mkCandles(rows, 30);
+    const result = runShort(rows, { retestWindow: 2 });
+    expect(result.alerts).toHaveLength(0);
+    expect(result.events[result.events.length - 1]).toMatchObject({ state: "EXPIRED", reason: "no retest of the origin zone" });
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      rejectReason: "NO_RETEST", entry: candles[11].c, pair: "EURUSD", entryTf: "30m",
+    });
+    expect(result.shadowTrades[0].candleCloseTime).toBe(candles[11].t + 30 * 60_000);
+
+    const noPoolsStory = {
+      ...SHORT_STORY, internalPools: [], externalPools: [],
+      nearestExternalTarget: null, drawOnLiquidity: null,
+    };
+    const noPoolResult = runShortWithStory(noPoolsStory, rows, { retestWindow: 2 });
+    expect(noPoolResult.shadowTrades).toHaveLength(1);
+    expect(noPoolResult.shadowTrades[0]).toMatchObject({ rejectReason: "NO_RETEST", rr: 2.5 });
   });
 });
 

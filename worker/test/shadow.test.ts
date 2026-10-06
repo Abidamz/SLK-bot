@@ -379,6 +379,41 @@ describe("video-aligned directional bias shadow classification", () => {
     expect(diagShort.classification).toBe("OBSERVATION_ONLY");
   });
 
+  it("does not assign A/B grade without daily directional confirmation", () => {
+    const d1 = makeBearishDaily();
+    // Keep the latest D1 candle inside the prior candle's body and range: no
+    // body-to-body breakout and no prior-day liquidity sweep.
+    d1[d1.length - 1] = makeCandle(BASE, 104.8, 105.4, 104.2, 105.2);
+    const h4 = makeBearishH4();
+    const h1 = makeBearishH1();
+    const entry30m = mkCandles(SHORT_ROWS, 30);
+
+    const diag = evaluateDirectionalBias({
+      pair: "EURUSD",
+      entryTf: "30m",
+      direction: "SHORT",
+      entryCandles: entry30m,
+      d1Candles: d1,
+      h4Candles: h4,
+      h1Candles: h1,
+      cfg,
+      setup: {
+        sweepTime: entry30m[10].t,
+        sweepIndex: 10,
+        bosTime: entry30m[11].t,
+        bosIndex: 11,
+        retestTime: entry30m[14].t,
+        retestIndex: 14,
+      },
+    });
+
+    expect(diag.daily.bias).toBe("neutral");
+    expect(diag.h4.direction).toBe("bearish");
+    expect(diag.h1.direction).toBe("bearish");
+    expect(diag.entryQuality.fvgRebalanceDetected).toBe(true);
+    expect(diag.classification).toBe("OBSERVATION_ONLY");
+  });
+
   it("valid sweep plus FVG rebalance earns A_GRADE", () => {
     // SHORT_ROWS has:
     // Bar 10: high 105.10 touches origin and sweeps 104.55 internal liquidity

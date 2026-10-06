@@ -85,7 +85,7 @@
       <div>
         <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
         <h1>Algorithmic Confirmation Engine & Research Ledger</h1>
-        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 20 institutional and 24/7 synthetic markets.</p>
+        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 23 markets (13 institutional and 10 synthetic).</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -135,10 +135,10 @@
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
           <button type="button" class="segment-btn active" data-segment="all">
-            <span>🌍</span> All Markets <span class="seg-count">20</span>
+            <span>🌍</span> All Markets <span class="seg-count">23</span>
           </button>
           <button type="button" class="segment-btn" data-segment="institutional">
-            <span>🏛️</span> Institutional <span class="seg-count">10</span>
+            <span>🏛️</span> Institutional <span class="seg-count">13</span>
           </button>
           <button type="button" class="segment-btn" data-segment="synthetics">
             <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
@@ -154,10 +154,10 @@
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">10 Markets</span>
+            <span class="pill" style="font-size:11px;">13 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
@@ -335,8 +335,8 @@
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
-            <div><dt>Active Markets (20)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s)</dd></div>
-            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">10 Institutional · 10 Synthetics (24/7)</dd></div>
+            <div><dt>Active Markets (23)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s) · USDCAD · NZDUSD · EURJPY</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">13 Institutional · 10 Synthetics (24/7)</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
@@ -452,10 +452,10 @@
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
         <button type="button" class="segment-btn active" data-segment="all">
-          <span>🌍</span> All Markets <span class="seg-count">20</span>
+          <span>🌍</span> All Markets <span class="seg-count">23</span>
         </button>
         <button type="button" class="segment-btn" data-segment="institutional">
-          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">10</span>
+          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">13</span>
         </button>
         <button type="button" class="segment-btn" data-segment="synthetics">
           <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
@@ -517,10 +517,10 @@
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">10 Markets</span>
+            <span class="pill" style="font-size:11px;">13 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRate" class="profit-text">—</strong></div>
@@ -634,6 +634,17 @@
         <div id="healthDetails" class="health-grid">
           <div class="empty">Loading feed health…</div>
         </div>
+      </article>
+      <article class="panel" style="margin-top:18px;">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">PRIVATE · OWNER KEY REQUIRED</p>
+            <h2>21-Day Scan & Delivery Audit</h2>
+            <p class="muted-copy">Run a read-only report of daily scan counts, stored alert statuses, replay filters, freshness/deduplication skips, and delivery API results. Your admin key stays in this browser.</p>
+          </div>
+          <button id="runScanAuditBtn" class="secondary">Run 21-Day Audit</button>
+        </div>
+        <pre id="scanAuditResults" class="muted-copy" aria-live="polite" style="white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0 0;">The report is private and loads only after the owner key is entered.</pre>
       </article>
     </section>
 
@@ -828,6 +839,6 @@
       </div>
     </div>
   </footer>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@
     "test": "npm --prefix worker test --",
     "typecheck": "npm --prefix worker run typecheck",
     "deploy:worker": "npm --prefix worker run deploy",
-    "deploy:pages": "npx wrangler pages deploy dashboard --project-name=slk-radar --branch=main"
+    "deploy:pages": "npx wrangler pages deploy dashboard --project-name=slk-radar --branch=arena/01a0b153-slk-bot"
   },
   "dependencies": {
     "ws": "^8.18.0"

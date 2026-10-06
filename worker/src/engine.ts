@@ -12,7 +12,7 @@ import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import type {
-  Alert, Candle, Direction, EngineEvent, Setup, Storyline,
+  Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowExperimentCapture, ShadowTradeCapture,
 } from "./types";
 import type { StrategyConfig } from "./config";
 
@@ -28,6 +28,8 @@ export interface ScanEntryArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  /** Internal counterfactual pass. Its events/alerts are never persisted or delivered. */
+  shadowOnly?: boolean;
 }
 
 /** Deterministic setup identity (readable in logs/audit trail).
@@ -58,18 +60,87 @@ function bisectRight(keys: number[], x: number): number {
   return lo;
 }
 
+function fvgRetestThreshold(s: Setup, isShort: boolean, depthPct: number): number | null {
+  const fvgDirection = isShort ? "bearish" : "bullish";
+  const fvg = [...s.imbalances]
+    .filter((imb) => imb.direction === fvgDirection && imb.hi >= s.level.zoneLo && imb.lo <= s.level.zoneHi)
+    .sort((a, b) => b.time - a.time)[0];
+  if (!fvg || !Number.isFinite(fvg.lo) || !Number.isFinite(fvg.hi) || fvg.hi <= fvg.lo) return null;
+
+  const width = fvg.hi - fvg.lo;
+  return isShort
+    ? fvg.lo + width * (depthPct / 100)
+    : fvg.hi - width * (depthPct / 100);
+}
+
+function shadowRiskForStop(
+  pair: string, direction: Direction, entry: number, proposedStop: number,
+  atr: number, cfg: StrategyConfig,
+): { stopLoss: number; risk: number } | null {
+  if (!Number.isFinite(entry) || !Number.isFinite(proposedStop) || !Number.isFinite(atr) || atr <= 0) return null;
+  let stopLoss = proposedStop;
+  let risk = direction === "SHORT" ? stopLoss - entry : entry - stopLoss;
+  if (risk <= 0) return null;
+  if (cfg.minStopPips && cfg.minStopPips > 0) {
+    const minDistance = minStopDistance(pair, cfg.minStopPips);
+    if (risk < minDistance) {
+      stopLoss = direction === "SHORT" ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
+    }
+  }
+  if (risk < cfg.minRiskAtr * atr || risk > cfg.maxStopAtr * atr) return null;
+  return { stopLoss, risk };
+}
+
+function nearestExternalTarget(s: Storyline, direction: Direction, entry: number): number | null {
+  const isShort = direction === "SHORT";
+  const side = isShort ? "sellside" : "buyside";
+  const candidates = s.externalPools
+    .filter((pool) => pool.side === side && (isShort ? pool.price < entry : pool.price > entry))
+    .map((pool) => pool.price);
+  const mapped = s.nearestExternalTarget;
+  if (mapped !== null && (isShort ? mapped < entry : mapped > entry)) candidates.push(mapped);
+  if (!candidates.length) return null;
+  return isShort ? Math.max(...candidates) : Math.min(...candidates);
+}
+
+function makeShadowExperiment(args: {
+  experimentId: string; sourceSetupId: string; variant: ShadowExperimentCapture["variant"];
+  pair: string; entryTf: string; direction: Direction; entry: number;
+  stopLoss: number; target: number; risk: number; candleCloseTime: number;
+}): ShadowExperimentCapture | null {
+  const reward = args.direction === "SHORT" ? args.entry - args.target : args.target - args.entry;
+  const rr = reward / args.risk;
+  if (!Number.isFinite(rr) || rr <= 0) return null;
+  return {
+    experimentId: args.experimentId, sourceSetupId: args.sourceSetupId,
+    variant: args.variant, pair: args.pair, entryTf: args.entryTf,
+    direction: args.direction, entry: args.entry, stopLoss: args.stopLoss,
+    target: args.target, rr, candleCloseTime: args.candleCloseTime,
+  };
+}
+
 export function scanEntry(args: ScanEntryArgs): {
   alerts: Alert[];
   events: EngineEvent[];
   diagnostics: ReplayDiagnostics;
   shadowDiagnostics: DirectionalBiasDiagnostics[];
+  shadowTrades: ShadowTradeCapture[];
+  shadowExperiments: ShadowExperimentCapture[];
 } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
+  const configuredRetestDepthPct = cfg.retestDepthPct ?? 100;
+  const retestDepthPct = Number.isFinite(configuredRetestDepthPct)
+    ? Math.max(1, Math.min(100, configuredRetestDepthPct))
+    : 100;
   const alerts: Alert[] = [];
   const events: EngineEvent[] = [];
   const diagnostics = emptyReplayDiagnostics();
   const shadowDiagnostics: DirectionalBiasDiagnostics[] = [];
-  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics };
+  const shadowTrades: ShadowTradeCapture[] = [];
+  const shadowExperiments: ShadowExperimentCapture[] = [];
+  const shadowExperimentIds = new Set<string>();
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 6) return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades, shadowExperiments };
 
   // snapshot validity starts when that H4 candle has closed
   const validFrom = snaps.map(([t]) => t + MAP_TF_SECONDS * 1000).sort((a, b) => a - b);
@@ -87,6 +158,7 @@ export function scanEntry(args: ScanEntryArgs): {
   const active: { LONG: Setup | null; SHORT: Setup | null } = { LONG: null, SHORT: null };
 
   const emit = (s: Setup, state: string, c: Candle, reason: string, price: number | null = c.c) => {
+    if (args.shadowOnly) return;
     countTransition(diagnostics, state);
     events.push({ setupId: s.setupId, pair, state, candleTime: c.t, reason, price });
     console.info(JSON.stringify({ level: "info", msg: "slk.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
@@ -100,6 +172,48 @@ export function scanEntry(args: ScanEntryArgs): {
     const c = candles[i];
     const closeTime = c.t + tfSeconds * 1000;
     const story = storyAt(closeTime);
+
+    // Shadow-only continuation experiment: require a fresh candle-body close
+    // through a previously confirmed swing in the H4 storyline's direction.
+    // It intentionally runs only on the latest closed candle (no historical
+    // backfill) and never emits an EngineEvent or Alert.
+    if (!args.shadowOnly && i === candles.length - 1 && i > 0 && story?.valid && story.direction) {
+      const previous = candles[i - 1];
+      for (const direction of ["SHORT", "LONG"] as Direction[]) {
+        const isShort = direction === "SHORT";
+        const alignedEnvironment = isShort ? story.environment === "bearish" : story.environment === "bullish";
+        if (story.direction !== direction || !alignedEnvironment) continue;
+        const brokenSwings = (isShort ? lows : highs)
+          .filter((sw) => sw.index < i && sw.index + conf < i)
+          .sort((a, b) => b.index - a.index);
+        const breakoutSwing = brokenSwings.find((sw) =>
+          isShort ? previous.c >= sw.price && c.c < sw.price : previous.c <= sw.price && c.c > sw.price,
+        );
+        if (!breakoutSwing) continue;
+        const stopSwings = (isShort ? highs : lows)
+          .filter((sw) => sw.index < i && sw.index + conf < i && (isShort ? sw.price > c.c : sw.price < c.c))
+          .sort((a, b) => b.index - a.index);
+        const stopSwing = stopSwings[0];
+        if (!stopSwing) continue;
+        const proposedStop = isShort
+          ? stopSwing.price + cfg.slBufferAtr * atrE
+          : stopSwing.price - cfg.slBufferAtr * atrE;
+        const risk = shadowRiskForStop(pair, direction, c.c, proposedStop, atrE, cfg);
+        const target = nearestExternalTarget(story, direction, c.c);
+        if (!risk || target === null) continue;
+        const sourceSetupId = `${pair}:${entryTf}:${direction}:BREAKOUT:${new Date(breakoutSwing.time).toISOString()}`;
+        const experiment = makeShadowExperiment({
+          experimentId: `BREAKOUT_CONTINUATION:${sourceSetupId}`,
+          sourceSetupId, variant: "BREAKOUT_CONTINUATION", pair, entryTf, direction,
+          entry: c.c, stopLoss: risk.stopLoss, target, risk: risk.risk,
+          candleCloseTime: closeTime,
+        });
+        if (experiment && !shadowExperimentIds.has(experiment.experimentId)) {
+          shadowExperimentIds.add(experiment.experimentId);
+          shadowExperiments.push(experiment);
+        }
+      }
+    }
 
     for (const d of ["SHORT", "LONG"] as Direction[]) {
       const isShort = d === "SHORT";
@@ -159,6 +273,7 @@ export function scanEntry(args: ScanEntryArgs): {
           const onSideNew = isShort ? c.c < origin.zoneLo : c.c > origin.zoneHi;
           if (onSideNew) {
             cur.level = origin;
+            cur.imbalances = [...story!.imbalances];
             cur.setupId = buildSetupId(pair, entryTf, d, origin);
             cur.mapIndex = i;
             cur.mapTime = c.t;
@@ -242,7 +357,15 @@ export function scanEntry(args: ScanEntryArgs): {
           const left = isShort ? c.c < z.zoneLo : c.c > z.zoneHi;
           if (left) cur.leftZone = true;
           const tol = cfg.retestToleranceAtr * atrE;
-          const returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          // 100 is the compatibility value and keeps the exact legacy,
+          // ATR-tolerant origin-zone boundary check. Values below 100 require
+          // literal penetration into the overlapping, direction-matched FVG.
+          let returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;
+          if (retestDepthPct < 100) {
+            const partialThreshold = fvgRetestThreshold(cur, isShort, retestDepthPct);
+            returns = partialThreshold !== null && (isShort ? c.h >= partialThreshold : c.l <= partialThreshold);
+          }
+
           if (cur.leftZone && returns) {
             // opposing liquidity must remain standing for reversal setups
             let standing = false;
@@ -257,9 +380,13 @@ export function scanEntry(args: ScanEntryArgs): {
               pair, entryTf, closeTime, c, s: cur, isShort,
               atrE, cfg, mode, standing, provider, diagnostics,
               candles, candleIndex: i, d1Candles, h1Candles, h4Candles,
+              shadowTrades,
             });
             if (alert) {
-              emit(cur, "RETEST", c, `return to origin zone → confirmation entry @ ${c.c}`);
+              const retestReason = retestDepthPct < 100
+                ? `FVG retest depth ${retestDepthPct}% → confirmation entry @ ${c.c}`
+                : `return to origin zone → confirmation entry @ ${c.c}`;
+              emit(cur, "RETEST", c, retestReason);
               alerts.push(alert);
               if (alert.directionalBias) shadowDiagnostics.push(alert.directionalBias);
               diagnostics.confirmedAlerts++;
@@ -269,6 +396,17 @@ export function scanEntry(args: ScanEntryArgs): {
           }
         }
         if (i - cur.bosIndex > cfg.retestWindow) {
+          // Capture only the hypothetical BOS-close trade in the separate
+          // research ledger. All failures are swallowed so observation cannot
+          // affect this established expiry transition or its event payload.
+          try {
+            const shadow = buildNoRetestShadow({
+              pair, entryTf, tfSeconds, s: cur, isShort, atrE, cfg, candles,
+            });
+            if (shadow) shadowTrades.push(shadow);
+          } catch (err) {
+            console.warn(JSON.stringify({ level: "warn", msg: "shadow NO_RETEST capture failed", setupId: cur.setupId, error: String(err) }));
+          }
           kill(cur, "EXPIRED", c, "no retest of the origin zone");
           continue;
         }
@@ -276,7 +414,7 @@ export function scanEntry(args: ScanEntryArgs): {
     }
   }
 
-  return { alerts, events, diagnostics, shadowDiagnostics };
+  return { alerts, events, diagnostics, shadowDiagnostics, shadowTrades, shadowExperiments };
 }
 
 interface BuildAlertArgs {
@@ -289,6 +427,7 @@ interface BuildAlertArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  shadowTrades: ShadowTradeCapture[];
 }
 
 /** Pick the internal-liquidity target (tp1) and external drawback (tp2) for
@@ -337,6 +476,84 @@ export function selectTargets(args: {
   return { tp1, tp2 };
 }
 
+function buildTargetFloorShadow(args: {
+  pair: string; entryTf: string; closeTime: number; entry: number; stopLoss: number;
+  risk: number; isShort: boolean; s: Setup; cfg: StrategyConfig;
+}): ShadowTradeCapture | null {
+  if (args.cfg.minTpR !== 2.5 || args.risk <= 0) return null;
+  const candidate = selectTargets({
+    isShort: args.isShort,
+    entry: args.entry,
+    risk: args.risk,
+    minTpR: 2.0,
+    maxPromotedTpR: args.cfg.maxPromotedTpR,
+    internalPools: args.s.internalPools,
+    nearestExternalTarget: args.s.nearestExternalTarget,
+  });
+  if (!candidate) return null;
+  const rr = Math.abs(candidate.tp1 - args.entry) / args.risk;
+  if (!Number.isFinite(rr) || rr < 2.0 || rr >= 2.5) return null;
+  return {
+    setupId: args.s.setupId, pair: args.pair, entryTf: args.entryTf,
+    direction: args.s.direction, entry: args.entry, stopLoss: args.stopLoss,
+    tp1: candidate.tp1, rr, rejectReason: "TARGET_FLOOR",
+    candleCloseTime: args.closeTime,
+  };
+}
+
+function buildNoRetestShadow(args: {
+  pair: string; entryTf: string; tfSeconds: number; s: Setup; isShort: boolean;
+  atrE: number; cfg: StrategyConfig; candles: Candle[];
+}): ShadowTradeCapture | null {
+  const bosCandle = args.candles[args.s.bosIndex];
+  const bosAtr = args.atrE;
+  if (!bosCandle || !Number.isFinite(bosAtr) || bosAtr <= 0) return null;
+  const entry = bosCandle.c;
+  let stopLoss = args.isShort
+    ? args.s.invLevel + args.cfg.slBufferAtr * bosAtr
+    : args.s.invLevel - args.cfg.slBufferAtr * bosAtr;
+  let risk = args.isShort ? stopLoss - entry : entry - stopLoss;
+  if (!Number.isFinite(risk) || risk <= 0) return null;
+  if (args.cfg.minStopPips && args.cfg.minStopPips > 0) {
+    const minDistance = minStopDistance(args.pair, args.cfg.minStopPips);
+    if (risk < minDistance) {
+      stopLoss = args.isShort ? entry + minDistance : entry - minDistance;
+      risk = minDistance;
+    }
+  }
+  // Use the nearest valid opposing liquidity target without imposing the
+  // confirmation-entry RR floor: this row measures a BOS-close entry that the
+  // retest rule rejected, not a second alert or a new strategy gate.
+  const side = args.isShort ? "sellside" : "buyside";
+  const validExternal = args.s.externalPools
+    .filter((pool) => pool.side === side && (args.isShort ? pool.price < entry : pool.price > entry))
+    .map((pool) => pool.price);
+  const mappedTargetIsValid = args.s.nearestExternalTarget !== null
+    && (args.isShort ? args.s.nearestExternalTarget < entry : args.s.nearestExternalTarget > entry);
+  const externalFallback = validExternal.length
+    ? (args.isShort ? Math.max(...validExternal) : Math.min(...validExternal))
+    : null;
+  const targets = selectTargets({
+    isShort: args.isShort, entry, risk, minTpR: 0,
+    maxPromotedTpR: args.cfg.maxPromotedTpR,
+    internalPools: args.s.internalPools,
+    nearestExternalTarget: mappedTargetIsValid ? args.s.nearestExternalTarget : externalFallback,
+  });
+  // A valid storyline normally supplies a draw target. If price has already
+  // crossed every mapped pool by the BOS close, retain the required outcome
+  // fields with a transparent 2.5R benchmark rather than silently dropping an
+  // otherwise qualifying NO_RETEST expiry.
+  const tp1 = targets?.tp1 ?? (args.isShort ? entry - 2.5 * risk : entry + 2.5 * risk);
+  const rr = targets ? Math.abs(tp1 - entry) / risk : 2.5;
+  if (!Number.isFinite(rr) || rr <= 0) return null;
+  return {
+    setupId: args.s.setupId, pair: args.pair, entryTf: args.entryTf,
+    direction: args.s.direction, entry, stopLoss, tp1, rr,
+    rejectReason: "NO_RETEST",
+    candleCloseTime: bosCandle.t + args.tfSeconds * 1000,
+  };
+}
+
 function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
   const entry = c.c;
@@ -377,6 +594,18 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   });
   if (!targets) {
     a.diagnostics.targetRejects++;
+    // The live floor remains cfg.minTpR (2.5R in production). As a separate
+    // counterfactual, ask the same selector for the best candidate at 2.0R;
+    // only a resulting RR in [2.0, 2.5) is recorded. This branch never returns
+    // an Alert and never emits an event or notification.
+    try {
+      const shadow = buildTargetFloorShadow({
+        pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
+      });
+      if (shadow) a.shadowTrades.push(shadow);
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "shadow TARGET_FLOOR capture failed", setupId: s.setupId, error: String(err) }));
+    }
     return null;
   }
   const { tp1, tp2 } = targets;

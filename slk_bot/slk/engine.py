@@ -31,7 +31,7 @@ from .types import Alert, Event, Storyline, Setup
 
 log = logging.getLogger(__name__)
 
-PARAM_VERSION = "slk-r2.0"
+PARAM_VERSION = "slk-r2.1"
 
 
 def _setup_id(pair: str, entry_tf: str, d: Direction, level, story_asof) -> str:

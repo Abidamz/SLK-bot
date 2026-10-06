@@ -57,7 +57,7 @@ class StrategyConfig:
     av_len: int = 2                 # half-window for A/V line-chart extrema
     level_tolerance_atr: float = 0.25   # half-width of A/V level zones
     level_lookback: int = 120       # how far back (map candles) levels are built
-    decision_atr_mult: float = 1.5  # wide-range candle => Open-Close level + single-candle liquidity
+    decision_atr_mult: float = 1.5  # wide-range candle => DECISION level + single-candle liquidity
     flip_margin_atr: float = 0.50   # decisive close-through margin flips a level
     zone_max_distance_atr: float = 8.0  # origin must be within this of price
     fvg_lookback: int = 80          # imbalance zones considered (map candles)
@@ -107,7 +107,7 @@ class Config:
     context_timeframe: str = CONTEXT_TF
     mode: str = "paper"          # "paper" (validation) | "live" (plain alerts)
     paper_notify: bool = True    # push paper alerts too (tagged 🧪 PAPER)
-    provider: str = "auto"       # auto | yfinance | twelvedata
+    provider: str = "twelvedata" # market data provider for the Python runner
     candles_limit: int = 400
     poll_seconds: int = 30
     scan_delay_seconds: int = 10
@@ -202,6 +202,6 @@ def load_config(path: str | None = None) -> Config:
     )
 
     if cfg.provider == "auto":
-        cfg.provider = "twelvedata" if cfg.twelvedata_api_key else "yfinance"
+        cfg.provider = "twelvedata"
 
     return cfg

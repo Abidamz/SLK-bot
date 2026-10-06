@@ -183,26 +183,6 @@ export function tdJson(candles: Candle[]) {
   };
 }
 
-/** Yahoo Finance wire format helper (v8 chart: epoch seconds + quote arrays). */
-export function yahooJson(candles: Candle[]) {
-  return {
-    chart: {
-      result: [{
-        timestamp: candles.map((c) => Math.floor(c.t / 1000)),
-        indicators: {
-          quote: [{
-            open: candles.map((c) => c.o),
-            high: candles.map((c) => c.h),
-            low: candles.map((c) => c.l),
-            close: candles.map((c) => c.c),
-          }],
-        },
-      }],
-      error: null,
-    },
-  };
-}
-
 /** OANDA v3 wire format helper (RFC3339 ns timestamps, midpoint candles). */
 export function oandaJson(candles: Candle[]) {
   return {
@@ -247,7 +227,7 @@ export function dukaJson(candles: Candle[], shiftMs = 1800_000) {
 }
 
 /** A flat index-CFD feed (no structure → no storylines → no alerts). */
-export function yahooFlatFeed(): Candle[] {
+export function flatIndexFeed(): Candle[] {
   const closes = Array.from({ length: 420 }, (_, i) => 39000 + Math.sin(i / 24) * 8);
   return fromCloses(closes, 30, T0 + 8 * 3600_000 - 420 * 1800_000, 3);
 }
@@ -277,15 +257,10 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
       const candles = interval === "1day" ? dailyFeed() : baseFeed();
       return new Response(JSON.stringify(tdJson(candles)), { status: 200 });
     }
-    if (url.includes("finance.yahoo.com")) {
-      (calls.dataCalls ??= []).push(url);
-      if (opts.failData) throw new Error("network down (simulated)");
-      return new Response(JSON.stringify(yahooJson(yahooFlatFeed())), { status: 200 });
-    }
     if (url.includes("oanda.com")) {
       (calls.dataCalls ??= []).push(url);
       if (opts.failData) throw new Error("network down (simulated)");
-      return new Response(JSON.stringify(oandaJson(yahooFlatFeed())), { status: 200 });
+      return new Response(JSON.stringify(oandaJson(flatIndexFeed())), { status: 200 });
     }
     if (url.includes("jetta.dukascopy.com")) {
       (calls.dataCalls ??= []).push(url);
@@ -294,7 +269,7 @@ export function makeFakeFetch(calls: RecordedCalls, opts: { failData?: boolean }
       // than-requested is allowed by decode+resample), day files → 1d buckets
       const dayFile = url.includes("/candles/day/");
       return new Response(JSON.stringify(
-        dukaJson(dayFile ? dayFlatFeed() : yahooFlatFeed(), dayFile ? 86400_000 : 1800_000),
+        dukaJson(dayFile ? dayFlatFeed() : flatIndexFeed(), dayFile ? 86400_000 : 1800_000),
       ), { status: 200 });
     }
     if (url.includes("derivws.com") || url.includes("binaryws.com")) {

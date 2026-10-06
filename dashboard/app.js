@@ -129,6 +129,82 @@ if ($('resetPerfDates')) {
 
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
+function formatScanAuditReport(report) {
+  const scan = report?.scan || {};
+  const delivery = report?.delivery || {};
+  const errors = scan.errorCategories || {};
+  const dailyRows = Array.isArray(scan.byDay) ? scan.byDay : [];
+  const storedAlertRows = Array.isArray(scan.storedAlertsByDay) ? scan.storedAlertsByDay : [];
+  const gateMetricsRows = dailyRows.reduce((total, day) => total + Number(day.gateMetricsRows || 0), 0);
+  const storedAlertCount = storedAlertRows.reduce((total, row) => total + Number(row.count || 0), 0);
+  const lines = [
+    `Window (UTC): ${report?.window?.fromUtc || '—'} to ${report?.window?.toUtc || '—'}`,
+    `Scan records: ${scan.scanRows ?? 0} total; ${scan.activeScanRows ?? 0} covered at least one market.`,
+    `First/last scan: ${scan.firstScanUtc || 'none'} / ${scan.lastScanUtc || 'none'}.`,
+    `Scan records with errors: ${scan.scanErrorRows ?? 0}.`,
+    `Error rows by keyword match (not unique incidents): stale-feed ${errors.staleFeed ?? 0}; rate-limit/credits ${errors.rateLimitOrCredits ?? 0}; network/timeout ${errors.networkOrTimeout ?? 0}; other ${errors.other ?? 0}.`,
+    `Scan-log alert insert counts: ${scan.alertRowsWritten ?? 0}; event insert counts: ${scan.eventRowsWritten ?? 0}.`,
+    `Grouped rows in stored-alert table: ${scan.storedAlertsAvailable ? storedAlertCount : 'unavailable'}; these database rows do not prove message delivery.`,
+    `Diagnostic rows: ${scan.diagnosticRows ?? 0} valid; ${scan.invalidDiagnosticRows ?? 0} invalid; available: ${scan.diagnosticsAvailable ? 'yes' : 'no'}.`,
+    `Recorded confirmed-alert inserts: ${scan.recordedConfirmedAlerts ?? 0}.`,
+    `Freshness/deduplication skip counts: ${gateMetricsRows} scan logs have these counters; stale ${dailyRows.reduce((n, d) => n + Number(d.staleConfirmationSkips || 0), 0)}, duplicate ${dailyRows.reduce((n, d) => n + Number(d.duplicateConfirmationSkips || 0), 0)}.`,
+    'A day with zero counter-coverage means the old logs did not record these skips; it does not mean there were no skips.',
+    '',
+    'Daily scan and replay breakdown (UTC; replay numbers include repeat scans):',
+  ];
+  if (!dailyRows.length) lines.push('  Daily breakdown unavailable.');
+  for (const day of dailyRows) {
+    const c = day.errorCategories || {};
+    lines.push(`  ${day.utcDay}: scans ${day.scanRows ?? 0} (${day.activeScanRows ?? 0} active), errors ${day.scanErrorRows ?? 0} [stale ${c.staleFeed ?? 0}, rate/credits ${c.rateLimitOrCredits ?? 0}, network ${c.networkOrTimeout ?? 0}, other ${c.other ?? 0}], diagnostics ${day.diagnosticRows ?? 0}, scan-log alert inserts ${day.alertRowsWritten ?? 0}, confirmed inserts ${day.recordedConfirmedAlerts ?? 0}, replay RETEST ${day.replayRetestTransitions ?? 0}, candidates ${day.retestCandidates ?? 0}, target/risk rejects ${day.targetRejects ?? 0}/${day.riskRejects ?? 0}, stale/duplicate skips ${day.staleConfirmationSkips ?? 0}/${day.duplicateConfirmationSkips ?? 0} (${day.gateMetricsRows ?? 0} covered).`);
+  }
+  lines.push('', 'Stored alert rows by UTC day / market / timeframe / alert status / trade status / suppress reason:');
+  if (!scan.storedAlertsAvailable) lines.push('  Stored-alert table unavailable.');
+  else if (!storedAlertRows.length) lines.push('  No stored alert rows in this window.');
+  for (const row of storedAlertRows) {
+    const reason = row.suppressReason ? ` — ${row.suppressReason}` : '';
+    lines.push(`  ${row.utcDay} ${row.pair} ${row.timeframe} ${row.direction} / alert ${row.alertStatus}, trade ${row.tradeStatus}: ${row.count}${reason}`);
+  }
+  lines.push(
+    '',
+    `First tracked delivery result: ${delivery.firstTrackedUtc || 'none recorded'}.`,
+    'Delivery audit writes are best-effort; missing rows do not prove that a message was not sent.',
+    'Delivery counts below are channel API results, not proof the recipient saw the message:',
+  );
+  const deliveryRows = Array.isArray(delivery.byChannel) ? delivery.byChannel : [];
+  if (!deliveryRows.length) lines.push('  No tracked delivery results in this window.');
+  for (const row of deliveryRows) {
+    lines.push(`  ${row.kind} / ${row.channel}: ${row.delivered} delivered, ${row.partial} partial, ${row.failed} failed, ${row.notConfigured} not configured.`);
+  }
+  lines.push('', 'Pair/timeframe funnel totals (replay counts; repeats are not unique setups):');
+  const funnelRows = Array.isArray(scan.byPairTimeframe) ? scan.byPairTimeframe : [];
+  if (!funnelRows.length) lines.push('  No per-pair/timeframe diagnostics available.');
+  for (const row of funnelRows) {
+    const f = row.replay || {};
+    lines.push(`  ${row.pair} ${row.timeframe}: MAP ${f.MAP ?? 0} → TOUCH ${f.TOUCH ?? 0} → SWEEP ${f.SWEEP ?? 0} → SHIFT ${f.SHIFT ?? 0} → RETEST ${f.RETEST ?? 0}; target rejects ${f.targetRejects ?? 0}; risk rejects ${f.riskRejects ?? 0}.`);
+  }
+  for (const caveat of Array.isArray(report?.caveats) ? report.caveats : []) lines.push(`Note: ${caveat}`);
+  return lines.join('\n');
+}
+
+if ($('runScanAuditBtn')) {
+  $('runScanAuditBtn').addEventListener('click', async () => {
+    const button = $('runScanAuditBtn');
+    const output = $('scanAuditResults');
+    button.disabled = true;
+    button.textContent = 'Running…';
+    if (output) output.textContent = 'Running the read-only 21-day audit…';
+    try {
+      const report = await api('/api/scan-audit?days=21', { admin: true });
+      if (output) output.textContent = formatScanAuditReport(report);
+    } catch (err) {
+      if (output) output.textContent = `Audit unavailable: ${err.message || String(err)}`;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Run 21-Day Audit';
+    }
+  });
+}
+
 ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort', 'alertFrom', 'alertTo'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
@@ -230,7 +306,10 @@ async function api(path, options = {}) {
     ...(isAdmin && state.adminKey ? { 'x-admin-key': state.adminKey, Authorization: `Bearer ${state.adminKey}` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
-  const r = await fetch(state.url.replace(/\/$/, '') + path, { ...options, headers });
+  const requestOptions = { ...options };
+  delete requestOptions.admin;
+  delete requestOptions._retried;
+  const r = await fetch(state.url.replace(/\/$/, '') + path, { ...requestOptions, headers });
   if (r.status === 401 && isAdmin) {
     clearAdminKey();
     if (!options._retried) {

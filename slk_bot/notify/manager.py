@@ -16,7 +16,7 @@ RED = 0xE74C3C
 GREY = 0x95A5A6
 BLUE = 0x3498DB
 
-_KIND_NAMES = {"A": "A-top", "V": "V-bottom", "OC": "Open-Close"}
+_KIND_NAMES = {"A": "A-top", "V": "V-bottom", "OC": "Open-Close", "DECISION": "Decision candle"}
 
 
 def _paper_tag(a: Alert) -> str:

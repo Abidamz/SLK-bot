@@ -6,9 +6,9 @@ Structure:      pivot detection, environment (bullish/bearish/consolidation),
 Liquidity:      external pools (prior day/week/month highs+lows, HTF swings),
                 internal pools (map-TF structural swings + single-candle
                 "decision candle" liquidity).
-Key levels:     A-shaped / V-shaped line-chart extrema and Open-Close
-                decision-candle zones, with touch counts, flip detection and
-                FVG overlap flags.
+Key levels:     A-shaped / V-shaped line-chart extrema, OC zones where the
+                bodies of consecutive candles overlap, and separate wide-range
+                decision-candle zones, with touch counts, flips and FVG flags.
 Misc:           ATR, resampling, calendar aggregation, session windows.
 """
 from __future__ import annotations
@@ -302,8 +302,8 @@ def fvg_zones(candles: list[Candle], lookback: int) -> list[Imbalance]:
 
 
 def key_levels(candles: list[Candle], cfg) -> list[KeyLevel]:
-    """A/V line-chart extrema and Open-Close decision zones, with touch and
-    flip accounting. Line-chart logic uses closes; OC levels need full OHLC."""
+    """A/V line-chart extrema, consecutive-body OC overlaps, and separate
+    wide-range decision-candle zones, with touch and flip accounting."""
     n = len(candles)
     atr_val = atr(candles, cfg.atr_period)
     tol = cfg.level_tolerance_atr * atr_val
@@ -328,11 +328,22 @@ def key_levels(candles: list[Candle], cfg) -> list[KeyLevel]:
                          candles[i].time, i)
             )
 
+    # The playlist's OC level is the positive-width intersection of the
+    # open-close bodies of two consecutive candles, not a single wide candle.
+    # Keep the existing wide-range candle zone separately as DECISION.
     for i in range(max(1, n - lookback), n):
-        c = candles[i]
+        prev, c = candles[i - 1], candles[i]
+        overlap_lo = max(min(prev.open, prev.close), min(c.open, c.close))
+        overlap_hi = min(max(prev.open, prev.close), max(c.open, c.close))
+        if overlap_hi > overlap_lo:
+            levels.append(
+                KeyLevel("OC", (overlap_lo + overlap_hi) / 2,
+                         overlap_lo, overlap_hi, c.time, i)
+            )
+
         if atr_val > 0 and (c.high - c.low) >= cfg.decision_atr_mult * atr_val:
             levels.append(
-                KeyLevel("OC", c.close, min(c.open, c.close), max(c.open, c.close),
+                KeyLevel("DECISION", c.close, min(c.open, c.close), max(c.open, c.close),
                          c.time, i)
             )
 

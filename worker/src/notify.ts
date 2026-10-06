@@ -8,6 +8,7 @@
 import { fmtPips, fmtPrice, isDerivPair } from "./config";
 import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
 import type { DirectionalBiasDiagnostics } from "./shadow";
+import type { EngineDisciplineTotals } from "./diagnostics";
 import type { AlertRowish, NotifyEnv, OutcomeLike, PerformanceRecapStats } from "./notify_types";
 
 const GREEN = 0x2ecc71;
@@ -548,7 +549,7 @@ export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Pr
     throw new Error(`Discord failed: HTTP ${resp.status} ${await resp.text()}`);
 }
 
-const KIND_NAMES: Record<string, string> = { A: "A-top", V: "V-bottom", OC: "Open-Close" };
+const KIND_NAMES: Record<string, string> = { A: "A-top", V: "V-bottom", OC: "Open-Close", DECISION: "Decision candle" };
 const tfmt = (ms: number) =>
   new Date(ms).toISOString().slice(11, 16); // HH:MM UTC
 
@@ -713,6 +714,19 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   return lines.join("\n");
 }
 
+function recordDeliveryStatus(results: Record<string, string>, channel: string, status: string): void {
+  const previous = results[channel];
+  if (!previous || (previous === "ok" && status === "ok")) {
+    results[channel] = status;
+    return;
+  }
+  if (previous === "partial" || status === "partial" || previous === "ok" || status === "ok") {
+    results[channel] = "partial";
+    return;
+  }
+  results[channel] = status;
+}
+
 export interface BroadcastOptions {
   silent?: boolean;
   pin?: boolean;
@@ -746,10 +760,11 @@ export async function broadcast(
     for (const chatId of targetChannelIds) {
       try {
         await sendTelegram(env, text, { ...options, chatId });
-        results.telegram = "ok";
+        recordDeliveryStatus(results, "telegram", "ok");
       } catch (err) {
-        results.telegram = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: results.telegram }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram delivery failed", error: failure }));
       }
     }
   }
@@ -763,10 +778,11 @@ export async function broadcast(
       if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in target channel
       try {
         await sendTelegram(env, text, { silent: false, pin: false, chatId: dmId });
-        results.telegram_dm = "ok";
+        recordDeliveryStatus(results, "telegram_dm", "ok");
       } catch (err) {
-        results.telegram_dm = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram DM delivery failed", dmId, error: results.telegram_dm }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram_dm", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram DM delivery failed", dmId, error: failure }));
       }
     }
   }
@@ -774,9 +790,9 @@ export async function broadcast(
   if (discordAllowed && env.DISCORD_WEBHOOK_URL) {
     try {
       await sendDiscord(env, text, color);
-      results.discord = "ok";
+      recordDeliveryStatus(results, "discord", "ok");
     } catch (err) {
-      results.discord = `error: ${err instanceof Error ? err.message : String(err)}`;
+      recordDeliveryStatus(results, "discord", `error: ${err instanceof Error ? err.message : String(err)}`);
       console.warn(JSON.stringify({ level: "warn", msg: "discord delivery failed", error: results.discord }));
     }
   }
@@ -988,10 +1004,11 @@ export async function notifyOutcome(
     for (const freeId of freeChatIds) {
       try {
         await sendTelegram(env, teaser, { silent: false, pin: false, chatId: freeId });
-        results.telegram_free_teaser = "ok";
+        recordDeliveryStatus(results, "telegram_free_teaser", "ok");
       } catch (err) {
-        results.telegram_free_teaser = `error: ${err instanceof Error ? err.message : String(err)}`;
-        console.warn(JSON.stringify({ level: "warn", msg: "telegram free TP teaser failed", freeId, error: results.telegram_free_teaser }));
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram_free_teaser", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free TP teaser failed", freeId, error: failure }));
       }
     }
   }
@@ -1151,6 +1168,55 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     "SLK Model (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",
   ].join("\n");
+}
+
+/** Compact weekly engine-selectivity digest. Counts are replay diagnostics,
+ *  not trade performance; this message is kept separate from VIP entry/outcome
+ *  routing and is only sent by the caller to explicit FREE-channel IDs. */
+export function formatEngineDisciplineDigest(totals: EngineDisciplineTotals): string {
+  const candidates: Array<[string, number]> = [
+    ["2.5R target floor", totals.rejectionCounts.targetFloor],
+    ["minimum risk filter", totals.rejectionCounts.belowMinRiskAtr],
+    ["maximum stop-width filter", totals.rejectionCounts.aboveMaxStopAtr],
+    ["non-positive risk", totals.rejectionCounts.nonPositiveRisk],
+    ["invalidated chain", totals.rejectionCounts.invalid],
+    ["expired chain", totals.rejectionCounts.expired],
+  ];
+  const top = candidates.reduce((best, current) => current[1] > best[1] ? current : best, ["none recorded", 0] as [string, number]);
+  const disciplineLine = totals.confirmed === 0
+    ? (totals.rejectionCounts.targetFloor > 0
+        ? "0 sent — none met our 2.5R minimum."
+        : "0 sent — no setup cleared all confirmation gates.")
+    : `${totals.confirmed} confirmed — each cleared the 2.5R target floor.`;
+  return [
+    "🧭 ENGINE DISCIPLINE — WEEKLY",
+    `Setups evaluated: ${totals.setupsEvaluated}`,
+    `Chains: SWEEP ${totals.sweep} · SHIFT ${totals.shift} · RETEST ${totals.retest}`,
+    `Confirmed: ${totals.confirmed}`,
+    disciplineLine,
+    `Top rejection: ${top[0]}${top[1] > 0 ? ` (${top[1]})` : ""}`,
+    "Research only — paper-mode observations; not audited performance or financial advice.",
+    "SLK Model (Structure · Liquidity · Key Levels)",
+  ].join("\n");
+}
+
+/** Send only to caller-supplied free-channel IDs; deliberately has no VIP or
+ *  primary-chat fallback. */
+export async function sendEngineDisciplineDigest(
+  env: NotifyEnv,
+  text: string,
+  freeChatIds: string[],
+): Promise<{ sent: boolean; chatIds: string[] }> {
+  const chatIds = [...new Set(freeChatIds.map((id) => id.trim()).filter(Boolean))];
+  if (!env.TELEGRAM_BOT_TOKEN || chatIds.length === 0) return { sent: false, chatIds };
+  for (const chatId of chatIds) {
+    try {
+      await sendTelegram(env, text, { silent: false, pin: false, chatId });
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "engine discipline digest delivery failed", chatId, error: String(err) }));
+    }
+  }
+  return { sent: true, chatIds };
 }
 
 /**

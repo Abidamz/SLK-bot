@@ -179,14 +179,31 @@ class TestKeyLevels:
         a_tops = [lv for lv in levels if lv.kind == "A"]
         assert any(lv.origin_price == 104.0 for lv in a_tops)
 
-    def test_oc_level_on_decision_candle(self, cfg):
+    def test_oc_level_is_consecutive_candle_body_overlap(self, cfg):
+        rows = [
+            (100.0, 100.8, 99.6, 100.4),
+            (100.3, 101.0, 100.1, 100.8),  # bodies overlap at 100.3–100.4
+            (100.8, 101.5, 100.5, 101.3),
+            (101.3, 102.0, 101.0, 101.8),
+            (101.8, 102.5, 101.5, 102.3),
+        ]
+        candles = mk_candles(rows, step_minutes=240)
+        levels = F.key_levels(candles, cfg)
+        overlap = [lv for lv in levels if lv.kind == "OC" and lv.origin_index == 1]
+        assert len(overlap) == 1
+        assert overlap[0].zone_lo == pytest.approx(100.3)
+        assert overlap[0].zone_hi == pytest.approx(100.4)
+        assert overlap[0].origin_price == pytest.approx(100.35)
+
+    def test_wide_range_decision_candle_keeps_separate_kind(self, cfg):
         rows = [(100 + i, 100.6 + i, 99.5 + i, 100.4 + i) for i in range(10)]
         rows[6] = (100.4, 105.0, 100.2, 104.6)  # wide-range decision candle
         candles = mk_candles(rows, step_minutes=240)
         levels = F.key_levels(candles, cfg)
-        oc = [lv for lv in levels if lv.kind == "OC"]
+        assert not any(lv.kind == "OC" and lv.origin_index == 6 for lv in levels)
+        decisions = [lv for lv in levels if lv.kind == "DECISION" and lv.origin_index == 6]
         assert any(abs(lv.zone_lo - 100.4) < 1e-9 and abs(lv.zone_hi - 104.6) < 1e-9
-                   for lv in oc)
+                   for lv in decisions)
 
     def test_flip_after_decisive_close_through(self, cfg):
         closes = [100, 101, 102, 103, 104, 103, 102, 103, 104, 105, 106]

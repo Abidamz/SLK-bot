@@ -3,8 +3,9 @@
 Architecture (from the user's source-material research):
 
   Layer 1 — ABC storyline (expectation): higher-timeframe environment and
-  phase (M/W/D/H4), origin key level (A-shaped, V-shaped, Open-Close, tested,
-  flipped), imbalance/FVG context, internal + external liquidity map, draw on
+  phase (M/W/D/H4), origin key level (A-shaped, V-shaped, consecutive-body
+  Open-Close or wide-range decision candle, tested/flipped), imbalance/FVG
+  context, internal + external liquidity map, draw on
   liquidity and the nearest external target.
 
   Layer 2 — XYZ execution (entry): MAP → TOUCH → SWEEP → SHIFT → RETEST →

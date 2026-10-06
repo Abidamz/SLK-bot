@@ -15,7 +15,7 @@ export const TF_SECONDS: Record<string, number> = {
   "1d": 86400,
 };
 
-export const PARAM_VERSION = "slk-w1.0";
+export const PARAM_VERSION = "slk-w1.1";
 
 export interface StrategyConfig {
   pivotLeft: number;
@@ -35,6 +35,8 @@ export interface StrategyConfig {
   bosWindow: number;
   retestWindow: number;
   retestToleranceAtr: number;
+  /** 1–99 require that percent of the overlapping directional FVG; 100 preserves the legacy boundary check. */
+  retestDepthPct?: number;
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
@@ -77,7 +79,7 @@ export interface WorkerConfig {
   slOnClose: boolean;
   notifyOutcomes: boolean;
   symbolMap: Record<string, string>;
-  providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv">;
+  providerMap: Record<string, "twelvedata" | "oanda" | "dukascopy" | "deriv">;
   derivAppId: string;
   derivProxyUrl?: string;
   filterHtfConflict: boolean;
@@ -104,6 +106,7 @@ export function defaultStrategy(): StrategyConfig {
     bosWindow: 16,
     retestWindow: 20,
     retestToleranceAtr: 0.3,
+    retestDepthPct: 100,
     setupWindow: 100,
     slBufferAtr: 0.1,
     minRiskAtr: 0.8,  // quarantine structurally tiny stops
@@ -123,6 +126,7 @@ interface EnvVars {
   PAIRS?: string;
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
+  RETEST_DEPTH_PCT?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -134,7 +138,7 @@ interface EnvVars {
   TRAILING_BE_TRIGGER_R?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
-  PROVIDER_MAP?: string; // JSON object: canonical -> "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"
+  PROVIDER_MAP?: string; // JSON object: canonical -> supported provider name
   DERIV_APP_ID?: string;
   DERIV_PROXY_URL?: string;
   FILTER_HTF_CONFLICT?: string;
@@ -183,7 +187,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
       console.warn(JSON.stringify({ level: "warn", msg: "SYMBOL_MAP is not valid JSON — ignored" }));
     }
   }
-  let providerMap: Record<string, "twelvedata" | "yahoo" | "oanda" | "dukascopy" | "deriv"> = {};
+  let providerMap: Record<string, "twelvedata" | "oanda" | "dukascopy" | "deriv"> = {};
   if (env.PROVIDER_MAP) {
     try {
       providerMap = JSON.parse(env.PROVIDER_MAP);
@@ -205,12 +209,16 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
   const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
   const minTpR = Number(env.MIN_TP_R ?? "");
+  const retestDepthPct = Number(env.RETEST_DEPTH_PCT ?? "100");
   const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
   const strategy = defaultStrategy();
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
+  if (Number.isFinite(retestDepthPct) && retestDepthPct >= 1 && retestDepthPct <= 100) {
+    strategy.retestDepthPct = retestDepthPct;
+  }
   if (env.TRAILING_BE_ENABLED !== undefined) strategy.trailingBeEnabled = env.TRAILING_BE_ENABLED.toLowerCase() !== "false";
   const trailingBeTriggerR = Number(env.TRAILING_BE_TRIGGER_R ?? "");
   if (Number.isFinite(trailingBeTriggerR) && trailingBeTriggerR > 0) strategy.trailingBeTriggerR = trailingBeTriggerR;
