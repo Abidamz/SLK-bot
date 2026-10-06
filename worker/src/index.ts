@@ -1356,6 +1356,9 @@ export default {
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
+        // Effective FVG retest-depth gate: 100 = legacy origin-zone boundary
+        // check, 1–99 = literal penetration into the direction-matched FVG.
+        retestDepthPct: cfg.strategy.retestDepthPct ?? 100,
         watchNotify: cfg.watchNotify,
         biasNotify: cfg.biasNotify,
         vipWatchNotify: (env.VIP_WATCH_NOTIFY ?? "false").toLowerCase() === "true",

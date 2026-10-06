@@ -29,7 +29,8 @@
     // pairs continue to use the full ENTRY_TFS set.
     "SYNTH_ENTRY_TFS": "30m,1h",
     // 100 preserves the legacy retest threshold; 1–99 require that percent of penetration into the directional FVG.
-    "RETEST_DEPTH_PCT": "100",
+    // 60 activates partial-retest entries at 60% zone penetration (FVG-penetration semantics already implemented).
+    "RETEST_DEPTH_PCT": "60",
     // HTF Bias Hard Gate: suppress VIP counter-trend alerts on synthetics when
     // the shadow classifier flags HTF_CONFLICT (behavior-neutral on entries)
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
