@@ -351,23 +351,23 @@ function renderEnginePulse(p) {
     if ($('enginePulseSummary')) $('enginePulseSummary').textContent = 'Engine pulse unavailable right now — it rebuilds automatically from recorded scan diagnostics.';
     return;
   }
-  const evaluated = num(p.evaluated);
-  const touch = num(p.chains && p.chains.TOUCH);
-  const retest = num(p.chains && p.chains.RETEST);
-  const confirmed = num(p.confirmed);
+  const mapRows = num(p.evaluated);
+  const touchRows = num(p.chains && p.chains.TOUCH);
+  const retestRows = num(p.chains && p.chains.RETEST);
+  const alertRows = num(p.confirmed);
   const summary = $('enginePulseSummary');
   if (summary) {
-    const head = `${evaluated} setup${evaluated === 1 ? '' : 's'} evaluated · ${touch} touched · ${retest} reached RETEST · ${confirmed} confirmed`;
-    summary.textContent = confirmed > 0
-      ? `${head} — every entry cleared the strict 2.5R+ floor.`
-      : `${head} — selectivity working: only setups that clear every floor become entries.`;
+    const head = `${mapRows} MAP event rows · ${touchRows} TOUCH event rows · ${retestRows} RETEST event rows · ${alertRows} alert rows inserted`;
+    summary.textContent = alertRows > 0
+      ? `${head}. Alert rows are persisted before delivery gates; this is not proof a Telegram message was sent.`
+      : `${head}. No alert row was stored in this window; this is a pipeline count, not a strategy-performance verdict.`;
   }
-  put('epEvaluated', evaluated);
-  put('epTouch', touch);
+  put('epEvaluated', mapRows);
+  put('epTouch', touchRows);
   put('epSweep', num(p.chains && p.chains.SWEEP));
   put('epShift', num(p.chains && p.chains.SHIFT));
-  put('epRetest', retest);
-  put('epConfirmed', confirmed);
+  put('epRetest', retestRows);
+  put('epConfirmed', alertRows);
   put('epScans', num(p.scans));
   put('epPairs', num(p.pairsCovered));
   const rej = p.rejections || {};
@@ -376,10 +376,11 @@ function renderEnginePulse(p) {
   if (num(rej.aboveMaxStopAtr)) bits.push(`${num(rej.aboveMaxStopAtr)} above the stop ceiling`);
   if (num(rej.nonPositiveRisk)) bits.push(`${num(rej.nonPositiveRisk)} non-positive risk`);
   if (num(rej.targetFloor)) bits.push(`${num(rej.targetFloor)} under the 2.5R target floor`);
+  const replayNote = 'Counts are replay attempts, not unique setups; the same opportunity can recur across scans.';
   const rejEl = $('enginePulseRejections');
   if (rejEl) rejEl.textContent = bits.length
-    ? `Rejected on discipline: ${bits.join(' · ')}.`
-    : 'No rejections recorded in this window — every candidate met the floors.';
+    ? `Replay rejection attempts: ${bits.join(' · ')}. ${replayNote}`
+    : `No rejection attempts recorded in this window; that does not mean every market or candidate passed. ${replayNote}`;
 }
 
 async function loadStats() {

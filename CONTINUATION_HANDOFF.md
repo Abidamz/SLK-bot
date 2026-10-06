@@ -1,6 +1,6 @@
 # SLK Model — Definitive Project Handoff
 
-**Updated:** 2026-10-05 (UTC)
+**Updated:** 2026-10-06 (UTC)
 **Repository:** `Abidamz/SLK-bot`
 **This session's branch:** `arena/3ff9b8eb-slk-bot`
 **Production lineage:** `arena/01a0b153-slk-bot`
@@ -61,7 +61,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - `GET /api/scan-audit?days=21` is owner/admin-key protected; valid windows are 1–31 days. The Pages dashboard exposes it under **Market Health → 21-Day Scan & Delivery Audit** and prompts for the existing owner key.
 - The report returns scan/error totals, keyword-based error categories, pair/timeframe replay funnel counts, and normalized channel API results for confirmed entries/final outcomes. Error categories are not confirmed root causes or unique incidents. It does not return raw provider errors, message contents, chat IDs, alerts, or shadow rows.
 - Funnel values are replay counts, not unique setup counts. Stored alert rows are not proof of notification delivery. Delivery status means the channel API accepted/rejected the request, not that a person saw it.
-- Durable delivery-result tracking starts with this release; past Telegram/Discord outcomes cannot be reconstructed. The report shows the first tracked timestamp for context, but writes are best-effort: missing rows do not prove that a message was not sent.
+- Durable delivery-result tracking covers confirmed entries/final outcomes only; it does not audit WATCH/Bias sends, so it cannot reconstruct prior Free pre-entry-card volume. Tracking of confirmed-entry/outcome API results starts with this release; past outcomes cannot be reconstructed. The report shows the first tracked timestamp for context, but writes are best-effort: missing rows do not prove that a message was not sent.
 
 ### Separate shadow experiments (research only)
 
@@ -143,9 +143,13 @@ These are effective production values as of 2026-10-06, following the notificati
 | `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
 | `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
 
-### Alert-funnel evidence (pre-deploy snapshot)
+### Alert-funnel and notification-source review (live snapshot)
 
-Public `/api/engine-pulse` sampled at `2026-10-06T11:57:07.994Z` reported 432 scans, 365 active scans, all 23 markets covered, 166 evaluated calls, one RETEST, and zero confirmed entries. The 113 TOUCH, 101 SWEEP, 56 SHIFT, and one RETEST are lifecycle transition counts, not Telegram delivery totals. Rejection totals (203 target-floor, 76 stop-width, 4 below minimum risk ATR) are replay-weighted and may count the same candidate on repeat scans; they are not unique setup counts. No delivery-audit records were inspected, so the owner's reported Free-channel message volume is not independently counted.
+Fresh public probes on `2026-10-06` showed `/health` at `12:24:33.413Z` with `mode=paper`, `watchNotify=false`, `biasNotify=false`, `vipWatchNotify=false`, `paperNotify=true`, and `mt5BridgeActive=false`. These flags mean the current Worker should not generate its automatic pre-entry WATCH/Bias cards. If a Free-channel card arrived after that time, its source cannot be attributed from this repo's public telemetry alone; a timestamp/message sample (not a secret) would be needed. The Worker has a WATCH path that sends only a latest-stage `SHIFT` context card and a separate BIAS path that can send repeatedly when enabled; both are gated off in the observed live configuration. Python `slk_bot` has no WATCH/Bias notification path and only broadcasts alert/outcome/startup/stats/test messages to its single configured Telegram destination; the repo documents it as an optional self-hosted systemd process, not the Cloudflare Worker runtime.
+
+Public `/api/engine-pulse` at `2026-10-06T12:24:33.267Z` reported 457 scans, 390 active scans, 23 markets covered, 171 recorded MAP-event rows, lifecycle event rows `{TOUCH:116, SWEEP:104, SHIFT:59, RETEST:1}`, and zero alert rows inserted. Replay rejection attempts were `{nonPositiveRisk:0, belowMinRiskAtr:4, aboveMaxStopAtr:79, targetFloor:227}`. These are not unique setup counts or Telegram-delivery totals. The single recorded RETEST event is emitted only after `buildAlert()` passes the risk/target gates; its absence from inserted alert rows is downstream of that event and can be a freshness skip, duplicate insert, or insert error. The exact blocker was not exposed by the public pulse. The owner-key-only 21-Day Scan & Delivery Audit reports stale/duplicate skips, stored alert status/reasons, and channel API results; run it locally in the Pages dashboard without sharing the key. Its delivery rows are best-effort and API results are not proof a person saw a message.
+
+Channel policy is intentional: complete confirmed entry cards go to VIP, not Free. Free's zero entry-card count alone is therefore expected; however this Worker also recorded zero new alert rows in the sampled 24-hour pulse. WATCH/Bias cards are informational, explicitly marked **NOT AN ENTRY**, and must not be presented as confirmations. The public Engine Pulse now labels persisted event rows and inserted alert rows accurately, avoids claiming that zero entries proves good selectivity, and explains that rejection figures are replay attempts.
 
 ### Secret and credential handling
 

@@ -510,18 +510,19 @@ export interface EnginePulseRow {
   diagnostics?: ScanDiagnostics | null;
 }
 
-/** Rolling 24h aggregate of the engine's recorded activity. Framing is
- *  positive by design: the counts show setups the engine EVALUATED and how
- *  few cleared the strict floors — "selectivity working", not a miss rate. */
+/** Rolling 24h aggregate of recorded engine counters. Lifecycle counts are
+ *  first-write event rows (not distinct setups); rejection counts are replay
+ *  attempts and can include the same opportunity on multiple scans. These
+ *  metrics describe pipeline activity, not strategy efficacy or delivery. */
 export interface EnginePulse {
   windowHours: number;
   scans: number; // every scan logged in the window (incl. idle ticks)
   activeScans: number; // scans that covered at least one pair
   pairs: string[];
   pairsCovered: number;
-  evaluated: number; // newly recorded MAP arms (setups the engine evaluated)
-  chains: { TOUCH: number; SWEEP: number; SHIFT: number; RETEST: number };
-  confirmed: number; // newly recorded confirmed alerts
+  evaluated: number; // newly recorded MAP event rows; not distinct setup IDs
+  chains: { TOUCH: number; SWEEP: number; SHIFT: number; RETEST: number }; // first-write event rows; a setup can recur on a later candle
+  confirmed: number; // alert rows inserted; not proof of notification delivery
   rejections: { nonPositiveRisk: number; belowMinRiskAtr: number; aboveMaxStopAtr: number; targetFloor: number };
   lastScanTs: string | null;
 }
@@ -536,9 +537,10 @@ export function emptyEnginePulse(windowHours = 24): EnginePulse {
 }
 
 /** Pure aggregation over scan-log rows (read-only; never called from the
- *  scan/write path). `chains`/`evaluated`/`confirmed` use the RECORDED
- *  (deduped, first-write) counters — i.e. unique setup activity, not
- *  rescan-inflated replay counts. */
+ *  scan/write path). `chains`/`evaluated`/`confirmed` use recorded counters;
+ *  lifecycle rows are de-duplicated by event identity, not by setup ID, and
+ *  `confirmed` means an alert row was inserted before delivery gates. Rejection
+ *  counters are replay attempts and may repeat the same opportunity. */
 export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHours = 24): EnginePulse {
   const pulse = emptyEnginePulse(windowHours);
   const cutoff = nowMs - windowHours * 3600_000;
