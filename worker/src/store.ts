@@ -5,10 +5,12 @@
  *  retries and rescans can never double-deliver. */
 import type { Alert, EngineEvent, Outcome, ShadowExperimentCapture, ShadowExperimentVariant, ShadowTradeCapture, ShadowTradeOutcome, ShadowTradeStatus, ShadowRejectReason } from "./types";
 import {
-  addReplayCounts, buildNotificationDeliveryAuditSummary, buildScanAuditSummary, emptyReplayDiagnostics,
+  addReplayCounts, buildNotificationDeliveryAuditSummary, buildScanAuditSummary,
+  buildStoredAlertAuditGroups, emptyReplayDiagnostics, mapScanAuditDayAggregateRows,
   summarizeScanLogs,
   type EngineDisciplineTotals, type NotificationDeliveryAuditGroup,
-  type NotificationDeliveryAuditSummary, type ScanAuditInputRow, type ScanAuditSummary, type ScanDiagnostics,
+  type NotificationDeliveryAuditSummary, type ScanAuditInputRow, type ScanAuditSummary,
+  type ScanDiagnostics, type StoredAlertAuditInputRow,
 } from "./diagnostics";
 import { isDerivPair } from "./config";
 
@@ -865,8 +867,103 @@ export class D1Store implements Store {
       invalidDiagnosticRows: 0,
       recordedConfirmedAlerts: 0,
       byPairTimeframe: [],
+      byDay: [],
+      storedAlertsAvailable: false,
+      storedAlertsByDay: [],
     };
-    if (!await hasScanDiagnosticsColumn(this.db)) return summary;
+
+    let diagnosticsColumnAvailable = await hasScanDiagnosticsColumn(this.db);
+    const diagnosticDailySelect = `
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN 1 ELSE 0 END) AS diagnostic_rows,
+        SUM(CASE WHEN diagnostics_json IS NOT NULL AND json_valid(diagnostics_json) = 0 THEN 1 ELSE 0 END) AS invalid_diagnostic_rows,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.recorded.confirmedAlerts') AS INTEGER), 0) ELSE 0 END) AS recorded_confirmed_alerts,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.RETEST') AS INTEGER), 0) ELSE 0 END) AS replay_retest_transitions,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.retestCandidates') AS INTEGER), 0) ELSE 0 END) AS retest_candidates,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.targetRejects') AS INTEGER), 0) ELSE 0 END) AS target_rejects,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.riskRejects') AS INTEGER), 0) ELSE 0 END) AS risk_rejects,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.recorded.staleConfirmationSkips') AS INTEGER), 0) ELSE 0 END) AS stale_confirmation_skips,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.recorded.duplicateConfirmationSkips') AS INTEGER), 0) ELSE 0 END) AS duplicate_confirmation_skips,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN
+          CASE WHEN json_extract(diagnostics_json, '$.version') = 1 THEN
+            CASE WHEN json_type(diagnostics_json, '$.recorded.staleConfirmationSkips') IN ('integer', 'real')
+              AND json_type(diagnostics_json, '$.recorded.duplicateConfirmationSkips') IN ('integer', 'real')
+              THEN 1 ELSE 0 END
+          ELSE 0 END
+          ELSE 0 END) AS gate_metrics_rows`;
+    const makeDailySql = (includeDiagnostics: boolean) => `
+      SELECT
+        substr(ts, 1, 10) AS utc_day,
+        COUNT(*) AS scan_rows,
+        SUM(CASE WHEN TRIM(COALESCE(pairs, '')) NOT IN ('', '[]', 'null') THEN 1 ELSE 0 END) AS active_scan_rows,
+        SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') THEN 1 ELSE 0 END) AS scan_error_rows,
+        SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') AND lower(errors) LIKE '%stale feed%' THEN 1 ELSE 0 END) AS stale_feed_errors,
+        SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') AND lower(errors) NOT LIKE '%stale feed%' AND (lower(errors) LIKE '%rate limit%' OR lower(errors) LIKE '%credit%') THEN 1 ELSE 0 END) AS rate_limit_errors,
+        SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') AND lower(errors) NOT LIKE '%stale feed%' AND lower(errors) NOT LIKE '%rate limit%' AND lower(errors) NOT LIKE '%credit%' AND (lower(errors) LIKE '%network%' OR lower(errors) LIKE '%timeout%') THEN 1 ELSE 0 END) AS network_timeout_errors,
+        SUM(CASE WHEN TRIM(COALESCE(errors, '')) NOT IN ('', '[]', 'null') AND lower(errors) NOT LIKE '%stale feed%' AND lower(errors) NOT LIKE '%rate limit%' AND lower(errors) NOT LIKE '%credit%' AND lower(errors) NOT LIKE '%network%' AND lower(errors) NOT LIKE '%timeout%' THEN 1 ELSE 0 END) AS other_errors,
+        SUM(COALESCE(alerts, 0)) AS alert_rows_written,
+        SUM(COALESCE(events, 0)) AS event_rows_written,
+        MIN(ts) AS first_scan_utc,
+        MAX(ts) AS last_scan_utc,
+        ${includeDiagnostics ? diagnosticDailySelect : `
+          0 AS diagnostic_rows, 0 AS invalid_diagnostic_rows, 0 AS recorded_confirmed_alerts,
+          0 AS replay_retest_transitions, 0 AS retest_candidates, 0 AS target_rejects,
+          0 AS risk_rejects, 0 AS stale_confirmation_skips,
+          0 AS duplicate_confirmation_skips, 0 AS gate_metrics_rows`}
+      FROM slk_scan_log WHERE ts >= ? AND ts <= ?
+      GROUP BY substr(ts, 1, 10) ORDER BY utc_day
+    `;
+    try {
+      const dailyRows = await this.db.prepare(makeDailySql(diagnosticsColumnAvailable)).bind(fromIso, toIso).all();
+      summary.byDay = mapScanAuditDayAggregateRows(dailyRows.results ?? [], fromIso, toIso);
+    } catch (err) {
+      if (diagnosticsColumnAvailable) {
+        diagnosticsColumnAvailable = false;
+        markScanDiagnosticsColumn(this.db, false);
+        console.warn(JSON.stringify({ level: "warn", msg: "scanAuditBetween daily diagnostics unavailable; using base scan fields", error: String(err) }));
+        try {
+          const dailyRows = await this.db.prepare(makeDailySql(false)).bind(fromIso, toIso).all();
+          summary.byDay = mapScanAuditDayAggregateRows(dailyRows.results ?? [], fromIso, toIso);
+        } catch (fallbackErr) {
+          console.warn(JSON.stringify({ level: "warn", msg: "scanAuditBetween daily rollup unavailable", error: String(fallbackErr) }));
+        }
+      } else {
+        console.warn(JSON.stringify({ level: "warn", msg: "scanAuditBetween daily rollup unavailable", error: String(err) }));
+      }
+    }
+
+    if (!summary.byDay.length) summary.byDay = mapScanAuditDayAggregateRows([], fromIso, toIso);
+
+    try {
+      const alertRows = await this.db.prepare(`
+        SELECT substr(created_utc, 1, 10) AS utc_day,
+          canonical_symbol AS pair, entry_timeframe AS timeframe, direction,
+          alert_status, status AS trade_status, suppress_reason, COUNT(*) AS row_count
+        FROM slk_alerts
+        WHERE created_utc >= ? AND created_utc <= ?
+        GROUP BY substr(created_utc, 1, 10), canonical_symbol, entry_timeframe,
+          direction, alert_status, status, suppress_reason
+        ORDER BY substr(created_utc, 1, 10), canonical_symbol, entry_timeframe, alert_status, status
+      `).bind(fromIso, toIso).all();
+      summary.storedAlertsAvailable = true;
+      summary.storedAlertsByDay = (alertRows.results ?? []).flatMap((row) => {
+        if (!row.utc_day || !row.pair || !row.timeframe) return [];
+        return [{
+          utcDay: String(row.utc_day).slice(0, 10),
+          pair: String(row.pair),
+          timeframe: String(row.timeframe),
+          direction: String(row.direction ?? "unknown"),
+          alertStatus: String(row.alert_status ?? "unknown"),
+          tradeStatus: String(row.trade_status ?? "unknown"),
+          suppressReason: row.suppress_reason == null || String(row.suppress_reason).trim() === ""
+            ? null : String(row.suppress_reason),
+          count: asNumber(row.row_count),
+        }];
+      });
+    } catch (err) {
+      console.warn(JSON.stringify({ level: "warn", msg: "scanAuditBetween stored-alert groups unavailable", error: String(err) }));
+    }
+
+    if (!diagnosticsColumnAvailable) return summary;
 
     try {
       const diagnosticTotals = await this.db.prepare(`
@@ -939,6 +1036,11 @@ export class D1Store implements Store {
       summary.invalidDiagnosticRows = 0;
       summary.recordedConfirmedAlerts = 0;
       summary.byPairTimeframe = [];
+      summary.byDay = summary.byDay.map((day) => ({
+        ...day, diagnosticRows: 0, invalidDiagnosticRows: 0, gateMetricsRows: 0,
+        recordedConfirmedAlerts: 0, replayRetestTransitions: 0, retestCandidates: 0,
+        targetRejects: 0, riskRejects: 0, staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
+      }));
     }
     return summary;
   }
@@ -1103,7 +1205,10 @@ export class MemStore implements Store {
       origin_key_level: a.originKeyLevel, key_level_type: a.keyLevelType,
       entry: a.entry, stop_loss: a.stopLoss, tp_internal: a.tpInternal,
       tp_external: a.tpExternal, invalidation_level: a.invalidationLevel,
-      alert_status: a.alertStatus, status: "OPEN",
+      alert_status: a.alertStatus, suppress_reason: null, status: "OPEN",
+      // The memory store uses the confirmation candle as a deterministic
+      // creation timestamp; D1 stores the actual insert time.
+      created_utc: iso(a.candleCloseTime),
     });
     return true;
   }
@@ -1331,7 +1436,22 @@ export class MemStore implements Store {
 
   async scanAuditBetween(fromIso: string, toIso: string): Promise<ScanAuditSummary> {
     const rows = this.scanLog.filter((row) => row.ts >= fromIso && row.ts <= toIso);
-    return buildScanAuditSummary(rows as ScanAuditInputRow[], true);
+    const summary = buildScanAuditSummary(rows as ScanAuditInputRow[], true, fromIso, toIso);
+    const storedRows: StoredAlertAuditInputRow[] = [...this.alerts.values()].filter((row) => {
+      const createdUtc = String(row.created_utc ?? "");
+      return createdUtc >= fromIso && createdUtc <= toIso;
+    }).map((row) => ({
+      created_utc: row.created_utc,
+      canonical_symbol: row.canonical_symbol,
+      entry_timeframe: row.entry_timeframe,
+      direction: row.direction,
+      alert_status: row.alert_status,
+      status: row.status,
+      suppress_reason: row.suppress_reason,
+    }));
+    summary.storedAlertsAvailable = true;
+    summary.storedAlertsByDay = buildStoredAlertAuditGroups(storedRows);
+    return summary;
   }
 
   async deliveryAuditBetween(fromIso: string, toIso: string): Promise<NotificationDeliveryAuditSummary> {

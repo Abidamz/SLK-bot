@@ -133,19 +133,43 @@ function formatScanAuditReport(report) {
   const scan = report?.scan || {};
   const delivery = report?.delivery || {};
   const errors = scan.errorCategories || {};
+  const dailyRows = Array.isArray(scan.byDay) ? scan.byDay : [];
+  const storedAlertRows = Array.isArray(scan.storedAlertsByDay) ? scan.storedAlertsByDay : [];
+  const gateMetricsRows = dailyRows.reduce((total, day) => total + Number(day.gateMetricsRows || 0), 0);
+  const storedAlertCount = storedAlertRows.reduce((total, row) => total + Number(row.count || 0), 0);
   const lines = [
     `Window (UTC): ${report?.window?.fromUtc || '—'} to ${report?.window?.toUtc || '—'}`,
     `Scan records: ${scan.scanRows ?? 0} total; ${scan.activeScanRows ?? 0} covered at least one market.`,
+    `First/last scan: ${scan.firstScanUtc || 'none'} / ${scan.lastScanUtc || 'none'}.`,
     `Scan records with errors: ${scan.scanErrorRows ?? 0}.`,
     `Error rows by keyword match (not unique incidents): stale-feed ${errors.staleFeed ?? 0}; rate-limit/credits ${errors.rateLimitOrCredits ?? 0}; network/timeout ${errors.networkOrTimeout ?? 0}; other ${errors.other ?? 0}.`,
-    `Stored alert rows: ${scan.alertRowsWritten ?? 0}; stored event rows: ${scan.eventRowsWritten ?? 0}. (Stored rows are not proof of message delivery.)`,
+    `Scan-log alert insert counts: ${scan.alertRowsWritten ?? 0}; event insert counts: ${scan.eventRowsWritten ?? 0}.`,
+    `Grouped rows in stored-alert table: ${scan.storedAlertsAvailable ? storedAlertCount : 'unavailable'}; these database rows do not prove message delivery.`,
     `Diagnostic rows: ${scan.diagnosticRows ?? 0} valid; ${scan.invalidDiagnosticRows ?? 0} invalid; available: ${scan.diagnosticsAvailable ? 'yes' : 'no'}.`,
-    `Recorded confirmed-alert rows: ${scan.recordedConfirmedAlerts ?? 0}.`,
+    `Recorded confirmed-alert inserts: ${scan.recordedConfirmedAlerts ?? 0}.`,
+    `Freshness/deduplication skip counts: ${gateMetricsRows} scan logs have these counters; stale ${dailyRows.reduce((n, d) => n + Number(d.staleConfirmationSkips || 0), 0)}, duplicate ${dailyRows.reduce((n, d) => n + Number(d.duplicateConfirmationSkips || 0), 0)}.`,
+    'A day with zero counter-coverage means the old logs did not record these skips; it does not mean there were no skips.',
+    '',
+    'Daily scan and replay breakdown (UTC; replay numbers include repeat scans):',
+  ];
+  if (!dailyRows.length) lines.push('  Daily breakdown unavailable.');
+  for (const day of dailyRows) {
+    const c = day.errorCategories || {};
+    lines.push(`  ${day.utcDay}: scans ${day.scanRows ?? 0} (${day.activeScanRows ?? 0} active), errors ${day.scanErrorRows ?? 0} [stale ${c.staleFeed ?? 0}, rate/credits ${c.rateLimitOrCredits ?? 0}, network ${c.networkOrTimeout ?? 0}, other ${c.other ?? 0}], diagnostics ${day.diagnosticRows ?? 0}, scan-log alert inserts ${day.alertRowsWritten ?? 0}, confirmed inserts ${day.recordedConfirmedAlerts ?? 0}, replay RETEST ${day.replayRetestTransitions ?? 0}, candidates ${day.retestCandidates ?? 0}, target/risk rejects ${day.targetRejects ?? 0}/${day.riskRejects ?? 0}, stale/duplicate skips ${day.staleConfirmationSkips ?? 0}/${day.duplicateConfirmationSkips ?? 0} (${day.gateMetricsRows ?? 0} covered).`);
+  }
+  lines.push('', 'Stored alert rows by UTC day / market / timeframe / alert status / trade status / suppress reason:');
+  if (!scan.storedAlertsAvailable) lines.push('  Stored-alert table unavailable.');
+  else if (!storedAlertRows.length) lines.push('  No stored alert rows in this window.');
+  for (const row of storedAlertRows) {
+    const reason = row.suppressReason ? ` — ${row.suppressReason}` : '';
+    lines.push(`  ${row.utcDay} ${row.pair} ${row.timeframe} ${row.direction} / alert ${row.alertStatus}, trade ${row.tradeStatus}: ${row.count}${reason}`);
+  }
+  lines.push(
     '',
     `First tracked delivery result: ${delivery.firstTrackedUtc || 'none recorded'}.`,
     'Delivery audit writes are best-effort; missing rows do not prove that a message was not sent.',
     'Delivery counts below are channel API results, not proof the recipient saw the message:',
-  ];
+  );
   const deliveryRows = Array.isArray(delivery.byChannel) ? delivery.byChannel : [];
   if (!deliveryRows.length) lines.push('  No tracked delivery results in this window.');
   for (const row of deliveryRows) {
@@ -158,6 +182,7 @@ function formatScanAuditReport(report) {
     const f = row.replay || {};
     lines.push(`  ${row.pair} ${row.timeframe}: MAP ${f.MAP ?? 0} → TOUCH ${f.TOUCH ?? 0} → SWEEP ${f.SWEEP ?? 0} → SHIFT ${f.SHIFT ?? 0} → RETEST ${f.RETEST ?? 0}; target rejects ${f.targetRejects ?? 0}; risk rejects ${f.riskRejects ?? 0}.`);
   }
+  for (const caveat of Array.isArray(report?.caveats) ? report.caveats : []) lines.push(`Note: ${caveat}`);
   return lines.join('\n');
 }
 

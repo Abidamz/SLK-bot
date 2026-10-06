@@ -685,11 +685,15 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           // Historical replay can discover a confirmation long after its
           // candle closed. Never record stale historical replay into the live trade ledger.
           if (!alertEventFresh(alert, tf, now)) {
+            diagnostics.recorded.staleConfirmationSkips++;
             console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId }));
             continue;
           }
           const inserted = await store.insertAlert(alert, providerName);
-          if (!inserted) continue; // duplicate setup — already alerted/logged
+          if (!inserted) {
+            diagnostics.recorded.duplicateConfirmationSkips++;
+            continue; // duplicate setup — already alerted/logged
+          }
           alertCount++;
           diagnostics.recorded.confirmedAlerts++;
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
@@ -1741,8 +1745,11 @@ export default {
           delivery,
           caveats: [
             "Per-pair/timeframe funnel figures are replay counts, not unique setup counts.",
+            "Daily replay transitions and candidates are scan-time replay counts, not distinct opportunities.",
             "Scan error categories are keyword-based row counts, not confirmed root causes or unique incidents.",
-            "Alert and event totals are stored-row counts, not proof of Telegram or Discord receipt.",
+            "Daily scan-log alert totals and grouped stored-alert rows are separate views; neither proves a message was delivered.",
+            "Stale-confirmation and duplicate-insert counters start with this release; older rows have no coverage, not zero skips.",
+            "Stored alert status and suppress reason describe database rows, not Telegram or Discord receipt.",
             "Delivery audit writes are best-effort; a missing result does not prove a message was not sent.",
             "Delivery API-result tracking starts with this release; older delivery outcomes cannot be reconstructed.",
           ],

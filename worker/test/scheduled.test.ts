@@ -97,6 +97,8 @@ describe("scheduled scan cycle", () => {
     expect(again.events).toBe(0);
     expect(calls.telegram).toHaveLength(1);
     expect(calls.discord).toHaveLength(1);
+    expect(store.scanLog[1].diagnostics?.recorded.duplicateConfirmationSkips).toBe(1);
+    expect(store.scanLog[1].diagnostics?.recorded.staleConfirmationSkips).toBe(0);
     // 6 events: stale pre-touch MAP (superseded origin) + winning setup's
     // MAP→TOUCH→SWEEP→SHIFT→RETEST — replay above inserted none of them again
     expect(store.events).toHaveLength(6);
@@ -144,6 +146,21 @@ describe("scheduled scan cycle", () => {
     });
     expect(summary.alerts).toBe(0);
     expect(calls.telegram).toHaveLength(0);
+  });
+
+  it("records stale-confirmation skip telemetry without changing the alert gate", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [] };
+    const store = new MemStore();
+    // The fixture still replays its confirmation; it is two hours old, beyond
+    // the live-entry freshness window, but inside the feed-quality window.
+    const summary = await scanAll(makeEnv(), {
+      now: NOW + 2 * 3600_000, fetchFn: makeFakeFetch(calls), force: true,
+      storeOverride: store,
+    });
+    expect(summary.alerts).toBe(0);
+    expect(calls.telegram).toHaveLength(0);
+    expect(store.scanLog[0].diagnostics?.recorded.staleConfirmationSkips).toBe(1);
+    expect(store.scanLog[0].diagnostics?.recorded.confirmedAlerts).toBe(0);
   });
 
   it("provider outage fails safe: no alerts, visible error, scan logged", async () => {

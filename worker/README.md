@@ -233,7 +233,12 @@ Every scan row now carries `slk_scan_log.diagnostics_json`; `/scan-now` returns
 that same object as `diagnostics`. Non-idle scans also emit structured
 `slk.scan.diagnostics` console logs. Do **not** force a production scan just to
 read diagnostics: `/scan-now` retains its existing notification behavior.
-Prefer read-only D1 queries after the next scheduled candle boundary.
+For routine triage, use the dashboard's **PRIVATE · OWNER KEY REQUIRED**
+21-Day Scan & Delivery Audit. It shows UTC-day scan/alert counts, grouped
+stored-alert statuses/reasons, replay filters, and post-release freshness and
+deduplication skips without routine D1-console queries. The owner key is entered
+in the dashboard browser and is not shared in chat. Historical delivery results
+cannot be reconstructed from scan logs.
 
 - `replay`: MAP, TOUCH, SWEEP, SHIFT, RETEST, INVALID, EXPIRED counts across the
   trailing engine replay, plus `riskRejects` and `confirmedAlerts`. These are
@@ -243,8 +248,12 @@ Prefer read-only D1 queries after the next scheduled candle boundary.
 - `byPairTimeframe`: the same replay counters for each completed engine call.
   A missing pair/timeframe indicates no completed replay, not zero setups.
 - `recorded`: lifecycle counts only after successful new event inserts, plus
-  newly inserted `confirmedAlerts`. These follow D1 deduplication and match the
-  existing top-level `events` (sum of lifecycle counts) and `alerts` fields.
+  newly inserted `confirmedAlerts`. `staleConfirmationSkips` counts replayed
+  confirmations rejected by the existing freshness gate; `duplicateConfirmationSkips`
+  counts fresh candidates for which the store reports an existing logical alert.
+  These are observational counters only and do not alter the gates.
+  Lifecycle counters follow D1 deduplication and match the existing top-level
+  `events` (sum of lifecycle counts) and `alerts` fields.
 - `retestCandidates`: returns to the zone that reached alert construction,
   before stop/target gates. Existing `RETEST` events still mean accepted
   confirmations only; rejected candidates do not create new lifecycle events.
@@ -258,8 +267,11 @@ Prefer read-only D1 queries after the next scheduled candle boundary.
 
 All counters are explicit zeros on idle/empty scans. Always read `note`,
 `errors`, and pair/timeframe coverage alongside counts: failed provider scans
-can have zeros too. Historical rows have SQL NULL diagnostics (unavailable).
-Setup `EXPIRED` counts do not include expiry of already-open alert outcomes.
+can have zeros too. Historical rows have SQL NULL diagnostics (unavailable),
+and pre-instrumentation diagnostic rows lack freshness/deduplication fields.
+The private report shows how many daily rows contain those new counters so an
+uncovered day is not mistaken for a zero-skip day. Setup `EXPIRED` counts do
+not include expiry of already-open alert outcomes.
 
 ### Validate and roll out
 
