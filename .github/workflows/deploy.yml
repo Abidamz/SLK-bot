@@ -61,6 +61,15 @@ jobs:
           workingDirectory: 'worker'
           command: deploy
 
+      # Pages serves static assets with a 4-hour browser cache window. Stamping
+      # the asset URLs with the commit SHA gives every deploy a fresh cache key
+      # so returning visitors never run a stale app.js for hours after a release.
+      - name: Stamp Dashboard Asset Versions
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          sed -i "s/app\.js?v=[A-Za-z0-9]*/app.js?v=${SHORT_SHA}/" dashboard/index.html
+          sed -i "s/styles\.css?v=[A-Za-z0-9]*/styles.css?v=${SHORT_SHA}/" dashboard/index.html
+
       - name: Deploy Cloudflare Pages (slk-radar)
         uses: cloudflare/wrangler-action@v3
         with:
