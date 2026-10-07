@@ -846,23 +846,6 @@ body:not(.operator-mode) .operator-only{display:none!important}
         </div>
       </article>
 
-      <article class="panel" style="margin-top:20px; border-color:rgba(168,85,247,0.3);">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow" style="color:#c084fc;">ADMIN CONTROLS</p>
-            <h2>Journal Maintenance & Clean Slate</h2>
-            <p class="muted-copy">Manage paper signals and purge synthetic test records from the public ledger.</p>
-          </div>
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:14px;">
-          <button id="clearSyntheticsBtn" class="secondary" style="border-color:rgba(168,85,247,0.5); color:#d8b4fe; font-weight:700;">
-            🧹 Clear Synthetics (Clean Slate)
-          </button>
-          <button id="expireOpenTradesBtn" class="secondary" style="border-color:var(--line); color:var(--text);">
-            ⏱️ Expire Stale Open Trades
-          </button>
-        </div>
-      </article>
     </section>
 
     <section class="panel live-desk" id="liveDesk">
