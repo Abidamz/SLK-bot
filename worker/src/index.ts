@@ -19,7 +19,7 @@ import {
   buildH4VantageConfluence, diagnosticTagsForRow, sessionBucketUtcPlus1,
   type H4VantageConfluence,
 } from "./h4_context";
-import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
+import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, noteConfirmationAttempt, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
@@ -705,18 +705,25 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           }
           // Historical replay can discover a confirmation long after its
           // candle closed. Never record stale historical replay into the live trade ledger.
+          // The funnel counters below are written after the decision is made —
+          // they observe the gate and never influence it.
+          const tfWindowSec = (TF_SECONDS[tf] ?? 0) * 2.5;
+          const discoveryAgeSec = Math.max(0, Math.round((now - alert.candleCloseTime) / 1000));
           if (!alertEventFresh(alert, tf, now)) {
             diagnostics.recorded.staleConfirmationSkips++;
-            console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId }));
+            noteConfirmationAttempt(diagnostics.recorded, tf, discoveryAgeSec, "stale", tfWindowSec);
+            console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId, ageSec: discoveryAgeSec }));
             continue;
           }
           const inserted = await store.insertAlert(alert, providerName);
           if (!inserted) {
             diagnostics.recorded.duplicateConfirmationSkips++;
+            noteConfirmationAttempt(diagnostics.recorded, tf, discoveryAgeSec, "duplicate", tfWindowSec);
             continue; // duplicate setup — already alerted/logged
           }
           alertCount++;
           diagnostics.recorded.confirmedAlerts++;
+          noteConfirmationAttempt(diagnostics.recorded, tf, discoveryAgeSec, "inserted", tfWindowSec);
           await deliver(env, store, alert, cfg, deliverAllowed(cfg, isFirstScan, opts), fetchFn);
         }
 

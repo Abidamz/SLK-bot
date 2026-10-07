@@ -535,6 +535,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <div class="engine-pulse-stat"><span>Pairs covered</span><strong id="epPairs">—</strong></div>
         </div>
         <p class="muted-copy" id="enginePulseRejections" style="margin:10px 0 0;"></p>
+        <p class="muted-copy" id="enginePulseFunnel" style="margin:10px 0 0;"></p>
         <p class="chart-disclaimer">Read-only pipeline counts. Lifecycle rows are not unique setups; rejection totals are replay attempts and may repeat. Alert rows are stored before delivery gates and do not prove a Telegram message was sent. WATCH/Bias notices are informational pre-entry context, not entries. Paper simulation — research only.</p>
       </article>
 
@@ -1285,6 +1286,21 @@ function renderEnginePulse(p) {
   if (rejEl) rejEl.textContent = bits.length
     ? \`Replay rejection attempts: \${bits.join(' · ')}. \${replayNote}\`
     : \`No rejection attempts recorded in this window; that does not mean every market or candidate passed. \${replayNote}\`;
+  // Confirmation funnel: discovery latency per entry timeframe. Shows how many
+  // confirmations reached the live gate, how many were discovered inside the
+  // freshness window, and how long discovery took — the difference between
+  // "no setup formed" and "a setup formed but we looked too late".
+  const funnels = Array.isArray(p.confirmations) ? p.confirmations : [];
+  const funnelEl = $('enginePulseFunnel');
+  if (funnelEl) {
+    const fmtAge = (sec) => (num(sec) >= 90 ? (num(sec) / 60).toFixed(1) + ' min' : num(sec) + 's');
+    funnelEl.textContent = funnels.length
+      ? 'Confirmation funnel (last 24h): ' + funnels.map((f) => f.timeframe + ': ' + num(f.built)
+        + ' reached the live gate, ' + num(f.fresh) + ' inside the freshness window, '
+        + num(f.inserted) + ' stored, ' + num(f.stale) + ' dropped stale (avg discovery '
+        + fmtAge(f.avgAgeSec) + (num(f.nearMiss) ? ', ' + num(f.nearMiss) + ' near-miss' : '') + ')').join(' · ')
+      : 'Confirmation funnel: no confirmation reached the live gate in this window — no setup completed the full chain yet.';
+  }
 }
 
 async function loadStats() {

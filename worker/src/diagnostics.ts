@@ -15,12 +15,40 @@ export interface ReplayDiagnostics extends LifecycleCounts {
   confirmedAlerts: number;
 }
 
+/** Per-entry-timeframe confirmation funnel, recorded at the live freshness
+ *  gate. Diagnostics only: nothing here can accept, drop, delay, or reorder a
+ *  confirmation — the gate reads none of these counters. */
+export interface ConfirmationFunnelEntry {
+  /** Confirmation candidates that reached the live gate. */
+  built: number;
+  /** Passed the freshness window (either stored or already stored). */
+  fresh: number;
+  /** Older than `2.5 × timeframe` at discovery and dropped without a row. */
+  stale: number;
+  /** Fresh and written to the alert ledger. */
+  inserted: number;
+  /** Fresh but the logical setup was already stored. */
+  duplicate: number;
+  /** Stale, yet within twice the freshness window — "almost on time". */
+  nearMiss: number;
+  /** Sum and maximum discovery age (age = now − confirming candle close). */
+  ageSumSec: number;
+  ageMaxSec: number;
+  /** Age sum over fresh attempts, for an honest accepted-latency average. */
+  freshAgeSumSec: number;
+}
+
+export type ConfirmationFunnel = Record<string, ConfirmationFunnelEntry>;
+
 export interface RecordedDiagnostics extends LifecycleCounts {
   confirmedAlerts: number;
   /** Confirmation candidates rejected as stale at the live freshness gate. */
   staleConfirmationSkips: number;
   /** Fresh candidates rejected because the logical setup was already stored. */
   duplicateConfirmationSkips: number;
+  /** Per-timeframe discovery-latency funnel. Absent on rows written before
+   *  this instrumentation; readers must tolerate its absence. */
+  confirmations?: ConfirmationFunnel;
 }
 
 export interface ScanDiagnostics {
@@ -475,6 +503,47 @@ export function buildScanAuditSummary(
   return summary;
 }
 
+export function emptyConfirmationFunnelEntry(): ConfirmationFunnelEntry {
+  return {
+    built: 0, fresh: 0, stale: 0, inserted: 0, duplicate: 0,
+    nearMiss: 0, ageSumSec: 0, ageMaxSec: 0, freshAgeSumSec: 0,
+  };
+}
+
+/** Record one confirmation attempt at the live gate. Pure counter bookkeeping:
+ *  the caller still owns the accept/drop decision (`alertEventFresh`), and no
+ *  value written here is ever read back by a strategy or delivery gate.
+ *  `windowSec` is the caller's freshness window (`2.5 × timeframe`), used only
+ *  to classify an "almost on time" stale attempt as a near miss.
+ *  Stages are ordered and each attempt lands in exactly one leaf:
+ *  `built` = every attempt, `fresh` = cleared the freshness gate
+ *  (`fresh === inserted + duplicate`), `stale` = dropped by the gate
+ *  (`built === fresh + stale`). Duplicates were discovered on an earlier scan,
+ *  so their latency still counts toward `ageSumSec`/`freshAgeSumSec`. */
+export function noteConfirmationAttempt(
+  recorded: RecordedDiagnostics,
+  tf: string,
+  ageSec: number,
+  outcome: "stale" | "duplicate" | "inserted",
+  windowSec: number,
+): void {
+  const age = Number.isFinite(ageSec) && ageSec > 0 ? Math.round(ageSec) : 0;
+  const funnel = recorded.confirmations ?? (recorded.confirmations = {});
+  const entry = funnel[tf] ?? (funnel[tf] = emptyConfirmationFunnelEntry());
+  entry.built++;
+  entry.ageSumSec += age;
+  if (age > entry.ageMaxSec) entry.ageMaxSec = age;
+  if (outcome === "stale") {
+    entry.stale++;
+    if (windowSec > 0 && age <= 2 * windowSec) entry.nearMiss++;
+    return;
+  }
+  entry.fresh++;
+  entry.freshAgeSumSec += age;
+  if (outcome === "inserted") entry.inserted++;
+  else entry.duplicate++;
+}
+
 export function emptyScanDiagnostics(): ScanDiagnostics {
   return {
     version: 1, replay: emptyReplayDiagnostics(),
@@ -514,6 +583,19 @@ export interface EnginePulseRow {
  *  first-write event rows (not distinct setups); rejection counts are replay
  *  attempts and can include the same opportunity on multiple scans. These
  *  metrics describe pipeline activity, not strategy efficacy or delivery. */
+export interface EnginePulseConfirmationRow {
+  timeframe: string;
+  built: number;
+  fresh: number;
+  stale: number;
+  inserted: number;
+  duplicate: number;
+  nearMiss: number;
+  avgAgeSec: number;
+  maxAgeSec: number;
+  avgFreshAgeSec: number;
+}
+
 export interface EnginePulse {
   windowHours: number;
   scans: number; // every scan logged in the window (incl. idle ticks)
@@ -524,6 +606,10 @@ export interface EnginePulse {
   chains: { TOUCH: number; SWEEP: number; SHIFT: number; RETEST: number }; // first-write event rows; a setup can recur on a later candle
   confirmed: number; // alert rows inserted; not proof of notification delivery
   rejections: { nonPositiveRisk: number; belowMinRiskAtr: number; aboveMaxStopAtr: number; targetFloor: number };
+  /** Per entry timeframe: how many confirmations reached the live gate, how
+   *  many were discovered inside the freshness window, and how long discovery
+   *  took. Answers "are we losing alerts to timing?" without a redeploy. */
+  confirmations: EnginePulseConfirmationRow[];
   lastScanTs: string | null;
 }
 
@@ -532,6 +618,7 @@ export function emptyEnginePulse(windowHours = 24): EnginePulse {
     windowHours, scans: 0, activeScans: 0, pairs: [], pairsCovered: 0,
     evaluated: 0, chains: { TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0 },
     confirmed: 0, rejections: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0, targetFloor: 0 },
+    confirmations: [],
     lastScanTs: null,
   };
 }
@@ -545,6 +632,7 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
   const pulse = emptyEnginePulse(windowHours);
   const cutoff = nowMs - windowHours * 3600_000;
   const pairs = new Set<string>();
+  const funnels = new Map<string, ConfirmationFunnelEntry>();
   for (const row of rows) {
     const ts = Date.parse(row.ts);
     if (!Number.isFinite(ts) || ts < cutoff) continue;
@@ -578,7 +666,50 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
       pulse.rejections.aboveMaxStopAtr += r.riskRejectReasons.aboveMaxStopAtr;
       pulse.rejections.targetFloor += r.targetRejects;
     }
+    // Discovery-latency funnel. Tolerates rows written before this
+    // instrumentation existed (field absent) and never trusts row shapes.
+    const cf = diag.recorded.confirmations;
+    if (cf && typeof cf === "object") {
+      for (const [tf, raw] of Object.entries(cf)) {
+        if (!raw || typeof raw !== "object") continue;
+        const entry = funnels.get(tf) ?? emptyConfirmationFunnelEntry();
+        const candidate = raw as Partial<Record<keyof ConfirmationFunnelEntry, unknown>>;
+        let touched = false;
+        for (const key of [
+          "built", "fresh", "stale", "inserted", "duplicate", "nearMiss",
+          "ageSumSec", "freshAgeSumSec",
+        ] as const) {
+          const value = Number(candidate[key]);
+          if (Number.isFinite(value) && value > 0) {
+            entry[key] += value;
+            touched = true;
+          }
+        }
+        // Each row reports its own worst case; the window's worst case is the
+        // largest of those, never their sum.
+        const rowMax = Number(candidate.ageMaxSec);
+        if (Number.isFinite(rowMax) && rowMax > entry.ageMaxSec) {
+          entry.ageMaxSec = rowMax;
+          touched = true;
+        }
+        if (touched) funnels.set(tf, entry);
+      }
+    }
   }
+  pulse.confirmations = [...funnels.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([timeframe, entry]) => ({
+      timeframe,
+      built: entry.built,
+      fresh: entry.fresh,
+      stale: entry.stale,
+      inserted: entry.inserted,
+      duplicate: entry.duplicate,
+      nearMiss: entry.nearMiss,
+      avgAgeSec: entry.built > 0 ? Math.round(entry.ageSumSec / entry.built) : 0,
+      maxAgeSec: entry.ageMaxSec,
+      avgFreshAgeSec: entry.fresh > 0 ? Math.round(entry.freshAgeSumSec / entry.fresh) : 0,
+    }));
   pulse.pairs = [...pairs].sort();
   pulse.pairsCovered = pairs.size;
   return pulse;
