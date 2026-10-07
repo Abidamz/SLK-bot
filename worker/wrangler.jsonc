@@ -49,7 +49,13 @@
     "MIN_STOP_PIPS": "10",
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
-    "PAIR_BATCH_SIZE": "1",
+    // Two markets per cron tick. Measured 2026-10-07 after the scheduler/store
+    // work: a full tick runs 5-15 s (11-15 s for three-timeframe pairs,
+    // 6.6-8.3 s for single-timeframe ones) against the 60 s cron budget, so a
+    // second pair lands ~15-30 s and roughly halves the per-pair revisit time
+    // (~23 min -> ~12 min). Scheduling only - no gate, threshold, pair list,
+    // timeframe, or delivery change.
+    "PAIR_BATCH_SIZE": "2",
     "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
