@@ -14,6 +14,17 @@ import {
 } from "./diagnostics";
 import { isDerivPair } from "./config";
 
+/** Smallest string greater than every string starting with `prefix`, so a
+ *  prefix lookup becomes an index range scan (`k >= prefix AND k < upper`).
+ *  Keys here are ASCII identifiers; a prefix ending in U+FFFF falls back to
+ *  appending U+FFFF, which is still a correct (if wider) bound. */
+export function kvPrefixUpperBound(prefix: string): string {
+  if (!prefix) return "";
+  const last = prefix.charCodeAt(prefix.length - 1);
+  if (last === 0xffff) return `${prefix}￿`;
+  return prefix.slice(0, -1) + String.fromCharCode(last + 1);
+}
+
 // A subset of the D1Database API — the real env.DB satisfies this.
 export interface D1Like {
   prepare(sql: string): {
@@ -68,6 +79,9 @@ export interface Store {
   recordOutcome(setupId: string, oc: Outcome): Promise<void>;
   getKv(key: string): Promise<string | null>;
   setKv(key: string, value: string): Promise<void>;
+  /** Every key/value pair under `prefix`, in one round-trip. Used by the scan
+   *  scheduler, which previously read ~140 individual KV keys per tick. */
+  getKvByPrefix(prefix: string): Promise<Record<string, string>>;
   insertScanLog(row: ScanLogRow): Promise<void>;
   scanDiagnosticsSince(sinceMs: number): Promise<EngineDisciplineTotals | null>;
   insertShadowTrade(row: ShadowTradeCapture): Promise<boolean>;
@@ -622,6 +636,23 @@ export class D1Store implements Store {
       .prepare("INSERT INTO slk_kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v")
       .bind(key, value)
       .run();
+  }
+
+  async getKvByPrefix(prefix: string): Promise<Record<string, string>> {
+    if (!prefix) return {};
+    // A half-open range on the primary key uses the index directly; LIKE would
+    // depend on collation and pragmas to avoid a full table scan.
+    const upper = kvPrefixUpperBound(prefix);
+    const rows = await this.db
+      .prepare("SELECT k, v FROM slk_kv WHERE k >= ? AND k < ?")
+      .bind(prefix, upper)
+      .all();
+    const out: Record<string, string> = {};
+    for (const row of rows.results ?? []) {
+      const key = row.k as string;
+      if (typeof key === "string") out[key] = row.v as string;
+    }
+    return out;
   }
 
   async insertScanLog(r: ScanLogRow): Promise<void> {
@@ -1433,6 +1464,15 @@ export class MemStore implements Store {
 
   async setKv(key: string, value: string): Promise<void> {
     this.kv.set(key, value);
+  }
+
+  async getKvByPrefix(prefix: string): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (!prefix) return out;
+    for (const [key, value] of this.kv) {
+      if (key.startsWith(prefix)) out[key] = value;
+    }
+    return out;
   }
 
   async insertScanLog(row: ScanLogRow): Promise<void> {

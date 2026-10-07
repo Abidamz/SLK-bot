@@ -323,7 +323,26 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     return rawFetchFn(...args);
   }) as typeof fetch;
   const cfg = loadConfig(env);
-  const store: Store = opts.storeOverride ?? makeStore(env.DB);
+  const storeCalls: StoreCallStats = { calls: 0, ms: 0 };
+  const store: Store = instrumentStore(opts.storeOverride ?? makeStore(env.DB), storeCalls);
+  // One batched read replaces the per-pair/per-timeframe scheduler lookups
+  // (~140 sequential KV reads per tick). Writes below go write-through so every
+  // read inside this invocation still observes exactly what the store holds.
+  const kvCache: Record<string, string> = {};
+  const readKv = async (key: string): Promise<string | null> => {
+    if (key in kvCache) return kvCache[key];
+    return store.getKv(key);
+  };
+  const writeKv = async (key: string, value: string): Promise<void> => {
+    kvCache[key] = value;
+    await store.setKv(key, value);
+  };
+  const primeKv = async (prefix: string): Promise<void> => {
+    const found = await store.getKvByPrefix(prefix);
+    for (const [key, value] of Object.entries(found)) {
+      if (!(key in kvCache)) kvCache[key] = value;
+    }
+  };
   const errors: string[] = [];
   let alertCount = 0;
   let eventCount = 0;
@@ -346,6 +365,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     console.warn(JSON.stringify({ level: "warn", msg: "scheduled recap check failed", error: String(recapErr) }));
   }
 
+  const scheduleStartedAt = Date.now();
+  // Two round-trips cover every boundary and last-scan key the scheduler needs.
+  await primeKv("last_boundary:");
+  await primeKv("last_scan:");
+  let scheduleMs = 0; // set once the due/pending computation finishes
+
   const due: { tf: string; secs: number; boundary: number }[] = [];
   for (const [tf, secs] of Object.entries(cfg.entryTfs)) {
     const boundary = Math.floor((now - cfg.scanDelayMs) / 1000 / secs) * secs * 1000;
@@ -353,7 +378,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       due.push({ tf, secs, boundary });
       continue;
     }
-    const lastRaw = await store.getKv(`last_boundary:${tf}`);
+    const lastRaw = await readKv(`last_boundary:${tf}`);
     const last = lastRaw ? Number(lastRaw) : 0;
     if (boundary > last) due.push({ tf, secs, boundary });
   }
@@ -365,9 +390,11 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     const shadowStartedAt = Date.now();
     await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn, shadowStats);
     const shadowResolveMs = Date.now() - shadowStartedAt;
+    scheduleMs = Date.now() - scheduleStartedAt;
     diagnostics.timing = {
       liveResolveMs, shadowResolveMs, pairScanMs: 0,
       shadowGroups: shadowStats.groups, shadowChecked: shadowStats.checked, httpCalls,
+      scheduleMs, storeCalls: storeCalls.calls, storeMs: storeCalls.ms,
     };
     await store.insertScanLog({
       ts: new Date(now).toISOString(), timeframes: "", pairs: "",
@@ -391,7 +418,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       for (const { tf, boundary } of due) {
         // Synthetics 1H Primary: Deriv pairs are never due on non-primary TFs
         if (!entryTfAppliesToPair(pair, tf, cfg)) continue;
-        const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
+        const lastScanRaw = await readKv(`last_scan:${pair}:${tf}`);
         const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
         if (boundary > lastScan) {
           isDue = true;
@@ -401,13 +428,17 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       if (isDue) pending.push(pair);
     }
 
+    // Scheduling is finished for this tick (nothing left to select), so the
+    // no-pending path below records a true value rather than zero.
+    scheduleMs = Date.now() - scheduleStartedAt;
     if (!pending.length) {
       for (const { tf, boundary } of due) {
-        await store.setKv(`last_boundary:${tf}`, String(boundary));
+        await writeKv(`last_boundary:${tf}`, String(boundary));
       }
       diagnostics.timing = {
         liveResolveMs, shadowResolveMs: 0, pairScanMs: 0,
         shadowGroups: 0, shadowChecked: 0, httpCalls,
+        scheduleMs, storeCalls: storeCalls.calls, storeMs: storeCalls.ms,
       };
       await store.insertScanLog({
         ts: new Date(now).toISOString(),
@@ -444,7 +475,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     for (const p of pending) {
       let minScan = Infinity;
       for (const { tf } of due) {
-        const raw = await store.getKv(`last_scan:${p}:${tf}`);
+        const raw = await readKv(`last_scan:${p}:${tf}`);
         const val = raw ? Number(raw) : 0;
         if (val < minScan) minScan = val;
       }
@@ -487,6 +518,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       await store.setKv("last_scanned_group", isDerivPair(lastPicked) ? "deriv" : "inst");
     }
   }
+  scheduleMs = Date.now() - scheduleStartedAt;
 
   const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
   const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
@@ -593,7 +625,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               const biasKey = `last_bias:${pair}:${dir}`;
               const lastBiasTime = await store.getKv(biasKey);
               if (lastBiasTime !== String(lastCandle.t)) {
-                const lastBefore = await store.getKv(`last_scan:${pair}:30m`);
+                const lastBefore = await readKv(`last_scan:${pair}:30m`);
                 const isFirstScan = lastRawIsEmpty(lastBefore);
                 const tgAllowed = notificationPrefs.telegramWatch !== false;
                 if (tgAllowed && deliverAllowed(cfg, isFirstScan, opts)) {
@@ -626,7 +658,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         // Synthetics 1H Primary: Deriv pairs confirm entries only on their
         // primary TFs; non-primary boundaries are bookkept as scanned.
         if (!entryTfAppliesToPair(pair, tf, cfg)) {
-          await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+          await writeKv(`last_scan:${pair}:${tf}`, String(boundary));
           continue;
         }
         let candles: Candle[];
@@ -669,7 +701,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         await persistShadowCaptures(store, shadowTrades);
         await persistShadowExperiments(store, shadowExperiments);
 
-        const lastBefore = await store.getKv(`last_scan:${pair}:${tf}`);
+        const lastBefore = await readKv(`last_scan:${pair}:${tf}`);
         const isFirstScan = lastRawIsEmpty(lastBefore);
 
         for (const ev of events) {
@@ -753,7 +785,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         // Resolve paper outcomes as before. Shadow outcomes are resolved only
         // after all live/paper scans for this invocation have completed.
         await resolveOutcomes(env, store, cfg, pair, tf, candles, fetchFn);
-        await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+        await writeKv(`last_scan:${pair}:${tf}`, String(boundary));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -763,7 +795,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       if (msg.includes("stale feed") && isIndexCfdIdleWindow(pair, now)) {
         console.info(JSON.stringify({ level: "info", msg: "pair idle (market closed)", pair }));
         for (const { tf, boundary } of due) {
-          await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+          await writeKv(`last_scan:${pair}:${tf}`, String(boundary));
         }
         continue;
       }
@@ -771,7 +803,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       console.error(JSON.stringify({ level: "error", msg: "pair scan failed", pair, error: msg }));
       // Advance last_scan on error for this boundary so one failing pair doesn't block the queue
       for (const { tf, boundary } of due) {
-        await store.setKv(`last_scan:${pair}:${tf}`, String(boundary));
+        await writeKv(`last_scan:${pair}:${tf}`, String(boundary));
       }
     }
   }
@@ -786,7 +818,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (isWeekend && !isDerivPair(pair)) continue;
         // Synthetics 1H Primary: non-primary TFs never block boundary advancement
         if (!entryTfAppliesToPair(pair, tf, cfg)) continue;
-        const lastScanRaw = await store.getKv(`last_scan:${pair}:${tf}`);
+        const lastScanRaw = await readKv(`last_scan:${pair}:${tf}`);
         const lastScan = lastScanRaw ? Number(lastScanRaw) : 0;
         if (boundary > lastScan) {
           allDone = false;
@@ -794,7 +826,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
       }
       if (allDone) {
-        await store.setKv(`last_boundary:${tf}`, String(boundary));
+        await writeKv(`last_boundary:${tf}`, String(boundary));
       }
     }
   }
@@ -811,6 +843,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   diagnostics.timing = {
     liveResolveMs, shadowResolveMs, pairScanMs,
     shadowGroups: shadowStats.groups, shadowChecked: shadowStats.checked, httpCalls,
+    scheduleMs, storeCalls: storeCalls.calls, storeMs: storeCalls.ms,
   };
 
   await store.insertScanLog({
@@ -1256,6 +1289,44 @@ export async function mapWithConcurrency<T, R>(
   };
   await Promise.all(Array.from({ length: size }, worker));
   return results;
+}
+
+/** Counts store (D1) round-trips and their wall time for one invocation.
+ *  Diagnostics only: the wrapper forwards every call unchanged. */
+export interface StoreCallStats {
+  calls: number;
+  ms: number;
+}
+
+/** Wrap a store so every method call is counted and timed. The scan scheduler
+ *  used to issue ~140 sequential KV reads per tick; this is what makes that
+ *  visible instead of inferred. Non-function properties pass through, and
+ *  methods stay bound to the real store. */
+export function instrumentStore<T extends object>(store: T, stats: StoreCallStats): T {
+  return new Proxy(store, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        stats.calls++;
+        const startedAt = Date.now();
+        let result: unknown;
+        try {
+          result = (value as (...a: unknown[]) => unknown).apply(target, args);
+        } catch (err) {
+          stats.ms += Date.now() - startedAt;
+          throw err;
+        }
+        if (result && typeof (result as Promise<unknown>).then === "function") {
+          return (result as Promise<unknown>).finally(() => {
+            stats.ms += Date.now() - startedAt;
+          });
+        }
+        stats.ms += Date.now() - startedAt;
+        return result;
+      };
+    },
+  }) as T;
 }
 
 /** Best-effort snapshot of the latest tick's phase timings, read by

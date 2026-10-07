@@ -64,6 +64,11 @@ export interface ScanTimingDiagnostics {
   shadowGroups: number;
   shadowChecked: number;
   httpCalls: number;
+  /** Time spent deciding which markets are due (boundary + last-scan reads). */
+  scheduleMs: number;
+  /** Store (D1) round-trips issued by this invocation, and their wall time. */
+  storeCalls: number;
+  storeMs: number;
 }
 
 export interface ScanDiagnostics {
@@ -614,9 +619,17 @@ export interface EnginePulseConfirmationRow {
 }
 
 /** Window aggregate of the per-tick phase timings. Averages are over the scan
- *  rows that recorded timings; maxes are the largest single value seen. */
+ *  rows that recorded timings; the scheduler/store averages use only rows that
+ *  actually carry those counters (they were added later), and maxes are the
+ *  largest single value seen. */
 export interface EnginePulseTiming {
   ticks: number;
+  avgScheduleMs: number;
+  maxScheduleMs: number;
+  avgStoreCalls: number;
+  maxStoreCalls: number;
+  avgStoreMs: number;
+  maxStoreMs: number;
   avgPairScanMs: number;
   maxPairScanMs: number;
   avgLiveResolveMs: number;
@@ -650,7 +663,9 @@ export interface EnginePulse {
 
 export function emptyEnginePulseTiming(): EnginePulseTiming {
   return {
-    ticks: 0, avgPairScanMs: 0, maxPairScanMs: 0,
+    ticks: 0, avgScheduleMs: 0, maxScheduleMs: 0,
+    avgStoreCalls: 0, maxStoreCalls: 0, avgStoreMs: 0, maxStoreMs: 0,
+    avgPairScanMs: 0, maxPairScanMs: 0,
     avgLiveResolveMs: 0, maxLiveResolveMs: 0,
     avgShadowResolveMs: 0, maxShadowResolveMs: 0,
     avgShadowGroups: 0, avgShadowChecked: 0,
@@ -681,6 +696,11 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
   const funnels = new Map<string, ConfirmationFunnelEntry>();
   let timingTicks = 0, pairSum = 0, pairMax = 0, liveSum = 0, liveMax = 0;
   let shadowSum = 0, shadowMax = 0, groupSum = 0, checkedSum = 0, httpSum = 0, httpMax = 0;
+  let scheduleSum = 0, scheduleMax = 0, storeCallSum = 0, storeCallMax = 0, storeMsSum = 0, storeMsMax = 0;
+  // Rows written before the scheduler/store counters existed record a `timing`
+  // block without them. They must not be counted as zeros in these averages,
+  // so this phase keeps its own denominator until the old rows age out.
+  let scheduleTicks = 0;
   for (const row of rows) {
     const ts = Date.parse(row.ts);
     if (!Number.isFinite(ts) || ts < cutoff) continue;
@@ -732,6 +752,14 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
       groupSum += phase(timing.shadowGroups);
       checkedSum += phase(timing.shadowChecked);
       httpSum += httpMs; if (httpMs > httpMax) httpMax = httpMs;
+      const carriesSchedule = "scheduleMs" in timing || "storeCalls" in timing;
+      if (carriesSchedule) scheduleTicks++;
+      const scheduleMs = phase(timing.scheduleMs);
+      const storeCalls = phase(timing.storeCalls);
+      const storeMs = phase(timing.storeMs);
+      scheduleSum += scheduleMs; if (scheduleMs > scheduleMax) scheduleMax = scheduleMs;
+      storeCallSum += storeCalls; if (storeCalls > storeCallMax) storeCallMax = storeCalls;
+      storeMsSum += storeMs; if (storeMs > storeMsMax) storeMsMax = storeMs;
     }
 
     // Discovery-latency funnel. Tolerates rows written before this
@@ -768,6 +796,12 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
     const avg = (sum: number) => Math.round(sum / timingTicks);
     pulse.timing = {
       ticks: timingTicks,
+      avgScheduleMs: scheduleTicks > 0 ? Math.round(scheduleSum / scheduleTicks) : 0,
+      maxScheduleMs: scheduleMax,
+      avgStoreCalls: scheduleTicks > 0 ? Math.round(storeCallSum / scheduleTicks) : 0,
+      maxStoreCalls: storeCallMax,
+      avgStoreMs: scheduleTicks > 0 ? Math.round(storeMsSum / scheduleTicks) : 0,
+      maxStoreMs: storeMsMax,
       avgPairScanMs: avg(pairSum), maxPairScanMs: pairMax,
       avgLiveResolveMs: avg(liveSum), maxLiveResolveMs: liveMax,
       avgShadowResolveMs: avg(shadowSum), maxShadowResolveMs: shadowMax,

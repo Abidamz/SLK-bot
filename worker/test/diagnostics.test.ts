@@ -257,10 +257,12 @@ describe("Engine Pulse aggregation (buildEnginePulse)", () => {
     rows[0].diagnostics.timing = {
       liveResolveMs: 100, shadowResolveMs: 5000, pairScanMs: 8000,
       shadowGroups: 23, shadowChecked: 5, httpCalls: 12,
+      scheduleMs: 9000, storeCalls: 40, storeMs: 15000,
     } as any;
     rows[1].diagnostics.timing = {
       liveResolveMs: 300, shadowResolveMs: 7000, pairScanMs: 12000,
       shadowGroups: 25, shadowChecked: 5, httpCalls: 20,
+      scheduleMs: 11000, storeCalls: 36, storeMs: 17000,
     } as any;
     const p = buildEnginePulse(rows as any[], NOW);
     expect(p.timing.ticks).toBe(2);
@@ -274,6 +276,35 @@ describe("Engine Pulse aggregation (buildEnginePulse)", () => {
     expect(p.timing.avgShadowChecked).toBe(5);
     expect(p.timing.avgHttpCalls).toBe(16);
     expect(p.timing.maxHttpCalls).toBe(20);
+    expect(p.timing.avgScheduleMs).toBe(10000);
+    expect(p.timing.maxScheduleMs).toBe(11000);
+    expect(p.timing.avgStoreCalls).toBe(38);
+    expect(p.timing.maxStoreCalls).toBe(40);
+    expect(p.timing.avgStoreMs).toBe(16000);
+    expect(p.timing.maxStoreMs).toBe(17000);
+  });
+
+  it("does not let pre-upgrade rows deflate the newest averages", () => {
+    const rows = [
+      { ts: iso(NOW - 1 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+      { ts: iso(NOW - 2 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+    ];
+    // Older row: a timing block from before the scheduler/store counters existed.
+    rows[1].diagnostics.timing = {
+      liveResolveMs: 100, shadowResolveMs: 200, pairScanMs: 300,
+      shadowGroups: 4, shadowChecked: 4, httpCalls: 2,
+    } as any;
+    rows[0].diagnostics.timing = {
+      liveResolveMs: 100, shadowResolveMs: 200, pairScanMs: 300,
+      shadowGroups: 4, shadowChecked: 4, httpCalls: 2,
+      scheduleMs: 8000, storeCalls: 34, storeMs: 12000,
+    } as any;
+    const p = buildEnginePulse(rows as any[], NOW);
+    expect(p.timing.ticks).toBe(2);
+    expect(p.timing.avgPairScanMs).toBe(300);       // both rows carry this
+    expect(p.timing.avgScheduleMs).toBe(8000);      // only the newer row carries it
+    expect(p.timing.avgStoreCalls).toBe(34);
+    expect(p.timing.avgStoreMs).toBe(12000);
   });
 
   it("reports zeroed timings when no row carries them and clamps junk values", () => {
@@ -287,6 +318,7 @@ describe("Engine Pulse aggregation (buildEnginePulse)", () => {
     junk[0].diagnostics.timing = {
       liveResolveMs: 250, shadowResolveMs: -5, pairScanMs: "1500",
       shadowGroups: null, shadowChecked: "junk", httpCalls: 8,
+      scheduleMs: "4000", storeCalls: 33, storeMs: null,
     } as any;
     junk[1].diagnostics.timing = "not-an-object" as any;
     const p = buildEnginePulse(junk as any[], NOW);
@@ -295,6 +327,9 @@ describe("Engine Pulse aggregation (buildEnginePulse)", () => {
     expect(p.timing.maxShadowResolveMs).toBe(0);
     expect(p.timing.avgShadowGroups).toBe(0);
     expect(p.timing.avgHttpCalls).toBe(8);
+    expect(p.timing.avgScheduleMs).toBe(4000);
+    expect(p.timing.avgStoreCalls).toBe(33);
+    expect(p.timing.avgStoreMs).toBe(0); // null clamps to zero, never NaN
   });
 
   it("omits the funnel for rows without the field and survives malformed values", () => {

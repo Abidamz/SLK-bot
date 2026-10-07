@@ -187,3 +187,86 @@ describe("shadow rotation in a real scan", () => {
     expect(SHADOW_RESOLVE_FETCH_CONCURRENCY).toBeGreaterThan(1);
   });
 });
+
+describe("scheduler KV batching", () => {
+  const manyPairs: Env = {
+    ...env,
+    PAIRS: "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100",
+    ENTRY_TFS: "15m,30m,1h",
+  };
+
+  it("replaces the per-pair/per-timeframe scheduler reads with batched lookups", async () => {
+    const store = new MemStore();
+    // Seed realistic scheduler state: a last_scan key per pair/timeframe and a
+    // boundary per timeframe, exactly what the old per-key reads looked up.
+    for (const pair of String(manyPairs.PAIRS).split(",")) {
+      for (const tf of ["15m", "30m", "1h"]) {
+        await store.setKv(`last_scan:${pair}:${tf}`, String(NOW - 90_000));
+      }
+    }
+    for (const tf of ["15m", "30m", "1h"]) await store.setKv(`last_boundary:${tf}`, String(NOW - 90_000));
+
+    const getKvSpy = vi.spyOn(store, "getKv");
+    const prefixSpy = vi.spyOn(store, "getKvByPrefix");
+    const res = await scanAll(manyPairs, {
+      now: NOW, fetchFn: makeFakeFetch({ telegram: [], discord: [] }),
+      storeOverride: store, force: false,
+    });
+
+    const schedulerReads = getKvSpy.mock.calls
+      .map(([key]) => String(key))
+      .filter((key) => key.startsWith("last_scan:") || key.startsWith("last_boundary:"));
+    // Previously ~1 read per pair per timeframe (dozens); now zero individual
+    // reads, because two prefix queries prime the whole scheduler view.
+    expect(schedulerReads).toEqual([]);
+    expect(prefixSpy).toHaveBeenCalledWith("last_scan:");
+    expect(prefixSpy).toHaveBeenCalledWith("last_boundary:");
+    expect(res.diagnostics.timing!.storeCalls).toBeLessThan(60);
+    expect(res.diagnostics.timing!.scheduleMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("sees its own writes: a pair scanned this tick is not re-selected next tick", async () => {
+    const store = new MemStore();
+    const first = await scanAll(manyPairs, {
+      now: NOW, fetchFn: makeFakeFetch({ telegram: [], discord: [] }),
+      storeOverride: store, force: false,
+    });
+    expect(first.pairs.length).toBeGreaterThan(0);
+    const firstPair = String(first.pairs[0]);
+    // The pairing rules mark non-primary TF boundaries as scanned too, so read
+    // the store directly and confirm the write-through cache left real rows.
+    const written = await Promise.all(
+      ["15m", "30m", "1h"].map((tf) => store.getKv(`last_scan:${firstPair}:${tf}`)),
+    );
+    expect(written.some((value) => value !== null)).toBe(true);
+
+    const second = await scanAll(manyPairs, {
+      now: NOW, fetchFn: makeFakeFetch({ telegram: [], discord: [] }),
+      storeOverride: store, force: false,
+    });
+    // Round-robin: with that pair's keys now current, selection moves on.
+    expect(second.pairs.map(String)).not.toContain(firstPair);
+  });
+
+  it("reports schedule and store cost on every tick, including idle ones", async () => {
+    const store = new MemStore();
+    await scanAll(env, { now: NOW, fetchFn: makeFakeFetch({ telegram: [], discord: [] }), storeOverride: store, force: true });
+    const active = store.scanLog[store.scanLog.length - 1].diagnostics!.timing!;
+    expect(active.storeCalls).toBeGreaterThan(0);
+    expect(active.storeMs).toBeGreaterThanOrEqual(0);
+    expect(active.scheduleMs).toBeGreaterThanOrEqual(0);
+
+    // A tick with nothing due is still measured.
+    for (const tf of ["15m", "30m", "1h"]) await store.setKv(`last_boundary:${tf}`, String(NOW + 3_600_000));
+    const idle = await scanAll(env, {
+      now: NOW, fetchFn: makeFakeFetch({ telegram: [], discord: [] }), storeOverride: store, force: false,
+    });
+    expect(idle.timeframes).toEqual([]);
+    expect(idle.pairs).toEqual([]);
+    const idleRow = store.scanLog[store.scanLog.length - 1];
+    expect(String(idleRow.note)).toContain("idle");
+    expect(idleRow.diagnostics!.timing).toMatchObject({ pairScanMs: 0, scheduleMs: expect.any(Number) });
+    expect(idleRow.diagnostics!.timing!.storeCalls).toBeGreaterThan(0);
+    expect(idleRow.diagnostics!.timing!.storeMs).toBeGreaterThanOrEqual(0);
+  });
+});

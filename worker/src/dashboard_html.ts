@@ -1315,8 +1315,9 @@ function renderEnginePulse(p) {
         + secs(timing.avgPairScanMs) + 's avg / ' + secs(timing.maxPairScanMs) + 's max · live resolve '
         + secs(timing.avgLiveResolveMs) + 's · shadow resolve ' + secs(timing.avgShadowResolveMs)
         + 's for ' + num(timing.avgShadowChecked) + ' of ' + num(timing.avgShadowGroups)
-        + ' open research groups per tick · ' + num(timing.avgHttpCalls) + ' HTTP requests/tick (max '
-        + num(timing.maxHttpCalls) + ')'
+        + ' open research groups per tick · scheduler ' + secs(timing.avgScheduleMs) + 's · '
+        + num(timing.avgStoreCalls) + ' store calls (' + secs(timing.avgStoreMs) + 's) · '
+        + num(timing.avgHttpCalls) + ' HTTP requests/tick (max ' + num(timing.maxHttpCalls) + ')'
       : 'Tick cost: no phase timings recorded in this window yet.';
   }
 }
