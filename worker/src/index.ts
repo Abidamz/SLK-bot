@@ -15,6 +15,10 @@
  *  provider keys and channel credentials live as Worker secrets only. */
 import { loadConfig, TF_SECONDS, INDEX_POINT_PAIRS, isDerivPair, strategyForPair } from "./config";
 import { scanEntry } from "./engine";
+import {
+  buildH4VantageConfluence, diagnosticTagsForRow, sessionBucketUtcPlus1,
+  type H4VantageConfluence,
+} from "./h4_context";
 import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
@@ -118,6 +122,7 @@ function isTraditionalMarketWeekend(nowMs: number): boolean {
 
 export function captureFvgRetest50Experiments(
   pair: string, entryTf: string, tfSeconds: number, candles: Candle[], candidates: Alert[],
+  h4Context?: H4VantageConfluence | null,
 ): ShadowExperimentCapture[] {
   if (!candles.length) return [];
   const latestCloseTime = candles[candles.length - 1].t + tfSeconds * 1000;
@@ -132,6 +137,9 @@ export function captureFvgRetest50Experiments(
       : candidate.tpInternal - candidate.entry;
     const rr = risk > 0 ? reward / risk : 0;
     if (!Number.isFinite(rr) || rr <= 0) continue;
+    // Diagnostics only: the confirmation candle's open time drives the UTC+1
+    // session bucket; the H4 vantage tags are shared with the rest of the scan.
+    const candleOpenTime = candidate.candleCloseTime - tfSeconds * 1000;
     captures.push({
       experimentId: `FVG_RETEST_50:${candidate.setupId}`,
       sourceSetupId: candidate.setupId,
@@ -140,6 +148,9 @@ export function captureFvgRetest50Experiments(
       entry: candidate.entry, stopLoss: candidate.stopLoss,
       target: candidate.tpInternal, rr,
       candleCloseTime: candidate.candleCloseTime,
+      h4ConfluenceGrade: h4Context?.grade ?? null,
+      h4ConfluenceTags: diagnosticTagsForRow(h4Context, candleOpenTime),
+      sessionBucket: sessionBucketUtcPlus1(candleOpenTime),
     });
   }
   return captures;
@@ -527,6 +538,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const snaps = storylineSeries(d1, h4, cfg.strategy);
       pairsScanned.push(pair);
 
+      // Diagnostics-only H4 vantage context. Computed once per pair/scan (not
+      // per entry timeframe) and attached to setup rows, shadow-ledger rows
+      // and experiment rows as confluence tags. It never gates anything.
+      const pairStrategy = strategyForPair(pair, cfg.strategy);
+      const h4Context = buildH4VantageConfluence(h4, pairStrategy, d1 ?? undefined);
+
       // Higher-timeframe context cards are separately opt-in. They are not
       // entry alerts and are disabled by default to avoid confusing context
       // with a confirmed paper entry.
@@ -598,13 +615,13 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
-        const pairStrategy = strategyForPair(pair, cfg.strategy);
         const scanResult = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
           cfg: pairStrategy, mode: cfg.mode, provider: providerName,
           d1Candles: d1 ?? undefined,
           h1Candles: feeds["1h"],
           h4Candles: h4,
+          h4Context,
         });
         const { alerts, events, diagnostics: replay, shadowTrades } = scanResult;
         const shadowExperiments = [...scanResult.shadowExperiments];
@@ -619,9 +636,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             d1Candles: d1 ?? undefined,
             h1Candles: feeds["1h"],
             h4Candles: h4,
+            h4Context,
             shadowOnly: true,
           });
-          shadowExperiments.push(...captureFvgRetest50Experiments(pair, tf, secs, candles, retest50.alerts));
+          shadowExperiments.push(...captureFvgRetest50Experiments(pair, tf, secs, candles, retest50.alerts, h4Context));
         }
 
         addReplayDiagnostics(diagnostics, pair, tf, replay);
@@ -1281,6 +1299,20 @@ function readAuthed(_request: Request, _env: Env): boolean {
   return true;
 }
 
+/** Parse the diagnostics-only confluence tag JSON stored on a row. Never a
+ *  gate: display/aggregation only. Tolerates legacy rows (null) and both the
+ *  D1 string shape and an already-parsed array. */
+export function parseDiagnosticTags(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map((v) => String(v));
+  if (typeof raw !== "string" || !raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((v) => String(v)) : [];
+  } catch {
+    return [];
+  }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
@@ -1350,9 +1382,9 @@ export default {
         ok: true,
         service: "slk-alert-worker · Free Tier CPU Optimized & Real-Time Intrabar Outcome Resolution",
         mode: cfg.mode,
-        version: "v2.5.4",
-        commit: "v2.5.4",
-        buildTime: "2026-09-30 00:15 UTC",
+        version: "v2.5.5",
+        commit: "v2.5.5",
+        buildTime: "2026-10-07 00:00 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
         relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
@@ -1622,6 +1654,9 @@ export default {
             exitTime: row.exit_time,
             exitPrice: row.exit_price,
             rMultiple: row.r_multiple,
+            h4ConfluenceGrade: row.h4_confluence_grade ?? null,
+            h4ConfluenceTags: parseDiagnosticTags(row.h4_confluence_tags),
+            sessionBucket: row.session_bucket ?? null,
           })),
           aggregate: ledger.aggregate,
         });
@@ -1658,6 +1693,9 @@ export default {
             exitTime: row.exit_time,
             exitPrice: row.exit_price,
             rMultiple: row.r_multiple,
+            h4ConfluenceGrade: row.h4_confluence_grade ?? null,
+            h4ConfluenceTags: parseDiagnosticTags(row.h4_confluence_tags),
+            sessionBucket: row.session_bucket ?? null,
           })),
           aggregate: ledger.aggregate,
         });
@@ -1693,11 +1731,21 @@ export default {
     if (url.pathname === "/api/recent-events" && request.method === "GET") {
       // Live Desk Mode: cursor-based event tape (smart-polling SSE alternative).
       // Monotonic slk_events.id cursor → zero duplicate/dropped events, ~1ms CPU.
+      //
+      // `tail=1` bootstrap: return the NEWEST `limit` rows (ascending inside
+      // the response) with cursor = max event id, so the tape starts at the
+      // live edge instead of replaying the whole history from id 1. Numeric
+      // `since` behavior is unchanged (backward compatible).
       const sinceRaw = Number(url.searchParams.get("since") ?? 0);
       const limitRaw = Number(url.searchParams.get("limit") ?? 50);
+      const tailRaw = url.searchParams.get("tail");
+      const tail = tailRaw === "1" || tailRaw === "true";
       if (!Number.isFinite(sinceRaw) || sinceRaw < 0) return json({ error: "since must be a non-negative integer cursor" }, 400);
       if (!Number.isFinite(limitRaw) || limitRaw < 1 || limitRaw > 200) return json({ error: "limit must be between 1 and 200" }, 400);
-      const rows = await makeStore(env.DB).eventsSince(Math.floor(sinceRaw), Math.floor(limitRaw));
+      const store = makeStore(env.DB);
+      const rows = tail
+        ? await store.eventTail(Math.floor(limitRaw))
+        : await store.eventsSince(Math.floor(sinceRaw), Math.floor(limitRaw));
       const items = rows.map((r) => ({
         id: Number(r.id),
         setupId: String(r.setup_id),
@@ -1708,6 +1756,9 @@ export default {
         candleTime: String(r.candle_time ?? ""),
         createdUtc: String(r.created_utc ?? ""),
       }));
+      // Both paths yield ascending ids, so the last item carries the cursor
+      // (the max event id for a tail bootstrap, the last delivered id for a
+      // `since` page). An empty page keeps the caller's cursor unchanged.
       const cursor = items.length ? items[items.length - 1].id : Math.floor(sinceRaw);
       return json({ ok: true, cursor, items });
     }
@@ -1798,6 +1849,9 @@ export default {
         exitPrice: (r.exit_price as number) ?? null,
         createdUtc: (r.created_utc as string) ?? null,
         rMultiple: r.r_multiple,
+        h4ConfluenceGrade: (r.h4_confluence_grade as string) ?? null,
+        h4ConfluenceTags: parseDiagnosticTags(r.h4_confluence_tags),
+        sessionBucket: (r.session_bucket as string) ?? null,
       })), page, pageSize, total: result.total, sort: query.sort, order: query.order });
     }
 

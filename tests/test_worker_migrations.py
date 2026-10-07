@@ -105,3 +105,78 @@ def test_scan_diagnostics_migration_preserves_history_and_old_worker_inserts():
         assert db.execute(
             "SELECT json_extract(diagnostics_json, '$.replay.riskRejects') FROM slk_scan_log WHERE ts='new'"
         ).fetchone() == (1,)
+
+
+def test_diagnostics_tags_migration_is_additive_and_backward_compatible():
+    """0008 adds nullable H4 confluence / session-bucket columns to the setup
+    rows, the shadow ledger and the experiment ledger WITHOUT breaking inserts
+    from the previous (tags-unaware) Worker."""
+    with sqlite3.connect(":memory:") as db:
+        for migration in sorted(MIGRATIONS.glob("*.sql")):
+            if migration.name < "0008":
+                db.executescript(migration.read_text())
+        # Legacy rows (and the old Worker's inserts) keep working unchanged.
+        db.execute(
+            """INSERT INTO slk_alerts (setup_id, canonical_symbol, entry_timeframe, direction,
+                   alert_status, status, candle_close_time, created_utc)
+               VALUES ('legacy', 'EURUSD', '30m', 'SHORT', 'PAPER', 'OPEN',
+                       '2026-09-05T06:00:00.000Z', '2026-09-05T06:00:00.000Z')"""
+        )
+        db.executescript((MIGRATIONS / "0008_diagnostics_tags.sql").read_text())
+        assert db.execute(
+            "SELECT h4_confluence_grade, h4_confluence_tags, session_bucket FROM slk_alerts WHERE setup_id='legacy'"
+        ).fetchone() == (None, None, None)
+        # Old-Worker inserts (the 38-column legacy statement) still succeed after the migration.
+        db.execute(
+            """INSERT INTO slk_alerts (setup_id, canonical_symbol, entry_timeframe, direction,
+                   alert_status, status, candle_close_time, created_utc)
+               VALUES ('rollback', 'EURUSD', '30m', 'LONG', 'PAPER', 'OPEN',
+                       '2026-10-06T06:00:00.000Z', '2026-10-06T06:00:00.000Z')"""
+        )
+        # Tags-aware inserts record the diagnostics annotation.
+        tags = json.dumps(["H4_PLUG_AND_PLAY", "H4_KL_OC", "H4_BREAKOUT_BEARISH", "S08_12"])
+        db.execute(
+            """INSERT INTO slk_alerts (setup_id, canonical_symbol, entry_timeframe, direction,
+                   alert_status, status, candle_close_time, created_utc,
+                   h4_confluence_grade, h4_confluence_tags, session_bucket)
+               VALUES ('tagged', 'EURUSD', '30m', 'SHORT', 'PAPER', 'OPEN',
+                       '2026-10-07T06:00:00.000Z', '2026-10-07T06:00:00.000Z',
+                       'H4_PLUG_AND_PLAY', ?, 'S08_12')""",
+            (tags,),
+        )
+        assert db.execute(
+            "SELECT h4_confluence_grade, session_bucket FROM slk_alerts WHERE setup_id='tagged'"
+        ).fetchone() == ("H4_PLUG_AND_PLAY", "S08_12")
+        assert db.execute(
+            "SELECT json_extract(h4_confluence_tags, '$[1]') FROM slk_alerts WHERE setup_id='tagged'"
+        ).fetchone() == ("H4_KL_OC",)
+
+        # The isolated research ledgers get the same additive annotation.
+        db.execute(
+            """INSERT INTO slk_shadow_trades (setup_id, canonical_symbol, entry_timeframe, direction,
+                   hypothetical_entry, hypothetical_stop_loss, hypothetical_tp1, hypothetical_rr,
+                   reject_reason, created_utc, candle_close_time, h4_confluence_grade,
+                   h4_confluence_tags, session_bucket)
+               VALUES ('shadow1', 'EURUSD', '30m', 'SHORT', 104.9, 105.2, 104.0, 3.0,
+                       'TARGET_FLOOR', '2026-10-07T06:00:00.000Z', '2026-10-07T05:30:00.000Z',
+                       'H4_KL_IN_FVG', ?, 'S04_08')""",
+            (tags,),
+        )
+        db.execute(
+            """INSERT INTO slk_shadow_experiments (experiment_id, source_setup_id, variant,
+                   canonical_symbol, entry_timeframe, direction, hypothetical_entry,
+                   hypothetical_stop_loss, hypothetical_target, hypothetical_rr, created_utc,
+                   candle_close_time, h4_confluence_grade, h4_confluence_tags, session_bucket)
+               VALUES ('exp1', 'setup1', 'BREAKOUT_CONTINUATION', 'EURUSD', '30m', 'LONG',
+                       102.58, 102.28, 103.33, 2.5, '2026-10-07T06:00:00.000Z',
+                       '2026-10-07T05:30:00.000Z', 'H4_PLUG_AND_PLAY', ?, 'S04_08')""",
+            (tags,),
+        )
+        assert db.execute(
+            "SELECT session_bucket FROM slk_shadow_trades WHERE setup_id='shadow1'"
+        ).fetchone() == ("S04_08",)
+        assert db.execute(
+            "SELECT h4_confluence_grade FROM slk_shadow_experiments WHERE experiment_id='exp1'"
+        ).fetchone() == ("H4_PLUG_AND_PLAY",)
+        # Annotation must not leak observations into the user-facing tables.
+        assert db.execute("SELECT COUNT(*) FROM slk_events").fetchone() == (0,)

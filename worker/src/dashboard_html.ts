@@ -2202,7 +2202,12 @@ function renderMcFan(d) {
 if ($('mcRun')) $('mcRun').addEventListener('click', runMonteCarloUI);
 
 // ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
-const liveDesk = { cursor: 0, timer: null, chime: false, audio: null };
+// Live-edge bootstrap + forward-only streaming (see dashboard/app.js).
+// The tape starts at the LIVE EDGE: the first poll asks for the newest rows
+// (tail=1) and adopts their max id as the cursor, so /api/recent-events never
+// replays stored history as if it were live. Every later poll streams strictly
+// forward with since=cursor.
+const liveDesk = { cursor: 0, timer: null, chime: false, audio: null, primed: false };
 function liveDeskBeep(freq) {
   if (!liveDesk.chime) return;
   try {
@@ -2219,11 +2224,24 @@ function liveDeskBeep(freq) {
     o.stop(ctx.currentTime + 0.4);
   } catch (e) { /* audio unavailable */ }
 }
+// Stored events are UTC; the tape shows "HH:MM UTC" for today and
+// "MM-DD HH:MM UTC" for anything older so history can never look live.
+function liveDeskTime(ev) {
+  const raw = String(ev.createdUtc || ev.candleTime || '');
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms), now = new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  const hhmm = p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes());
+  const today = d.getUTCFullYear() === now.getUTCFullYear()
+    && d.getUTCMonth() === now.getUTCMonth()
+    && d.getUTCDate() === now.getUTCDate();
+  return today ? hhmm + ' UTC' : p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) + ' ' + hhmm + ' UTC';
+}
 function liveDeskRow(ev) {
   const li = document.createElement('li');
   li.className = 'live-row live-' + String(ev.state).toLowerCase();
-  const t = String(ev.createdUtc || ev.candleTime || '').slice(11, 16);
-  li.innerHTML = '<span class="live-time">' + esc(t) + ' UTC</span>'
+  li.innerHTML = '<span class="live-time">' + esc(liveDeskTime(ev)) + '</span>'
     + '<span class="live-state">' + esc(ev.state) + '</span>'
     + '<span class="live-pair">' + esc(ev.pair) + '</span>'
     + '<span class="live-reason">' + esc(ev.reason || '') + '</span>';
@@ -2231,21 +2249,29 @@ function liveDeskRow(ev) {
 }
 async function liveDeskPoll(initial) {
   try {
-    const d = await api('/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
-    const items = d.items || [];
-    if (!items.length) return;
-    liveDesk.cursor = d.cursor;
+    // Bootstrap: newest 12 rows + cursor at the max event id. Afterwards: strictly
+    // forward from the cursor, so nothing already on the tape is re-rendered.
+    const d = await api(initial
+      ? '/api/recent-events?tail=1&limit=12'
+      : '/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
+    const items = (d.items || []).slice();
+    const cursor = Number(d.cursor);
+    if (Number.isFinite(cursor)) liveDesk.cursor = Math.max(liveDesk.cursor, cursor);
     const tape = $('liveTape');
     if (!tape) return;
     if (initial) {
       tape.innerHTML = '';
-      items.slice().reverse().slice(0, 12).forEach(ev => tape.appendChild(liveDeskRow(ev)));
+      items.slice().reverse().forEach(ev => tape.appendChild(liveDeskRow(ev)));
       if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded yet — the tape fills as scans run.</li>';
-      return;
+      liveDesk.primed = true;
+      return; // history is rendered, never chimed
     }
+    if (!items.length) return;
     if (tape.querySelector('.live-empty')) tape.innerHTML = '';
     items.slice().reverse().forEach(ev => tape.insertBefore(liveDeskRow(ev), tape.firstChild));
     while (tape.children.length > 30) tape.removeChild(tape.lastChild);
+    // Chime/flash only for genuinely new events arriving after the initial render.
+    if (!liveDesk.primed) { liveDesk.primed = true; return; }
     liveDeskBeep(items.some(ev => ev.state === 'RETEST' || ev.state === 'SHIFT') ? 1046 : 784);
     const desk = $('liveDesk');
     if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }

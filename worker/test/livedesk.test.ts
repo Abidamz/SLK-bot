@@ -57,6 +57,43 @@ describe("live desk cursor feed", () => {
     expect(before).toBeGreaterThanOrEqual(0);
   });
 
+  it("tail=1 bootstraps at the live edge with ascending ids and a max-id cursor", async () => {
+    const store = makeStore(undefined);
+    for (let i = 0; i < 40; i++) await store.insertEvent(ev(`tail${i}`, i % 2 ? "SHIFT" : "RETEST"));
+    const env = {} as Env;
+
+    const resp = await worker.fetch(new Request("https://w.test/api/recent-events?tail=1&limit=12"), env, {} as any);
+    const data = (await resp.json()) as any;
+    expect(resp.status).toBe(200);
+    expect(data.ok).toBe(true);
+    expect(data.items).toHaveLength(12);
+    const ids = data.items.map((i: any) => i.id);
+    expect(ids).toEqual([...ids].sort((a: number, b: number) => a - b)); // ascending within the response
+    // Newest rows only — the tail, never the ~history from id 1.
+    expect(ids[ids.length - 1]).toBe(Math.max(...ids));
+    expect(ids[0]).toBeGreaterThan(1);
+    // Cursor = max event id, so the next poll streams strictly forward.
+    expect(data.cursor).toBe(Math.max(...ids));
+
+    const next = await worker.fetch(new Request(`https://w.test/api/recent-events?since=${data.cursor}&limit=50`), env, {} as any);
+    const nextData = (await next.json()) as any;
+    expect(nextData.items).toEqual([]);
+    expect(nextData.cursor).toBe(data.cursor);
+
+    await store.insertEvent(ev("tail-fresh", "RETEST"));
+    const fresh = await worker.fetch(new Request(`https://w.test/api/recent-events?since=${data.cursor}&limit=50`), env, {} as any);
+    const freshData = (await fresh.json()) as any;
+    expect(freshData.items).toHaveLength(1);
+    expect(freshData.items[0].state).toBe("RETEST");
+
+    // `since` behavior is untouched: a numeric cursor still pages forward from
+    // id 1 in ascending order (backward compatible).
+    const legacy = await worker.fetch(new Request("https://w.test/api/recent-events?since=0&limit=5"), env, {} as any);
+    const legacyData = (await legacy.json()) as any;
+    expect(legacyData.items.map((i: any) => i.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(legacyData.cursor).toBe(5);
+  });
+
   it("validates cursor and limit params", async () => {
     const env = {} as Env;
     const badLimit = await worker.fetch(new Request("https://w.test/api/recent-events?since=0&limit=999"), env, {} as any);

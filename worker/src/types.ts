@@ -9,9 +9,39 @@ export type ShadowRejectReason = "TARGET_FLOOR" | "NO_RETEST";
 export type ShadowTradeStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
 export type ShadowExperimentVariant = "BREAKOUT_CONTINUATION" | "FVG_RETEST_50";
 
+// ---------------------------------------------------- diagnostics-only tagging
+//
+// Everything below is observability metadata. It is recorded on setup rows,
+// shadow-ledger rows and experiment rows so the research ledgers can be sliced
+// after the fact. NO tag, grade, or bucket is ever consulted by an alert gate,
+// dedupe check, notification decision, delivery path, or outcome rule.
+
+/** UTC+1 session bucket of the triggering candle's OPEN time. */
+export type SessionBucket = "S00_04" | "S04_08" | "S08_12" | "S12_16" | "S16_20" | "S20_24";
+
+/** H4 vantage confluence grade, highest first:
+ *    H4_PLUG_AND_PLAY — key level (any kind) with fvgOverlap=true sitting
+ *                       inside the breakout's H4 FVG (a ready plug-and-play zone)
+ *    H4_KL_IN_FVG     — key level (any kind) overlapping the breakout FVG zone
+ *    H4_FVG_ONLY      — the breakout created an H4 FVG with no key level inside
+ *    H4_BREAKOUT_BARE — breakout with no H4 FVG
+ *  A scan with no recent H4 breakout carries the H4_NO_BREAKOUT tag and no grade. */
+export type H4ConfluenceGrade = "H4_PLUG_AND_PLAY" | "H4_KL_IN_FVG" | "H4_FVG_ONLY" | "H4_BREAKOUT_BARE";
+
+/** Key-level kind recorded when a key level sits inside the breakout's FVG. */
+export type H4KeyLevelTag = "H4_KL_A" | "H4_KL_V" | "H4_KL_OC" | "H4_KL_DECISION";
+
+/** Optional diagnostics-only annotation shared by setup rows, shadow-ledger
+ *  rows and experiment rows. */
+export interface DiagnosticTagging {
+  h4ConfluenceGrade?: H4ConfluenceGrade | null;
+  h4ConfluenceTags?: string[];
+  sessionBucket?: SessionBucket | null;
+}
+
 /** Counterfactual SLK Model candidate. These experiments never create alerts
  *  or events and are persisted in a separate, owner-only research ledger. */
-export interface ShadowExperimentCapture {
+export interface ShadowExperimentCapture extends DiagnosticTagging {
   experimentId: string;
   sourceSetupId: string;
   variant: ShadowExperimentVariant;
@@ -27,7 +57,7 @@ export interface ShadowExperimentCapture {
 
 /** Observation-only candidate. This is persisted separately from alerts,
  *  events, outcomes, and public performance statistics. */
-export interface ShadowTradeCapture {
+export interface ShadowTradeCapture extends DiagnosticTagging {
   setupId: string;
   pair: string;
   entryTf: string;
@@ -138,7 +168,7 @@ export interface Setup {
   imbalances: Imbalance[];
 }
 
-export interface Alert {
+export interface Alert extends DiagnosticTagging {
   setupId: string;
   pair: string;
   entryTf: string;

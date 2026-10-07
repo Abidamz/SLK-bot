@@ -69,14 +69,19 @@ describe("isolated SLK shadow experiments", () => {
     ])).toEqual([]);
   });
 
-  it("records a fresh confirmed-swing Breakout only in the shadow experiment output", () => {
+  it("only records a Breakout continuation through the aligned H4 vantage sequence", () => {
+    // This fixture used to be captured by the old "fresh swing break on the
+    // latest closed candle" heuristic. The experiment is now aligned to
+    // recent H4 breakout → liquidity sweep → rebalance into the breakout's
+    // H4 FVG → entry at the zone touch, so a standalone swing break records
+    // nothing on its own.
     const rows: [number, number, number, number][] = [
       [100, 100.5, 99.5, 100],
       [100, 100.6, 99.0, 100],
       [100, 101.0, 98.9, 100.8],
       [100.8, 102.5, 100.5, 102.0], // confirmed local swing high
       [102.0, 102.2, 99.8, 100.0],
-      [100.0, 100.2, 99.7, 99.9], // confirmed local swing low for invalidation
+      [100.0, 100.2, 99.7, 99.9],
       [99.9, 100.3, 99.8, 99.5],
       [99.5, 101.0, 99.4, 100.8],
       [100.8, 101.3, 100.5, 101.0],
@@ -96,12 +101,7 @@ describe("isolated SLK shadow experiments", () => {
     });
 
     expect(result.alerts).toEqual([]);
-    expect(result.shadowExperiments).toHaveLength(1);
-    expect(result.shadowExperiments[0]).toMatchObject({
-      variant: "BREAKOUT_CONTINUATION", direction: "LONG", entry: 103.2,
-      stopLoss: expect.any(Number), target: 110,
-    });
-    expect(result.shadowExperiments[0].rr).toBeGreaterThan(0);
+    expect(result.shadowExperiments).toEqual([]);
     expect(result.events.some((event) => event.state === "BREAKOUT_CONTINUATION")).toBe(false);
   });
 

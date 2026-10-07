@@ -1,9 +1,9 @@
 # SLK Model — Definitive Project Handoff
 
-**Updated:** 2026-10-06 (UTC)
+**Updated:** 2026-10-07 (UTC)
 **Repository:** `Abidamz/SLK-bot`
-**This session's branch:** `arena/3ff9b8eb-slk-bot`
-**Production lineage:** `arena/01a0b153-slk-bot`
+**This session's branch:** `arena/0e17c27a-slk-bot`
+**Production lineage:** `arena/08df9077-slk-bot`
 **Production Worker:** `https://slk-alert-worker.abidogundamilola.workers.dev`
 **Production dashboard:** `https://slk-radar.pages.dev`
 **Deriv relay:** `https://slk-bot.vercel.app`
@@ -28,7 +28,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
 2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
-4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0007`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes.
+4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0008`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes. Migration `0008_diagnostics_tags.sql` adds the nullable diagnostics columns (H4 confluence grade/tags + UTC+1 session bucket); until it is applied the Worker still writes alerts and ledger rows unchanged and simply omits the annotation, re-probing every five minutes.
 5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive teaser cards, weekly recaps, and the Engine Discipline digest. Pre-entry watch cards (`WATCH_NOTIFY`) and bias-context cards (`BIAS_NOTIFY`) are separate opt-ins and are currently disabled to prevent noisy, misleading posts. Synthetic content is never sent to the Forex free channel.
 6. The public journal shows only signals actually delivered to Telegram. Audit/admin views are protected. Recap cards retain the explicit **“paper simulation — research only”** disclaimer.
 
@@ -45,7 +45,9 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - `worker/src/mt5.ts` — gated bridge client; production paper configuration does not dispatch orders.
 - `worker/src/index.ts` — Worker endpoints and scheduled orchestration, including the isolated shadow-experiment pass.
 - `worker/migrations/0006_shadow_ledger.sql` — separate floor/retest research table and indexes.
+- `worker/src/h4_context.ts` — diagnostics-only H4 vantage confluence tags and the UTC+1 session buckets. Never consulted by any alert gate, dedupe check, delivery decision, or outcome rule.
 - `worker/migrations/0007_shadow_experiments.sql` — separate Breakout/FVG experiment table and indexes.
+- `worker/migrations/0008_diagnostics_tags.sql` — additive nullable `h4_confluence_grade`, `h4_confluence_tags`, `session_bucket` columns plus session-bucket indexes.
 - `dashboard/` — Pages dashboard and public journal.
 - `api/` — Vercel relay endpoints; `deriv-relay/` contains its standalone relay implementation.
 
@@ -65,10 +67,29 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 ### Separate shadow experiments (research only)
 
-- `BREAKOUT_CONTINUATION` provisionally records only a fresh latest-closed-candle body break through a confirmed swing, aligned with the higher-timeframe storyline. It applies the current stop/risk checks and uses the nearest external storyline target; it has not yet been validated against historical outcomes.
+- `BREAKOUT_CONTINUATION` is aligned to one exact sequence: **recent H4 structural breakout → liquidity sweep on the entry timeframe after that breakout → price rebalances into the breakout's H4 FVG (plug-and-play zone preferred, i.e. a key level of any kind sitting inside the FVG) → continuation entry recorded at the zone touch, in the breakout direction.** The stop is the pullback leg's own extreme (sweep extreme and everything after it), not the far edge of the H4 FVG; the target is the mapped external target in the breakout direction, with a transparent 2.5R benchmark only when every mapped pool has already been crossed. It is evaluated on the latest closed entry candle of a live scan only (no historical backfill), keeps the existing stop/risk checks, is deterministic on (breakout, rebalance zone) so replays cannot mint duplicates, and has not yet been validated against historical outcomes.
 - `FVG_RETEST_50` is a separate replay limited to paper-mode 30m scans whose configured retest depth remains at the legacy `100`. It tests midpoint FVG penetration, then records only latest-close, non-suppressed candidates. It does not change the normal 100% retest rule, alerts, target floor, or risk gates.
 - Both variants write only to `slk_shadow_experiments`; the 50% replay suppresses normal transition events and does not deliver its returned alerts. The table can safely be absent until migration `0007_shadow_experiments.sql` is applied.
 - `GET /api/shadow-experiments` is owner/admin-key protected. These rows must remain absent from Telegram, public events/journal, `/stats`, `/alerts`, recaps, and Monte Carlo.
+- Both experiment variants record the diagnostics annotation described below (H4 confluence tags + UTC+1 session bucket) so the ledgers can be sliced by confluence grade and by session without changing any gate.
+
+### Diagnostics-only tagging (H4 vantage confluence + session buckets)
+
+- Every setup row (`slk_alerts`), shadow-ledger row (`slk_shadow_trades`) and experiment row (`slk_shadow_experiments`) carries `h4_confluence_grade`, `h4_confluence_tags` (JSON array) and `session_bucket`. Engine transition rows in `slk_events` are deliberately not extended.
+- **H4 vantage confluence** is computed once per market per scan from the closed H4 feed (`buildH4VantageConfluence`): the most recent H4 structural breakout and its direction, whether that breakout created an H4 FVG, and whether an H4 key level of **any** kind (A, V, OC, DECISION) sits inside/overlapping that FVG. Grades, highest first:
+  - `H4_PLUG_AND_PLAY` — key level with `fvgOverlap=true` inside the breakout's FVG;
+  - `H4_KL_IN_FVG` — key level overlapping the breakout FVG zone (kind tag `H4_KL_A` / `H4_KL_V` / `H4_KL_OC` / `H4_KL_DECISION`);
+  - `H4_FVG_ONLY` — breakout FVG with no key level inside;
+  - `H4_BREAKOUT_BARE` — breakout with no FVG; `H4_NO_BREAKOUT` is the tag (and grade `null`) when no recent H4 breakout exists.
+  Direction tags (`H4_BREAKOUT_BULLISH` / `H4_BREAKOUT_BEARISH`) always accompany a grade. When the daily read is neutral or incomplete the H4 breakout direction is additionally recorded as a provisional bias input tagged `OBSERVATION_ONLY` (plus `H4_PROVISIONAL_BIAS_LONG` / `H4_PROVISIONAL_BIAS_SHORT`) — grading/diagnostics only.
+- **Session buckets** are the UTC+1 bucket of the triggering candle's OPEN time: `S00_04`, `S04_08`, `S08_12`, `S12_16`, `S16_20`, `S20_24`. The bucket is stored in its own column and appended to the tag array. The overnight thesis (00:00–08:00 UTC+1 = `S00_04` + `S04_08`) can now be tested directly on the ledgers.
+- **Hard boundary:** no tag, grade, bucket, or provisional bias is ever read by an alert gate, dedupe check, cooldown, notification decision, delivery path, or outcome rule. `MODE`, `MIN_TP_R`, `MIN_RISK_ATR`, `RETEST_DEPTH_PCT`, the pair list, the timeframes, and channel routing are untouched.
+
+### Live Desk tape (Event Tape correctness)
+
+- `/api/recent-events` accepts an optional `tail=1`: it returns the NEWEST `limit` rows in ascending order with `cursor = max event id`. Numeric `since` paging is byte-for-byte unchanged (backward compatible).
+- Both dashboard copies (`dashboard/app.js` and the embedded `worker/src/dashboard_html.ts`) bootstrap the tape with `tail=1&limit=12`, adopt the tail cursor, and only ever stream FORWARD via `since=cursor`. Stored September history can no longer replay as if it were live, and the chime/flash fires only for genuinely new events arriving after the initial render.
+- Timestamps render as `HH:MM UTC` for today's events and `MM-DD HH:MM UTC` for anything older, so a stale event can never look live.
 
 - The Engine Discipline weekly digest is controlled by `ENGINE_DIGEST` and goes to explicit FREE-channel IDs only; it has no VIP fallback.
 
@@ -78,12 +99,12 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 ### Required workflow invariants
 
-- `.github/workflows/deploy.yml` must remain **exactly** the version inherited from `origin/arena/01a0b153-slk-bot`: push triggers include `arena/**` and `main`; tests gate deployment; the deploy job is not opt-in gated. Do not replace it with workflow-dispatch-only logic or otherwise alter it.
-- Session work stays on `arena/3ff9b8eb-slk-bot`. Push only with `git push origin arena/3ff9b8eb-slk-bot`. Never switch branches for this session.
+- `.github/workflows/deploy.yml` must remain **exactly** the version inherited from the production lineage (`origin/arena/08df9077-slk-bot`): push triggers include `arena/**` and `main`; tests gate deployment; the deploy job is not opt-in gated. Do not replace it with workflow-dispatch-only logic or otherwise alter it.
+- Session work stays on `arena/0e17c27a-slk-bot`. Push only with `git push origin arena/0e17c27a-slk-bot`. Never switch branches for this session.
 - Do **not** merge PRs or ask the owner to merge. Pushing this branch is what deploys. Do not push to or deploy `main`; it is stale and hands-off.
 - Before each push, run the full local validation suite below. Do not push partially validated work.
 - After each push, wait for the GitHub Actions run to finish successfully and allow about three minutes for propagation. Then request `/health` with a fresh random query parameter and report the returned JSON. `/api/engine-pulse` or an observed behavior change can also verify a release. An unauthorized response from an unknown `/api/*` route does **not** prove that route exists.
-- A failing “Workers Builds” preview check is known benign noise. Cloudflare's native Git integration also duplicates deploys only for `arena/01a0b153-slk-bot`; neither is a reason to change the required workflow.
+- A failing “Workers Builds” preview check is known benign noise. Cloudflare's native Git integration also duplicates deploys only for the production lineage branch; neither is a reason to change the required workflow.
 
 ### Full local validation suite
 
@@ -157,7 +178,7 @@ Secrets are configured outside Git (Cloudflare secrets/D1 as appropriate). Value
 
 ## 5. Public/private surfaces and channel policy
 
-- Public read surfaces include `/health`, `/api/engine-pulse`, `/api/recent-events`, and the public journal. The public journal is restricted to Telegram-delivered signals.
+- Public read surfaces include `/health`, `/api/engine-pulse`, `/api/recent-events` (optional `tail=1` live-edge bootstrap), and the public journal. The public journal is restricted to Telegram-delivered signals.
 - `/api/shadow-ledger`, `/api/shadow-experiments`, `/api/scan-audit`, and administrative actions require the owner/admin key. Keep audit views protected. Treat public endpoint behavior as defined in `worker/src/index.ts`; do not infer route existence from a generic 401.
 - `VIP Institutional`: confirmed entries plus final outcomes only.
 - `VIP Synthetics`: confirmed synthetic entries plus final outcomes only.
@@ -197,14 +218,14 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 ## 8. Open items and owner follow-up
 
 1. The three-week signal drought is not diagnosed yet. After this release, use the protected dashboard audit to retrieve historical scan/error/funnel totals; delivery results before the instrumentation release cannot be recovered.
-2. Apply `worker/migrations/0007_shadow_experiments.sql` in production D1 so the separate Breakout/FVG experiment rows can be recorded. Missing-table behavior safely no-ops and retries its schema probe every five minutes.
+2. Apply `worker/migrations/0008_diagnostics_tags.sql` in production D1 (`npx wrangler d1 migrations apply slk-alert-db --remote`) so the H4 confluence tags and UTC+1 session buckets are recorded. Until then the Worker keeps writing alerts/ledger rows unchanged with the annotation omitted, and its column probe retries every five minutes — no redeploy is needed once the migration lands. If `0007_shadow_experiments.sql` is still unapplied, apply it too. Missing-table behavior safely no-ops and retries its schema probe every five minutes.
 3. Collect roughly 2–3 weeks of shadow observations before considering any `MIN_TP_R` decision. Keep the floor at `2.5` until the owner explicitly decides.
 4. The owner closes PR #8 unmerged. Do not take action on PR #3 or #8 in GitHub.
 5. Later bot changes belong in this same session branch and must use the complete validation → push → Actions → live-proof cycle above.
 
 ## 9. Owner self-serve paths
 
-- **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on `arena/01a0b153-slk-bot`, commit → auto-deploys.
+- **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on the production lineage branch, commit → auto-deploys.
 - **Automatic 21-day audit after release:** open the Pages dashboard → **Market Health** → **Run 21-Day Audit**. It asks for the existing owner key and displays aggregate results only.
 - **D1 queries/fixes or manual audit fallback:** Cloudflare Dashboard → Storage & Databases → D1 → `slk-alert-db` → Console.
 - **Read-only 21-day signal-drought audit** (UTC window 2026-09-14 through 2026-10-05; run the query, then return the result for diagnosis):
@@ -232,6 +253,21 @@ FROM slk_shadow_trades
 GROUP BY reject_reason;
 ```
 
+- **Diagnostics-tag slice** (after `0008_diagnostics_tags.sql` is applied; empty `session_bucket` on old rows means "not annotated", not zero):
+
+```sql
+SELECT variant, session_bucket, h4_confluence_grade, COUNT(*) AS n,
+       SUM(CASE WHEN status <> 'OPEN' THEN 1 ELSE 0 END) AS resolved,
+       ROUND(SUM(CASE WHEN status <> 'OPEN' THEN COALESCE(r_multiple, 0) ELSE 0 END), 2) AS net_r
+FROM slk_shadow_experiments
+GROUP BY variant, session_bucket, h4_confluence_grade
+ORDER BY variant, session_bucket, h4_confluence_grade;
+
+SELECT session_bucket, h4_confluence_grade, COUNT(*) AS signals
+FROM slk_alerts
+GROUP BY session_bucket, h4_confluence_grade;
+```
+
 ## 10. Useful release commands and endpoints
 
 ```bash
@@ -245,11 +281,15 @@ node --check dashboard/app.js
 (cd worker && npx wrangler deploy --dry-run)
 
 # the only push target for this session
-git push origin arena/3ff9b8eb-slk-bot
+git push origin arena/0e17c27a-slk-bot
+
+# owner-side migration (not required for the code to run — tags resume automatically)
+(cd worker && npx wrangler d1 migrations apply slk-alert-db --remote)
 ```
 
 - Fresh health check: `https://slk-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
 - Public engine pulse: `https://slk-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
+- Live-edge event tape bootstrap: `https://slk-alert-worker.abidogundamilola.workers.dev/api/recent-events?tail=1&limit=5&cb=<random>`
 - Shadow aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
 - Shadow-experiment aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
 - Scan/error/funnel/delivery audit (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`

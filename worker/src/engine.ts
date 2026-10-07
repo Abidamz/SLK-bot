@@ -11,6 +11,10 @@ import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from 
 import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
+import {
+  buildH4VantageConfluence, diagnosticTagsForRow, sessionBucketUtcPlus1,
+  H4_BREAKOUT_RECENCY_BARS, type H4VantageConfluence,
+} from "./h4_context";
 import type {
   Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowExperimentCapture, ShadowTradeCapture,
 } from "./types";
@@ -28,6 +32,9 @@ export interface ScanEntryArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  /** Diagnostics-only H4 vantage context. Computed from `h4Candles` when the
+   *  caller does not supply it (production computes it once per pair/scan). */
+  h4Context?: H4VantageConfluence;
   /** Internal counterfactual pass. Its events/alerts are never persisted or delivered. */
   shadowOnly?: boolean;
 }
@@ -120,6 +127,115 @@ function makeShadowExperiment(args: {
   };
 }
 
+/** BREAKOUT_CONTINUATION research capture — shadow ledger only.
+ *
+ *  Aligned sequence:
+ *    recent H4 structural breakout
+ *      → liquidity sweep on the entry timeframe after that breakout
+ *      → price rebalances into the breakout's H4 FVG (plug-and-play zone
+ *        preferred: a key level of ANY kind sitting inside the FVG)
+ *      → continuation entry recorded at the zone touch, in the breakout
+ *        direction.
+ *
+ *  Only ever evaluated on the latest closed entry candle of a live scan (no
+ *  historical backfill) and never emits an EngineEvent, Alert, or delivery. */
+export function buildBreakoutContinuationExperiment(args: {
+  pair: string; entryTf: string; tfSeconds: number; candles: Candle[];
+  cfg: StrategyConfig; atrE: number; h4Context: H4VantageConfluence;
+  story?: Storyline | null;
+}): ShadowExperimentCapture | null {
+  const { candles, cfg, h4Context } = args;
+  if (!h4Context.breakoutDirection || !h4Context.fvg) return null;
+  if (h4Context.breakoutTime === null || h4Context.breakoutAgeBars === null) return null;
+  if (h4Context.breakoutAgeBars > H4_BREAKOUT_RECENCY_BARS) return null;
+  if (candles.length < cfg.pivotLeft + cfg.pivotRight + 2) return null;
+
+  const zone = h4Context.fvg;
+  const tfMs = args.tfSeconds * 1000;
+  const direction: Direction = h4Context.breakoutDirection === "bullish" ? "LONG" : "SHORT";
+  const isShort = direction === "SHORT";
+  const lastIndex = candles.length - 1;
+  const last = candles[lastIndex];
+  const breakoutTime = h4Context.breakoutTime;
+
+  // ---- 3. rebalance: the latest closed entry candle must trade back into the
+  //         breakout's H4 FVG. That touch is the experiment's entry candle.
+  const rebalanced = isShort ? last.h >= zone.lo : last.l <= zone.hi;
+  if (!rebalanced) return null;
+
+  // ---- 2. liquidity sweep: the pullback flushes the opposing side's internal
+  //         liquidity after the breakout (sellside for a bullish breakout,
+  //         buyside for a bearish one).
+  const [highs, lows] = F.findSwings(candles, cfg.pivotLeft, cfg.pivotRight);
+  const sweepSide = isShort ? highs : lows;
+  const conf = cfg.pivotRight;
+  const start = Math.max(0, candles.length - cfg.setupWindow);
+  // The breakout is only confirmed once its H4 candle CLOSES, so the pullback
+  // sweep must come after that close — never inside the breakout candle.
+  const breakoutCloseTime = breakoutTime + MAP_TF_SECONDS * 1000;
+  let sweepPrice: number | null = null;
+  let sweepTime: number | null = null;
+  let firstSweepIndex = -1;
+  for (let i = start; i <= lastIndex; i++) {
+    const c = candles[i];
+    if (c.t + tfMs < breakoutCloseTime) continue; // the sweep must follow the confirmed breakout
+    for (const sw of sweepSide) {
+      if (sw.index >= i || sw.index + conf > i) continue;
+      const swept = isShort
+        ? c.h > sw.price && c.c < sw.price
+        : c.l < sw.price && c.c > sw.price;
+      if (!swept) continue;
+      if (sweepTime === null || c.t >= sweepTime) {
+        sweepPrice = sw.price;
+        sweepTime = c.t;
+      }
+      if (firstSweepIndex < 0 || i < firstSweepIndex) firstSweepIndex = i;
+    }
+  }
+  if (sweepPrice === null || sweepTime === null || firstSweepIndex < 0 || sweepTime > last.t) return null;
+
+  // ---- 4. continuation entry at the zone touch. The structural invalidation
+  //         is the pullback leg's own extreme (sweep extreme + everything
+  //         after it), NOT the far edge of the H4 FVG: the zone can be many
+  //         entry-TF ATRs wide, which the stop ceiling would reject outright.
+  const entry = last.c;
+  const buffer = cfg.slBufferAtr * args.atrE;
+  let extreme = sweepPrice;
+  for (let i = firstSweepIndex; i <= lastIndex; i++) {
+    extreme = isShort ? Math.max(extreme, candles[i].h) : Math.min(extreme, candles[i].l);
+  }
+  const proposedStop = isShort ? extreme + buffer : extreme - buffer;
+  const risk = shadowRiskForStop(args.pair, direction, entry, proposedStop, args.atrE, cfg);
+  if (!risk) return null;
+
+  // Continuation draw: the mapped external target in the breakout direction.
+  // A valid storyline normally supplies one; when price has already crossed
+  // every mapped pool, a transparent 2.5R benchmark keeps the row explicit
+  // instead of silently dropping an otherwise qualifying rebalance.
+  const mapped = args.story && args.story.valid
+    ? nearestExternalTarget(args.story, direction, entry)
+    : null;
+  const target = mapped ?? (isShort ? entry - 2.5 * risk.risk : entry + 2.5 * risk.risk);
+
+  const sourceSetupId = `${args.pair}:${args.entryTf}:${direction}:H4BREAKOUT:${new Date(breakoutTime).toISOString()}`;
+  // Deterministic on (breakout, rebalance zone): a re-replay of the same H4
+  // breakout plus the same FVG can only ever record one row.
+  const experimentId = `BREAKOUT_CONTINUATION:${sourceSetupId}:${new Date(zone.time).toISOString()}`;
+  const experiment = makeShadowExperiment({
+    experimentId, sourceSetupId, variant: "BREAKOUT_CONTINUATION",
+    pair: args.pair, entryTf: args.entryTf, direction, entry,
+    stopLoss: risk.stopLoss, target, risk: risk.risk,
+    candleCloseTime: last.t + tfMs,
+  });
+  if (!experiment) return null;
+  return {
+    ...experiment,
+    h4ConfluenceGrade: h4Context.grade,
+    h4ConfluenceTags: diagnosticTagsForRow(h4Context, last.t),
+    sessionBucket: sessionBucketUtcPlus1(last.t),
+  };
+}
+
 export function scanEntry(args: ScanEntryArgs): {
   alerts: Alert[];
   events: EngineEvent[];
@@ -129,6 +245,7 @@ export function scanEntry(args: ScanEntryArgs): {
   shadowExperiments: ShadowExperimentCapture[];
 } {
   const { pair, entryTf, tfSeconds, candles, snaps, cfg, mode, provider, d1Candles, h1Candles, h4Candles } = args;
+  const h4Context = args.h4Context ?? buildH4VantageConfluence(h4Candles ?? [], cfg, d1Candles);
   const configuredRetestDepthPct = cfg.retestDepthPct ?? 100;
   const retestDepthPct = Number.isFinite(configuredRetestDepthPct)
     ? Math.max(1, Math.min(100, configuredRetestDepthPct))
@@ -173,45 +290,18 @@ export function scanEntry(args: ScanEntryArgs): {
     const closeTime = c.t + tfSeconds * 1000;
     const story = storyAt(closeTime);
 
-    // Shadow-only continuation experiment: require a fresh candle-body close
-    // through a previously confirmed swing in the H4 storyline's direction.
-    // It intentionally runs only on the latest closed candle (no historical
-    // backfill) and never emits an EngineEvent or Alert.
-    if (!args.shadowOnly && i === candles.length - 1 && i > 0 && story?.valid && story.direction) {
-      const previous = candles[i - 1];
-      for (const direction of ["SHORT", "LONG"] as Direction[]) {
-        const isShort = direction === "SHORT";
-        const alignedEnvironment = isShort ? story.environment === "bearish" : story.environment === "bullish";
-        if (story.direction !== direction || !alignedEnvironment) continue;
-        const brokenSwings = (isShort ? lows : highs)
-          .filter((sw) => sw.index < i && sw.index + conf < i)
-          .sort((a, b) => b.index - a.index);
-        const breakoutSwing = brokenSwings.find((sw) =>
-          isShort ? previous.c >= sw.price && c.c < sw.price : previous.c <= sw.price && c.c > sw.price,
-        );
-        if (!breakoutSwing) continue;
-        const stopSwings = (isShort ? highs : lows)
-          .filter((sw) => sw.index < i && sw.index + conf < i && (isShort ? sw.price > c.c : sw.price < c.c))
-          .sort((a, b) => b.index - a.index);
-        const stopSwing = stopSwings[0];
-        if (!stopSwing) continue;
-        const proposedStop = isShort
-          ? stopSwing.price + cfg.slBufferAtr * atrE
-          : stopSwing.price - cfg.slBufferAtr * atrE;
-        const risk = shadowRiskForStop(pair, direction, c.c, proposedStop, atrE, cfg);
-        const target = nearestExternalTarget(story, direction, c.c);
-        if (!risk || target === null) continue;
-        const sourceSetupId = `${pair}:${entryTf}:${direction}:BREAKOUT:${new Date(breakoutSwing.time).toISOString()}`;
-        const experiment = makeShadowExperiment({
-          experimentId: `BREAKOUT_CONTINUATION:${sourceSetupId}`,
-          sourceSetupId, variant: "BREAKOUT_CONTINUATION", pair, entryTf, direction,
-          entry: c.c, stopLoss: risk.stopLoss, target, risk: risk.risk,
-          candleCloseTime: closeTime,
-        });
-        if (experiment && !shadowExperimentIds.has(experiment.experimentId)) {
-          shadowExperimentIds.add(experiment.experimentId);
-          shadowExperiments.push(experiment);
-        }
+    // Shadow-only H4 breakout-continuation experiment (diagnostics only): the
+    // sequence is recent H4 breakout → liquidity sweep → rebalance into the
+    // breakout's H4 FVG → continuation entry at the zone touch. It intentionally
+    // runs only on the latest closed candle (no historical backfill) and never
+    // emits an EngineEvent or Alert.
+    if (!args.shadowOnly && i === candles.length - 1) {
+      const experiment = buildBreakoutContinuationExperiment({
+        pair, entryTf, tfSeconds, candles, cfg, atrE, h4Context, story,
+      });
+      if (experiment && !shadowExperimentIds.has(experiment.experimentId)) {
+        shadowExperimentIds.add(experiment.experimentId);
+        shadowExperiments.push(experiment);
       }
     }
 
@@ -380,7 +470,7 @@ export function scanEntry(args: ScanEntryArgs): {
               pair, entryTf, closeTime, c, s: cur, isShort,
               atrE, cfg, mode, standing, provider, diagnostics,
               candles, candleIndex: i, d1Candles, h1Candles, h4Candles,
-              shadowTrades,
+              h4Context, shadowTrades,
             });
             if (alert) {
               const retestReason = retestDepthPct < 100
@@ -401,7 +491,7 @@ export function scanEntry(args: ScanEntryArgs): {
           // affect this established expiry transition or its event payload.
           try {
             const shadow = buildNoRetestShadow({
-              pair, entryTf, tfSeconds, s: cur, isShort, atrE, cfg, candles,
+              pair, entryTf, tfSeconds, s: cur, isShort, atrE, cfg, candles, h4Context,
             });
             if (shadow) shadowTrades.push(shadow);
           } catch (err) {
@@ -427,6 +517,7 @@ interface BuildAlertArgs {
   d1Candles?: Candle[];
   h1Candles?: Candle[];
   h4Candles?: Candle[];
+  h4Context?: H4VantageConfluence | null;
   shadowTrades: ShadowTradeCapture[];
 }
 
@@ -479,6 +570,7 @@ export function selectTargets(args: {
 function buildTargetFloorShadow(args: {
   pair: string; entryTf: string; closeTime: number; entry: number; stopLoss: number;
   risk: number; isShort: boolean; s: Setup; cfg: StrategyConfig;
+  h4Context?: H4VantageConfluence | null; triggerTime: number;
 }): ShadowTradeCapture | null {
   if (args.cfg.minTpR !== 2.5 || args.risk <= 0) return null;
   const candidate = selectTargets({
@@ -498,12 +590,16 @@ function buildTargetFloorShadow(args: {
     direction: args.s.direction, entry: args.entry, stopLoss: args.stopLoss,
     tp1: candidate.tp1, rr, rejectReason: "TARGET_FLOOR",
     candleCloseTime: args.closeTime,
+    h4ConfluenceGrade: args.h4Context?.grade ?? null,
+    h4ConfluenceTags: diagnosticTagsForRow(args.h4Context, args.triggerTime),
+    sessionBucket: sessionBucketUtcPlus1(args.triggerTime),
   };
 }
 
 function buildNoRetestShadow(args: {
   pair: string; entryTf: string; tfSeconds: number; s: Setup; isShort: boolean;
   atrE: number; cfg: StrategyConfig; candles: Candle[];
+  h4Context?: H4VantageConfluence | null;
 }): ShadowTradeCapture | null {
   const bosCandle = args.candles[args.s.bosIndex];
   const bosAtr = args.atrE;
@@ -551,11 +647,14 @@ function buildNoRetestShadow(args: {
     direction: args.s.direction, entry, stopLoss, tp1, rr,
     rejectReason: "NO_RETEST",
     candleCloseTime: bosCandle.t + args.tfSeconds * 1000,
+    h4ConfluenceGrade: args.h4Context?.grade ?? null,
+    h4ConfluenceTags: diagnosticTagsForRow(args.h4Context, bosCandle.t),
+    sessionBucket: sessionBucketUtcPlus1(bosCandle.t),
   };
 }
 
 function buildAlert(a: BuildAlertArgs): Alert | null {
-  const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider } = a;
+  const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider, h4Context } = a;
   const entry = c.c;
   const buf = cfg.slBufferAtr * atrE;
   let sl = isShort ? s.invLevel + buf : s.invLevel - buf;
@@ -601,6 +700,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     try {
       const shadow = buildTargetFloorShadow({
         pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
+        h4Context: a.h4Context, triggerTime: c.t,
       });
       if (shadow) a.shadowTrades.push(shadow);
     } catch (err) {
@@ -670,5 +770,9 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     cycleStage: "entry_alert", entryMode: "confirmation",
     shadowClassification: shadowDiagnostics.classification,
     directionalBias: shadowDiagnostics,
+    // Diagnostics only — never read by any gate, delivery, or outcome rule.
+    h4ConfluenceGrade: h4Context?.grade ?? null,
+    h4ConfluenceTags: diagnosticTagsForRow(h4Context, c.t),
+    sessionBucket: sessionBucketUtcPlus1(c.t),
   };
 }

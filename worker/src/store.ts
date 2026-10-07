@@ -45,6 +45,12 @@ export interface AlertRow extends Record<string, unknown> {
   origin_key_level: number;
   alert_status: string;
   status: string;
+  /** Diagnostics-only H4 vantage confluence grade + tags (JSON array) and the
+   *  UTC+1 session bucket of the triggering candle. Absent on legacy rows and
+   *  on databases that have not applied the additive migration. */
+  h4_confluence_grade?: string | null;
+  h4_confluence_tags?: string | null;
+  session_bucket?: string | null;
 }
 
 export interface Store {
@@ -76,6 +82,10 @@ export interface Store {
   queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
   eventsSince(cursorId: number, limit: number): Promise<Record<string, unknown>[]>;
+  /** Newest `limit` events, returned in ASCENDING id order. Powers the
+   *  Live Desk `tail=1` bootstrap so the tape starts at the live edge
+   *  instead of replaying the whole history. */
+  eventTail(limit: number): Promise<Record<string, unknown>[]>;
   recentScanLogs(limit: number): Promise<Record<string, unknown>[]>;
   /** Scan-log rows within [sinceIso, +∞) for the Engine Pulse aggregate,
    *  including diagnostics_json (D1) / diagnostics (Mem). Newest first. */
@@ -163,6 +173,10 @@ export interface ShadowTradeRow extends Record<string, unknown> {
   exit_time: string | null;
   exit_price: number | null;
   r_multiple: number | null;
+  /** Diagnostics-only confluence tags (JSON array), H4 grade, UTC+1 bucket. */
+  h4_confluence_grade?: string | null;
+  h4_confluence_tags?: string | null;
+  session_bucket?: string | null;
 }
 
 export interface ShadowAggregate {
@@ -197,6 +211,10 @@ export interface ShadowExperimentRow extends Record<string, unknown> {
   exit_time: string | null;
   exit_price: number | null;
   r_multiple: number | null;
+  /** Diagnostics-only confluence tags (JSON array), H4 grade, UTC+1 bucket. */
+  h4_confluence_grade?: string | null;
+  h4_confluence_tags?: string | null;
+  session_bucket?: string | null;
 }
 
 export interface ShadowExperimentLedger {
@@ -305,6 +323,81 @@ function markScanDiagnosticsColumn(db: D1Like, exists: boolean): void {
   scanDiagnosticsColumnProbe.delete(key);
 }
 
+// Additive diagnostics columns (H4 confluence grade/tags + UTC+1 session
+// bucket). Probed once per D1 binding so a Worker deployment that races the
+// additive migration keeps writing alerts and ledger rows without the tag
+// columns instead of failing.
+
+const alertTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
+const alertTagColumnProbe = new WeakMap<object, Promise<boolean>>();
+const shadowTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
+const shadowTagColumnProbe = new WeakMap<object, Promise<boolean>>();
+const shadowExperimentTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
+const shadowExperimentTagColumnProbe = new WeakMap<object, Promise<boolean>>();
+
+function makeColumnProbe(args: {
+  cache: WeakMap<object, D1AvailabilityCacheEntry>;
+  probe: WeakMap<object, Promise<boolean>>;
+  sql: string;
+  message: string;
+}): { has: (db: D1Like) => Promise<boolean>; mark: (db: D1Like, exists: boolean) => void } {
+  const has = async (db: D1Like): Promise<boolean> => {
+    const key = db as object;
+    const cached = cachedSchemaAvailability(args.cache, key);
+    if (cached !== null) return cached;
+    const pending = args.probe.get(key);
+    if (pending) return pending;
+    const probe = (async () => {
+      let exists = false;
+      try {
+        await db.prepare(args.sql).bind().all();
+        exists = true;
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: args.message, error: String(err) }));
+      }
+      setSchemaAvailability(args.cache, key, exists);
+      args.probe.delete(key);
+      return exists;
+    })();
+    args.probe.set(key, probe);
+    return probe;
+  };
+  const mark = (db: D1Like, exists: boolean): void => {
+    const key = db as object;
+    setSchemaAvailability(args.cache, key, exists);
+    args.probe.delete(key);
+  };
+  return { has, mark };
+}
+
+const alertTagColumns = makeColumnProbe({
+  cache: alertTagColumnCache,
+  probe: alertTagColumnProbe,
+  sql: "SELECT h4_confluence_grade, h4_confluence_tags, session_bucket FROM slk_alerts LIMIT 0",
+  message: "alert diagnostics columns unavailable; using legacy alert schema",
+});
+const shadowTagColumns = makeColumnProbe({
+  cache: shadowTagColumnCache,
+  probe: shadowTagColumnProbe,
+  sql: "SELECT h4_confluence_grade, h4_confluence_tags, session_bucket FROM slk_shadow_trades LIMIT 0",
+  message: "shadow diagnostics columns unavailable; using legacy shadow schema",
+});
+const shadowExperimentTagColumns = makeColumnProbe({
+  cache: shadowExperimentTagColumnCache,
+  probe: shadowExperimentTagColumnProbe,
+  sql: "SELECT h4_confluence_grade, h4_confluence_tags, session_bucket FROM slk_shadow_experiments LIMIT 0",
+  message: "shadow experiment diagnostics columns unavailable; using legacy experiment schema",
+});
+
+const hasAlertTagColumns = (db: D1Like) => alertTagColumns.has(db);
+const hasShadowTagColumns = (db: D1Like) => shadowTagColumns.has(db);
+const hasShadowExperimentTagColumns = (db: D1Like) => shadowExperimentTagColumns.has(db);
+
+/** JSON-encode the diagnostics tags for a persisted row. */
+export function serializeDiagnosticTags(tags: string[] | undefined | null): string | null {
+  return tags && tags.length ? JSON.stringify(tags) : null;
+}
+
 const emptyShadowAggregate = (): ShadowAggregate => ({
   count: 0, resolved: 0, wins: 0, losses: 0, netR: 0, winRate: null,
 });
@@ -400,9 +493,27 @@ export class D1Store implements Store {
         && await this.hasIdentityMatch(a.pair, a.entryTf, a.direction, a.keyLevelType, a.originTime)) {
       return false;
     }
-    const res = await this.db
-      .prepare(
-        `INSERT OR IGNORE INTO slk_alerts (
+    // Additive diagnostics tags: written only when the migration is applied.
+    const withTags = await hasAlertTagColumns(this.db);
+    const values: unknown[] = [
+      a.setupId, provider, a.pair, a.mapTf, a.entryTf,
+      iso(a.candleCloseTime), a.direction, a.environment, a.phase, a.htfAlignment,
+      a.originKeyLevel, a.keyLevelType, JSON.stringify(a.keyLevelBounds),
+      a.keyLevelTested ? 1 : 0, a.keyLevelFlipped ? 1 : 0,
+      JSON.stringify(a.imbalanceContext), JSON.stringify(a.internalLiquidity),
+      JSON.stringify(a.externalLiquidity), a.drawOnLiquidity,
+      a.nearestExternalTarget, JSON.stringify(a.intermediateZones),
+      a.opposingLiquidityStanding ? 1 : 0, a.cycleStage, a.entryMode,
+      a.entry, a.stopLoss, a.tpInternal, a.tpExternal,
+      iso(a.sweepTime), iso(a.bosTime), iso(a.returnTime),
+      a.invalidationLevel, a.invalidationReason, a.parameterVersion,
+      a.setupId, a.alertStatus, a.suppressReason, new Date().toISOString(),
+    ];
+    const tagValues: unknown[] = [
+      a.h4ConfluenceGrade ?? null, serializeDiagnosticTags(a.h4ConfluenceTags), a.sessionBucket ?? null,
+    ];
+    const insert = (includeTags: boolean) => this.db
+      .prepare(`INSERT OR IGNORE INTO slk_alerts (
           setup_id, provider, canonical_symbol, map_timeframe, entry_timeframe,
           candle_close_time, direction, environment, phase, htf_alignment,
           origin_key_level, key_level_type, key_level_bounds, key_level_tested,
@@ -412,25 +523,22 @@ export class D1Store implements Store {
           entry_mode, entry, stop_loss, tp_internal, tp_external, sweep_time,
           bos_time, return_time, invalidation_level, invalidation_reason,
           parameter_version, setup_ref, alert_status, suppress_reason,
-          created_utc
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-      .bind(
-        a.setupId, provider, a.pair, a.mapTf, a.entryTf,
-        iso(a.candleCloseTime), a.direction, a.environment, a.phase, a.htfAlignment,
-        a.originKeyLevel, a.keyLevelType, JSON.stringify(a.keyLevelBounds),
-        a.keyLevelTested ? 1 : 0, a.keyLevelFlipped ? 1 : 0,
-        JSON.stringify(a.imbalanceContext), JSON.stringify(a.internalLiquidity),
-        JSON.stringify(a.externalLiquidity), a.drawOnLiquidity,
-        a.nearestExternalTarget, JSON.stringify(a.intermediateZones),
-        a.opposingLiquidityStanding ? 1 : 0, a.cycleStage, a.entryMode,
-        a.entry, a.stopLoss, a.tpInternal, a.tpExternal,
-        iso(a.sweepTime), iso(a.bosTime), iso(a.returnTime),
-        a.invalidationLevel, a.invalidationReason, a.parameterVersion,
-        a.setupId, a.alertStatus, a.suppressReason, new Date().toISOString(),
-      )
+          created_utc${includeTags ? ", h4_confluence_grade, h4_confluence_tags, session_bucket" : ""}
+        ) VALUES (${[...values, ...(includeTags ? tagValues : [])].map(() => "?").join(",")})`)
+      .bind(...values, ...(includeTags ? tagValues : []))
       .run();
-    return res.meta.changes > 0;
+    try {
+      const res = await insert(withTags);
+      return res.meta.changes > 0;
+    } catch (err) {
+      if (!withTags) throw err;
+      // The deployment can race the additive migration: fall back once and
+      // remember the legacy schema for this D1 binding.
+      alertTagColumns.mark(this.db, false);
+      console.warn(JSON.stringify({ level: "warn", msg: "insertAlert diagnostics fallback", error: String(err) }));
+      const res = await insert(false);
+      return res.meta.changes > 0;
+    }
   }
 
   async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
@@ -594,17 +702,31 @@ export class D1Store implements Store {
 
   async insertShadowTrade(r: ShadowTradeCapture): Promise<boolean> {
     if (!await hasShadowTable(this.db)) return false;
-    const result = await this.db.prepare(`
+    const withTags = await hasShadowTagColumns(this.db);
+    const values: unknown[] = [
+      r.setupId, r.pair, r.entryTf, r.direction, r.entry, r.stopLoss, r.tp1, r.rr,
+      r.rejectReason, new Date().toISOString(), iso(r.candleCloseTime),
+    ];
+    const tagValues: unknown[] = [
+      r.h4ConfluenceGrade ?? null, serializeDiagnosticTags(r.h4ConfluenceTags), r.sessionBucket ?? null,
+    ];
+    const insert = (includeTags: boolean) => this.db.prepare(`
       INSERT OR IGNORE INTO slk_shadow_trades (
         setup_id, canonical_symbol, entry_timeframe, direction,
         hypothetical_entry, hypothetical_stop_loss, hypothetical_tp1, hypothetical_rr,
-        reject_reason, created_utc, candle_close_time, status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,'OPEN')
-    `).bind(
-      r.setupId, r.pair, r.entryTf, r.direction, r.entry, r.stopLoss, r.tp1, r.rr,
-      r.rejectReason, new Date().toISOString(), iso(r.candleCloseTime),
-    ).run();
-    return Number(result.meta?.changes ?? 0) > 0;
+        reject_reason, created_utc, candle_close_time, status${includeTags ? ", h4_confluence_grade, h4_confluence_tags, session_bucket" : ""}
+      ) VALUES (${values.map(() => "?").join(",")},'OPEN'${includeTags ? ",?,?,?" : ""})
+    `).bind(...values, ...(includeTags ? tagValues : [])).run();
+    try {
+      const result = await insert(withTags);
+      return Number(result.meta?.changes ?? 0) > 0;
+    } catch (err) {
+      if (!withTags) throw err;
+      shadowTagColumns.mark(this.db, false);
+      console.warn(JSON.stringify({ level: "warn", msg: "insertShadowTrade diagnostics fallback", error: String(err) }));
+      const result = await insert(false);
+      return Number(result.meta?.changes ?? 0) > 0;
+    }
   }
 
   async openShadowTrades(pair?: string, tf?: string): Promise<ShadowTradeRow[]> {
@@ -659,18 +781,32 @@ export class D1Store implements Store {
 
   async insertShadowExperiment(row: ShadowExperimentCapture): Promise<boolean> {
     if (!await hasShadowExperimentTable(this.db)) return false;
-    const result = await this.db.prepare(`
-      INSERT OR IGNORE INTO slk_shadow_experiments (
-        experiment_id, source_setup_id, variant, canonical_symbol, entry_timeframe,
-        direction, hypothetical_entry, hypothetical_stop_loss, hypothetical_target,
-        hypothetical_rr, created_utc, candle_close_time, status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'OPEN')
-    `).bind(
+    const withTags = await hasShadowExperimentTagColumns(this.db);
+    const values: unknown[] = [
       row.experimentId, row.sourceSetupId, row.variant, row.pair, row.entryTf,
       row.direction, row.entry, row.stopLoss, row.target, row.rr,
       new Date().toISOString(), iso(row.candleCloseTime),
-    ).run();
-    return Number(result.meta?.changes ?? 0) > 0;
+    ];
+    const tagValues: unknown[] = [
+      row.h4ConfluenceGrade ?? null, serializeDiagnosticTags(row.h4ConfluenceTags), row.sessionBucket ?? null,
+    ];
+    const insert = (includeTags: boolean) => this.db.prepare(`
+      INSERT OR IGNORE INTO slk_shadow_experiments (
+        experiment_id, source_setup_id, variant, canonical_symbol, entry_timeframe,
+        direction, hypothetical_entry, hypothetical_stop_loss, hypothetical_target,
+        hypothetical_rr, created_utc, candle_close_time, status${includeTags ? ", h4_confluence_grade, h4_confluence_tags, session_bucket" : ""}
+      ) VALUES (${values.map(() => "?").join(",")}, 'OPEN'${includeTags ? ",?,?,?" : ""})
+    `).bind(...values, ...(includeTags ? tagValues : [])).run();
+    try {
+      const result = await insert(withTags);
+      return Number(result.meta?.changes ?? 0) > 0;
+    } catch (err) {
+      if (!withTags) throw err;
+      shadowExperimentTagColumns.mark(this.db, false);
+      console.warn(JSON.stringify({ level: "warn", msg: "insertShadowExperiment diagnostics fallback", error: String(err) }));
+      const result = await insert(false);
+      return Number(result.meta?.changes ?? 0) > 0;
+    }
   }
 
   async openShadowExperiments(pair?: string, tf?: string): Promise<ShadowExperimentRow[]> {
@@ -796,6 +932,17 @@ export class D1Store implements Store {
       .bind(cursorId, limit)
       .all();
     return res.results;
+  }
+
+  /** Live-edge bootstrap: the NEWEST `limit` events, ascending in the
+   *  response so the caller can render them oldest → newest while setting its
+   *  cursor to the max event id. */
+  async eventTail(limit: number): Promise<Record<string, unknown>[]> {
+    const res = await this.db
+      .prepare("SELECT * FROM slk_events ORDER BY id DESC LIMIT ?")
+      .bind(limit)
+      .all();
+    return (res.results ?? []).slice().reverse();
   }
 
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
@@ -1206,6 +1353,10 @@ export class MemStore implements Store {
       entry: a.entry, stop_loss: a.stopLoss, tp_internal: a.tpInternal,
       tp_external: a.tpExternal, invalidation_level: a.invalidationLevel,
       alert_status: a.alertStatus, suppress_reason: null, status: "OPEN",
+      // Diagnostics-only tags (JSON, parity with the D1 column shape).
+      h4_confluence_grade: a.h4ConfluenceGrade ?? null,
+      h4_confluence_tags: serializeDiagnosticTags(a.h4ConfluenceTags),
+      session_bucket: a.sessionBucket ?? null,
       // The memory store uses the confirmation candle as a deterministic
       // creation timestamp; D1 stores the actual insert time.
       created_utc: iso(a.candleCloseTime),
@@ -1310,6 +1461,9 @@ export class MemStore implements Store {
       exit_time: null,
       exit_price: null,
       r_multiple: null,
+      h4_confluence_grade: row.h4ConfluenceGrade ?? null,
+      h4_confluence_tags: serializeDiagnosticTags(row.h4ConfluenceTags),
+      session_bucket: row.sessionBucket ?? null,
     });
     return true;
   }
@@ -1359,6 +1513,9 @@ export class MemStore implements Store {
       exit_time: null,
       exit_price: null,
       r_multiple: null,
+      h4_confluence_grade: capture.h4ConfluenceGrade ?? null,
+      h4_confluence_tags: serializeDiagnosticTags(capture.h4ConfluenceTags),
+      session_bucket: capture.sessionBucket ?? null,
     });
     return true;
   }
@@ -1421,6 +1578,10 @@ export class MemStore implements Store {
 
   async recentEvents(limit: number): Promise<Record<string, unknown>[]> {
     return this.events.slice(-limit).reverse();
+  }
+
+  async eventTail(limit: number): Promise<Record<string, unknown>[]> {
+    return this.events.slice(-limit);
   }
 
   async recentScanLogs(limit: number): Promise<Record<string, unknown>[]> {
