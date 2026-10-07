@@ -208,7 +208,7 @@ describe("failure paths", () => {
   });
 });
 
-describe("near-miss shadow capture (research-only)", () => {
+describe("target-floor shadow capture (research-only)", () => {
   function storyWithSingleTarget(target: number) {
     return {
       ...SHORT_STORY,
@@ -231,6 +231,9 @@ describe("near-miss shadow capture (research-only)", () => {
     });
     expect(result.shadowTrades[0].rr).toBeGreaterThanOrEqual(2.0);
     expect(result.shadowTrades[0].rr).toBeLessThan(2.5);
+    // `rr` is the raw R available to the recorded draw, never the floor and
+    // never a capped/promoted substitute: |entry − tp1| / risk.
+    expect(result.shadowTrades[0].rr).toBeCloseTo(2.2747415066471777, 10);
     // The pre-existing MAP/TOUCH/SWEEP/SHIFT tape is unchanged. A shadow row
     // does not fabricate a RETEST event or any alert.
     expect(result.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
@@ -238,9 +241,37 @@ describe("near-miss shadow capture (research-only)", () => {
     expect(result.diagnostics.confirmedAlerts).toBe(0);
   });
 
-  it("does not capture a floor-rejected candidate below 2.0R", () => {
+  it("captures a sub-2.0R rejection with the R available to the nearest draw", () => {
     const result = runShortWithStory(storyWithSingleTarget(104.45));
     expect(result.alerts).toHaveLength(0);
+    expect(result.shadowTrades).toHaveLength(1);
+    expect(result.shadowTrades[0]).toMatchObject({
+      pair: "EURUSD", entryTf: "30m", direction: "SHORT", entry: 104.9,
+      stopLoss: 105.1417857142857, tp1: 104.45, rejectReason: "TARGET_FLOOR",
+    });
+    // The old [2.0R, 2.5R) band recorded nothing here. The row now stores the
+    // honest distance to the next opposing draw, so the ledger shows how far
+    // below the 2.5R floor the available liquidity actually sat.
+    expect(result.shadowTrades[0].rr).toBeCloseTo(1.8611521418022097, 10);
+    expect(result.shadowTrades[0].rr).toBeLessThan(2.0);
+    expect(result.events.map((event) => event.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT"]);
+    expect(result.diagnostics.targetRejects).toBe(1);
+    expect(result.diagnostics.confirmedAlerts).toBe(0);
+  });
+
+  it("records nothing when the rejection has no measurable opposing draw", () => {
+    const story = {
+      ...SHORT_STORY,
+      internalPools: [
+        { price: 105.5, side: "buyside" as const, kind: "structural", sourceTime: BASE },
+      ],
+      nearestExternalTarget: null,
+      drawOnLiquidity: null,
+    };
+    const result = runShortWithStory(story);
+    expect(result.alerts).toHaveLength(0);
+    // No valid draw in the trade's direction ⇒ no R to record and no row to
+    // resolve; the rejection itself is still counted.
     expect(result.shadowTrades).toEqual([]);
     expect(result.diagnostics.targetRejects).toBe(1);
   });

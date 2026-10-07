@@ -567,24 +567,36 @@ export function selectTargets(args: {
   return { tp1, tp2 };
 }
 
+/** Counterfactual row for a live target-floor rejection (production floor
+ *  `cfg.minTpR` = 2.5R). The row records the **nearest valid opposing draw**
+ *  and the **R available to it**: the selector is asked with no RR floor, so
+ *  every rejection that still has a measurable draw is captured — both the
+ *  [2.0R, 2.5R) near misses and rejects whose only draw sits below 2.0R.
+ *  `rr` is the raw distance to that draw, never the floor and never a
+ *  promoted/capped substitute. A rejection with no valid draw at all has no
+ *  measurable R and is skipped (registered by the `targetRejects` counter).
+ *  This row never creates an alert, event, or notification, and nothing reads
+ *  it back into a gate. */
 function buildTargetFloorShadow(args: {
   pair: string; entryTf: string; closeTime: number; entry: number; stopLoss: number;
   risk: number; isShort: boolean; s: Setup; cfg: StrategyConfig;
   h4Context?: H4VantageConfluence | null; triggerTime: number;
 }): ShadowTradeCapture | null {
   if (args.cfg.minTpR !== 2.5 || args.risk <= 0) return null;
+  // minTpR 0 disables the promotion/floor logic in selectTargets, so tp1 is
+  // the nearest opposing draw itself (internal liquidity first, then the
+  // mapped external target when no internal pool qualifies).
   const candidate = selectTargets({
     isShort: args.isShort,
     entry: args.entry,
     risk: args.risk,
-    minTpR: 2.0,
-    maxPromotedTpR: args.cfg.maxPromotedTpR,
+    minTpR: 0,
     internalPools: args.s.internalPools,
     nearestExternalTarget: args.s.nearestExternalTarget,
   });
   if (!candidate) return null;
   const rr = Math.abs(candidate.tp1 - args.entry) / args.risk;
-  if (!Number.isFinite(rr) || rr < 2.0 || rr >= 2.5) return null;
+  if (!Number.isFinite(rr) || rr <= 0) return null;
   return {
     setupId: args.s.setupId, pair: args.pair, entryTf: args.entryTf,
     direction: args.s.direction, entry: args.entry, stopLoss: args.stopLoss,
@@ -694,9 +706,10 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
   if (!targets) {
     a.diagnostics.targetRejects++;
     // The live floor remains cfg.minTpR (2.5R in production). As a separate
-    // counterfactual, ask the same selector for the best candidate at 2.0R;
-    // only a resulting RR in [2.0, 2.5) is recorded. This branch never returns
-    // an Alert and never emits an event or notification.
+    // counterfactual, record every rejection that still has a measurable
+    // opposing draw: the row stores the nearest draw and the R available to it
+    // (see buildTargetFloorShadow). This branch never returns an Alert and
+    // never emits an event or notification.
     try {
       const shadow = buildTargetFloorShadow({
         pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
