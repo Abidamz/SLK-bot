@@ -51,11 +51,28 @@ export interface RecordedDiagnostics extends LifecycleCounts {
   confirmations?: ConfirmationFunnel;
 }
 
+/** Per-invocation phase timings, written once per scan row. Diagnostics only:
+ *  nothing here is read back into a scan, gate, delivery, or outcome decision.
+ *  `shadowGroups` is how many distinct open shadow (pair, timeframe) groups
+ *  existed; `shadowChecked` is how many of them this tick actually fetched
+ *  (the resolver rotates through the set so one tick can never fan out
+ *  unboundedly). `httpCalls` counts HTTP requests issued during the tick. */
+export interface ScanTimingDiagnostics {
+  liveResolveMs: number;
+  shadowResolveMs: number;
+  pairScanMs: number;
+  shadowGroups: number;
+  shadowChecked: number;
+  httpCalls: number;
+}
+
 export interface ScanDiagnostics {
   version: 1;
   replay: ReplayDiagnostics;
   recorded: RecordedDiagnostics;
   byPairTimeframe: { pair: string; timeframe: string; replay: ReplayDiagnostics }[];
+  /** Absent on rows written before this instrumentation existed. */
+  timing?: ScanTimingDiagnostics;
 }
 
 export interface ScanAuditFunnelRow {
@@ -596,6 +613,22 @@ export interface EnginePulseConfirmationRow {
   avgFreshAgeSec: number;
 }
 
+/** Window aggregate of the per-tick phase timings. Averages are over the scan
+ *  rows that recorded timings; maxes are the largest single value seen. */
+export interface EnginePulseTiming {
+  ticks: number;
+  avgPairScanMs: number;
+  maxPairScanMs: number;
+  avgLiveResolveMs: number;
+  maxLiveResolveMs: number;
+  avgShadowResolveMs: number;
+  maxShadowResolveMs: number;
+  avgShadowGroups: number;
+  avgShadowChecked: number;
+  avgHttpCalls: number;
+  maxHttpCalls: number;
+}
+
 export interface EnginePulse {
   windowHours: number;
   scans: number; // every scan logged in the window (incl. idle ticks)
@@ -610,7 +643,19 @@ export interface EnginePulse {
    *  many were discovered inside the freshness window, and how long discovery
    *  took. Answers "are we losing alerts to timing?" without a redeploy. */
   confirmations: EnginePulseConfirmationRow[];
+  /** Where each tick's wall clock goes. Shows what actually gates cadence. */
+  timing: EnginePulseTiming;
   lastScanTs: string | null;
+}
+
+export function emptyEnginePulseTiming(): EnginePulseTiming {
+  return {
+    ticks: 0, avgPairScanMs: 0, maxPairScanMs: 0,
+    avgLiveResolveMs: 0, maxLiveResolveMs: 0,
+    avgShadowResolveMs: 0, maxShadowResolveMs: 0,
+    avgShadowGroups: 0, avgShadowChecked: 0,
+    avgHttpCalls: 0, maxHttpCalls: 0,
+  };
 }
 
 export function emptyEnginePulse(windowHours = 24): EnginePulse {
@@ -619,6 +664,7 @@ export function emptyEnginePulse(windowHours = 24): EnginePulse {
     evaluated: 0, chains: { TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0 },
     confirmed: 0, rejections: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0, targetFloor: 0 },
     confirmations: [],
+    timing: emptyEnginePulseTiming(),
     lastScanTs: null,
   };
 }
@@ -633,6 +679,8 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
   const cutoff = nowMs - windowHours * 3600_000;
   const pairs = new Set<string>();
   const funnels = new Map<string, ConfirmationFunnelEntry>();
+  let timingTicks = 0, pairSum = 0, pairMax = 0, liveSum = 0, liveMax = 0;
+  let shadowSum = 0, shadowMax = 0, groupSum = 0, checkedSum = 0, httpSum = 0, httpMax = 0;
   for (const row of rows) {
     const ts = Date.parse(row.ts);
     if (!Number.isFinite(ts) || ts < cutoff) continue;
@@ -666,6 +714,26 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
       pulse.rejections.aboveMaxStopAtr += r.riskRejectReasons.aboveMaxStopAtr;
       pulse.rejections.targetFloor += r.targetRejects;
     }
+    // Phase timings. Tolerates rows without the field and never trusts values.
+    const timing = diag.timing;
+    if (timing && typeof timing === "object") {
+      const phase = (value: unknown) => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      };
+      const pairMs = phase(timing.pairScanMs);
+      const liveMs = phase(timing.liveResolveMs);
+      const shadowMs = phase(timing.shadowResolveMs);
+      const httpMs = phase(timing.httpCalls);
+      timingTicks++;
+      pairSum += pairMs; if (pairMs > pairMax) pairMax = pairMs;
+      liveSum += liveMs; if (liveMs > liveMax) liveMax = liveMs;
+      shadowSum += shadowMs; if (shadowMs > shadowMax) shadowMax = shadowMs;
+      groupSum += phase(timing.shadowGroups);
+      checkedSum += phase(timing.shadowChecked);
+      httpSum += httpMs; if (httpMs > httpMax) httpMax = httpMs;
+    }
+
     // Discovery-latency funnel. Tolerates rows written before this
     // instrumentation existed (field absent) and never trusts row shapes.
     const cf = diag.recorded.confirmations;
@@ -695,6 +763,17 @@ export function buildEnginePulse(rows: EnginePulseRow[], nowMs: number, windowHo
         if (touched) funnels.set(tf, entry);
       }
     }
+  }
+  if (timingTicks > 0) {
+    const avg = (sum: number) => Math.round(sum / timingTicks);
+    pulse.timing = {
+      ticks: timingTicks,
+      avgPairScanMs: avg(pairSum), maxPairScanMs: pairMax,
+      avgLiveResolveMs: avg(liveSum), maxLiveResolveMs: liveMax,
+      avgShadowResolveMs: avg(shadowSum), maxShadowResolveMs: shadowMax,
+      avgShadowGroups: avg(groupSum), avgShadowChecked: avg(checkedSum),
+      avgHttpCalls: avg(httpSum), maxHttpCalls: httpMax,
+    };
   }
   pulse.confirmations = [...funnels.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))

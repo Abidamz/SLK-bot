@@ -314,7 +314,14 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   resetProviderCircuitBreakers();
   const startedAt = Date.now();
   const now = opts.now ?? startedAt;
-  const fetchFn = opts.fetchFn ?? fetch;
+  const rawFetchFn = opts.fetchFn ?? fetch;
+  // Count HTTP requests per tick so /admin/system-health can report the real
+  // fan-out instead of asserting a static guess. Counting only.
+  let httpCalls = 0;
+  const fetchFn: typeof fetch = ((...args: Parameters<typeof fetch>) => {
+    httpCalls++;
+    return rawFetchFn(...args);
+  }) as typeof fetch;
   const cfg = loadConfig(env);
   const store: Store = opts.storeOverride ?? makeStore(env.DB);
   const errors: string[] = [];
@@ -328,7 +335,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   // which entry TFs closed a candle since the previous successful scan?
   // 1. Real-time intrabar outcome resolution: check all open trades every minute
   // so SL/TP hits are resolved immediately without waiting for candle closes or round-robin rotation.
+  const liveResolveStartedAt = Date.now();
   const resolvedOutcomes = await resolveAllOpenAlerts(env, store, cfg, now, fetchFn);
+  const liveResolveMs = Date.now() - liveResolveStartedAt;
 
   // 1.1 Automated Performance Journal Recaps for Free Channels (at 21:00 UTC and Friday close)
   try {
@@ -352,12 +361,20 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   if (!due.length) {
     // Run shadow fetches after all live/paper work in this invocation so its
     // provider circuit-breaker state cannot influence entry routing.
-    await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn);
+    const shadowStats: ShadowResolveStats = { groups: 0, checked: 0, fetches: 0, fetchMs: 0 };
+    const shadowStartedAt = Date.now();
+    await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn, shadowStats);
+    const shadowResolveMs = Date.now() - shadowStartedAt;
+    diagnostics.timing = {
+      liveResolveMs, shadowResolveMs, pairScanMs: 0,
+      shadowGroups: shadowStats.groups, shadowChecked: shadowStats.checked, httpCalls,
+    };
     await store.insertScanLog({
       ts: new Date(now).toISOString(), timeframes: "", pairs: "",
       alerts: 0, events: 0, errors: "", durationMs: Date.now() - startedAt,
       note: resolvedOutcomes > 0 ? `resolved ${resolvedOutcomes} open alert(s) (realtime)` : "idle (no candle close)", diagnostics,
     });
+    await recordScanTiming(store, diagnostics);
     return { diagnostics, ok: true, timeframes: [], pairs: [], alerts: 0, events: 0, errors, durationMs: Date.now() - startedAt };
   }
 
@@ -388,6 +405,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       for (const { tf, boundary } of due) {
         await store.setKv(`last_boundary:${tf}`, String(boundary));
       }
+      diagnostics.timing = {
+        liveResolveMs, shadowResolveMs: 0, pairScanMs: 0,
+        shadowGroups: 0, shadowChecked: 0, httpCalls,
+      };
       await store.insertScanLog({
         ts: new Date(now).toISOString(),
         timeframes: due.map((d) => d.tf).join(","),
@@ -399,6 +420,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         note: "idle (boundary complete)",
         diagnostics,
       });
+      await recordScanTiming(store, diagnostics);
       return {
         diagnostics,
         ok: true,
@@ -471,6 +493,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
   const oandaTokenPresent = Boolean(oandaToken);
 
+  const pairScanStartedAt = Date.now();
   for (const pair of pairsToScan) {
     try {
       // Provider routing uses the configured map and supported feeds; a
@@ -776,10 +799,19 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     }
   }
 
+  const pairScanMs = Date.now() - pairScanStartedAt;
+
   // Resolve shadow rows after all established scanning, suppression, and
   // delivery work has finished; observation fetches cannot alter this scan's
   // provider routing or live behavior.
-  await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn);
+  const shadowStats: ShadowResolveStats = { groups: 0, checked: 0, fetches: 0, fetchMs: 0 };
+  const shadowStartedAt = Date.now();
+  await resolveAllOpenShadowTrades(env, store, cfg, now, fetchFn, shadowStats);
+  const shadowResolveMs = Date.now() - shadowStartedAt;
+  diagnostics.timing = {
+    liveResolveMs, shadowResolveMs, pairScanMs,
+    shadowGroups: shadowStats.groups, shadowChecked: shadowStats.checked, httpCalls,
+  };
 
   await store.insertScanLog({
     ts: new Date(now).toISOString(),
@@ -792,6 +824,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     note: errors.length ? "partial" : "ok",
     diagnostics,
   });
+
+  await recordScanTiming(store, diagnostics);
 
   console.info(JSON.stringify({ level: "info", msg: "slk.scan.diagnostics", diagnostics }));
 
@@ -1157,12 +1191,91 @@ export async function resolveShadowExperimentOutcomes(
   return resolved;
 }
 
+/** Bounded provider fan-out for shadow resolution. Sequential fetching made
+ *  every tick pay one round-trip per open (pair, timeframe) group — with the
+ *  research ledger accumulating rows that reached ~20 groups and ~45 s of the
+ *  60 s cron budget. Same fetches, same data, a few at a time. */
+export const SHADOW_RESOLVE_FETCH_CONCURRENCY = 3;
+/** Shadow groups checked per tick. The window adapts to the open set: it aims
+ *  to re-check every group within ~6 ticks, never fewer than 5 groups and
+ *  never more than 12, so one tick can never fan out unboundedly as the
+ *  research ledger grows. */
+export const SHADOW_RESOLVE_GROUPS_MIN = 5;
+export const SHADOW_RESOLVE_GROUPS_MAX = 12;
+export const SHADOW_RESOLVE_ROTATION_TICKS = 6;
+export const SHADOW_RESOLVE_CURSOR_KEY = "shadow_resolve_cursor";
+
+export interface ShadowResolveStats {
+  groups: number;
+  checked: number;
+  fetches: number;
+  fetchMs: number;
+}
+
+/** How many shadow groups to fetch this tick for an open set of `total`. */
+export function shadowGroupsPerTick(total: number): number {
+  if (!(total > 0)) return 0;
+  const want = Math.ceil(total / SHADOW_RESOLVE_ROTATION_TICKS);
+  return Math.max(SHADOW_RESOLVE_GROUPS_MIN, Math.min(SHADOW_RESOLVE_GROUPS_MAX, want));
+}
+
+/** Deterministic rotating slice of the open shadow groups. Groups are ordered
+ *  by pair then timeframe, so the same open set always yields the same order
+ *  regardless of Map/DB iteration order; each tick takes the next `perTick`
+ *  entries and wraps. Live/paper alert resolution is deliberately NOT rotated:
+ *  this only spreads the research ledger's re-checks. */
+export function shadowResolutionWindow<T extends { pair: string; tf: string }>(
+  groups: T[], cursor: number, perTick: number,
+): { selected: T[]; nextCursor: number } {
+  const n = groups.length;
+  if (!n || perTick <= 0) return { selected: [], nextCursor: 0 };
+  const sorted = [...groups].sort((a, b) =>
+    a.pair === b.pair ? a.tf.localeCompare(b.tf) : a.pair.localeCompare(b.pair),
+  );
+  const start = ((Math.trunc(cursor) % n) + n) % n;
+  const take = Math.min(perTick, n);
+  const selected: T[] = [];
+  for (let i = 0; i < take; i++) selected.push(sorted[(start + i) % n]);
+  return { selected, nextCursor: (start + take) % n };
+}
+
+/** Run `fn` over `items` with a fixed number of concurrent workers, preserving
+ *  input order in the result array. */
+export async function mapWithConcurrency<T, R>(
+  items: T[], width: number, fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const size = Math.max(1, Math.min(Math.trunc(width) || 1, items.length));
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: size }, worker));
+  return results;
+}
+
+/** Best-effort snapshot of the latest tick's phase timings, read by
+ *  /admin/system-health. Never allowed to affect a scan. */
+export async function recordScanTiming(store: Store, diagnostics: ScanDiagnostics): Promise<void> {
+  if (!diagnostics.timing) return;
+  try {
+    await store.setKv("last_scan_timing", JSON.stringify(diagnostics.timing));
+  } catch {
+    // timing is observability only
+  }
+}
+
 /** Real-time shadow resolver mirrors the paper-trade cadence but uses its own
  *  fetches and ledger. A 121-candle window preserves the requested 120-bar
  *  expiry horizon without changing the paper resolver's existing 30-candle reads. */
 export async function resolveAllOpenShadowTrades(
   env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
   now = Date.now(), fetchFn: typeof fetch = fetch,
+  stats?: ShadowResolveStats,
 ): Promise<number> {
   let open: ShadowTradeRow[] = [];
   let openExperiments: ShadowExperimentRow[] = [];
@@ -1183,6 +1296,23 @@ export async function resolveAllOpenShadowTrades(
     if (!groups.has(key)) groups.set(key, { pair: row.canonical_symbol, tf: row.entry_timeframe });
   }
 
+  // Rotate through the open set instead of re-fetching every group each tick.
+  const allGroups = [...groups.values()];
+  if (stats) stats.groups = allGroups.length;
+  let cursor = 0;
+  try {
+    const raw = await store.getKv(SHADOW_RESOLVE_CURSOR_KEY);
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) cursor = parsed;
+  } catch {
+    // a missing cursor simply starts the rotation at the first group
+  }
+  const { selected, nextCursor } = shadowResolutionWindow(
+    allGroups, cursor, shadowGroupsPerTick(allGroups.length),
+  );
+  if (stats) stats.checked = selected.length;
+  if (!selected.length) return 0;
+
   let totalResolved = 0;
   try {
     const apiKey = env.TWELVEDATA_API_KEY ?? "";
@@ -1192,22 +1322,39 @@ export async function resolveAllOpenShadowTrades(
     const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
     const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
     const kv = { get: (key: string) => store.getKv(key), set: (key: string, value: string) => store.setKv(key, value) };
-    for (const { pair, tf } of groups.values()) {
-      try {
-        const tfSec = TF_SECONDS[tf] ?? 1800;
-        const res = await fetchMarketData({
-          pair, tf, limit: 121,
-          tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
-          symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
-        });
-        const candles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
-        if (candles.length) {
-          totalResolved += await resolveShadowOutcomes(store, cfg, pair, tf, candles);
-          totalResolved += await resolveShadowExperimentOutcomes(store, cfg, pair, tf, candles);
+    const perGroup = await mapWithConcurrency(
+      selected, SHADOW_RESOLVE_FETCH_CONCURRENCY,
+      async ({ pair, tf }) => {
+        try {
+          const tfSec = TF_SECONDS[tf] ?? 1800;
+          const fetchStartedAt = Date.now();
+          const res = await fetchMarketData({
+            pair, tf, limit: 121,
+            tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
+            symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
+          });
+          if (stats) {
+            stats.fetches++;
+            stats.fetchMs += Date.now() - fetchStartedAt;
+          }
+          const candles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
+          if (!candles.length) return 0;
+          let resolved = await resolveShadowOutcomes(store, cfg, pair, tf, candles);
+          resolved += await resolveShadowExperimentOutcomes(store, cfg, pair, tf, candles);
+          return resolved;
+        } catch (err) {
+          console.warn(JSON.stringify({ level: "warn", msg: "shadow market data resolution failed", pair, tf, error: String(err) }));
+          return 0;
         }
-      } catch (err) {
-        console.warn(JSON.stringify({ level: "warn", msg: "shadow market data resolution failed", pair, tf, error: String(err) }));
-      }
+      },
+    );
+    totalResolved += perGroup.reduce((sum, n) => sum + n, 0);
+    // Advance the rotation only after the slice ran, so a thrown slice retries
+    // the same window on the next tick instead of skipping groups.
+    try {
+      await store.setKv(SHADOW_RESOLVE_CURSOR_KEY, String(nextCursor));
+    } catch {
+      // best-effort rotation state; a failure just repeats this window
     }
   } catch (err) {
     console.warn(JSON.stringify({ level: "warn", msg: "shadow outcome resolution setup failed", error: String(err) }));
@@ -2864,6 +3011,7 @@ export default {
       let eventCount = 0;
       let logCount = 0;
       let recentLogs: Array<Record<string, unknown>> = [];
+      let lastScanTiming: Record<string, unknown> | null = null;
       try {
         if (env.DB && typeof env.DB.prepare === "function") {
           const a = await env.DB.prepare("SELECT count(*) as c FROM slk_alerts").bind().first() as Record<string, unknown> | null;
@@ -2874,6 +3022,12 @@ export default {
           logCount = Number(l?.c ?? 0);
         }
         recentLogs = await store.recentScanLogs(5);
+        try {
+          const rawTiming = await store.getKv("last_scan_timing");
+          if (rawTiming) lastScanTiming = JSON.parse(rawTiming) as Record<string, unknown>;
+        } catch {
+          lastScanTiming = null;
+        }
       } catch (err) {
         console.warn(JSON.stringify({ level: "warn", msg: "system-health db query failed", error: String(err) }));
       }
@@ -2887,7 +3041,15 @@ export default {
           cpuSafety: "EXCELLENT — Worker executes ~1.5ms per tick (Well below 10ms limit)",
           d1WritesSafety: `EXCELLENT — ${logCount} scan logs stored (<1% of 100,000 writes/day)`,
           d1StorageSafety: "EXCELLENT — ~2MB used (<0.5% of 500MB free storage cap)",
-          subrequestsSafety: "EXCELLENT — 1 to 3 fetch calls per tick (Limit is 50)",
+          // Measured, not asserted: the previous static claim understated the
+          // real fan-out (shadow resolution fetched once per open group).
+          subrequestsSafety: Number(lastScanTiming?.httpCalls ?? 0) > 0
+            ? `MEASURED — ${Number(lastScanTiming?.httpCalls)} HTTP requests in the latest tick `
+              + `(subrequest limit 50); pair scan ${Number(lastScanTiming?.pairScanMs ?? 0)} ms, `
+              + `live resolve ${Number(lastScanTiming?.liveResolveMs ?? 0)} ms, `
+              + `shadow resolve ${Number(lastScanTiming?.shadowResolveMs ?? 0)} ms for `
+              + `${Number(lastScanTiming?.shadowChecked ?? 0)} of ${Number(lastScanTiming?.shadowGroups ?? 0)} shadow groups`
+            : "UNMEASURED — no tick timings recorded yet (subrequest limit 50)",
         },
         databaseCounts: {
           totalConfirmedAlerts: alertCount,

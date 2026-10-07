@@ -60,7 +60,13 @@ describe("scan diagnostics", () => {
     await scanAll(env, { ...options(store), force: false });
     const fetchFn = vi.fn(() => { throw new Error("idle must not fetch"); });
     const idle = await scanAll(env, { now, storeOverride: store, fetchFn });
-    expect(idle.diagnostics).toEqual(emptyScanDiagnostics());
+    // Idle ticks still record their (zero-work) phase timings alongside the
+    // explicit zero counters.
+    const { timing: idleTiming, ...idleCounters } = idle.diagnostics;
+    expect(idleCounters).toEqual(emptyScanDiagnostics());
+    expect(idleTiming).toMatchObject({
+      shadowResolveMs: 0, pairScanMs: 0, shadowGroups: 0, shadowChecked: 0, httpCalls: 0,
+    });
     expect(idle.timeframes).toEqual([]);
     expect(fetchFn).not.toHaveBeenCalled();
     expect(store.scanLog[1]).toMatchObject({ note: "idle (no candle close)", diagnostics: idle.diagnostics });
@@ -90,7 +96,9 @@ describe("scan diagnostics", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.errors).toHaveLength(2);
-    expect(result.diagnostics).toEqual(emptyScanDiagnostics());
+    const { timing: failedTiming, ...failedCounters } = result.diagnostics;
+    expect(failedCounters).toEqual(emptyScanDiagnostics());
+    expect(failedTiming).toMatchObject({ shadowResolveMs: 0, shadowGroups: 0, shadowChecked: 0 });
     expect(store.scanLog[0].diagnostics).toEqual(result.diagnostics);
   });
 });
@@ -239,6 +247,54 @@ describe("Engine Pulse aggregation (buildEnginePulse)", () => {
     const f60 = p.confirmations[1];
     expect(f60).toMatchObject({ built: 2, fresh: 1, stale: 1, inserted: 1, avgAgeSec: 4700, maxAgeSec: 9000 });
     expect(f60.avgFreshAgeSec).toBe(400);
+  });
+
+  it("aggregates per-tick phase timings, ignoring rows that predate them", () => {
+    const rows = [
+      { ts: iso(NOW - 1 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+      { ts: iso(NOW - 2 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+    ];
+    rows[0].diagnostics.timing = {
+      liveResolveMs: 100, shadowResolveMs: 5000, pairScanMs: 8000,
+      shadowGroups: 23, shadowChecked: 5, httpCalls: 12,
+    } as any;
+    rows[1].diagnostics.timing = {
+      liveResolveMs: 300, shadowResolveMs: 7000, pairScanMs: 12000,
+      shadowGroups: 25, shadowChecked: 5, httpCalls: 20,
+    } as any;
+    const p = buildEnginePulse(rows as any[], NOW);
+    expect(p.timing.ticks).toBe(2);
+    expect(p.timing.avgPairScanMs).toBe(10000);
+    expect(p.timing.maxPairScanMs).toBe(12000);
+    expect(p.timing.avgLiveResolveMs).toBe(200);
+    expect(p.timing.maxLiveResolveMs).toBe(300);
+    expect(p.timing.avgShadowResolveMs).toBe(6000);
+    expect(p.timing.maxShadowResolveMs).toBe(7000);
+    expect(p.timing.avgShadowGroups).toBe(24);
+    expect(p.timing.avgShadowChecked).toBe(5);
+    expect(p.timing.avgHttpCalls).toBe(16);
+    expect(p.timing.maxHttpCalls).toBe(20);
+  });
+
+  it("reports zeroed timings when no row carries them and clamps junk values", () => {
+    const bare = [{ ts: iso(NOW - 1 * HOUR), pairs: "EURUSD", diagnostics: diag({}) }];
+    expect(buildEnginePulse(bare as any[], NOW).timing).toEqual(emptyEnginePulse().timing);
+
+    const junk = [
+      { ts: iso(NOW - 1 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+      { ts: iso(NOW - 2 * HOUR), pairs: "EURUSD", diagnostics: diag({}) },
+    ];
+    junk[0].diagnostics.timing = {
+      liveResolveMs: 250, shadowResolveMs: -5, pairScanMs: "1500",
+      shadowGroups: null, shadowChecked: "junk", httpCalls: 8,
+    } as any;
+    junk[1].diagnostics.timing = "not-an-object" as any;
+    const p = buildEnginePulse(junk as any[], NOW);
+    expect(p.timing.ticks).toBe(1);            // only the object-shaped row counts
+    expect(p.timing.avgPairScanMs).toBe(1500);
+    expect(p.timing.maxShadowResolveMs).toBe(0);
+    expect(p.timing.avgShadowGroups).toBe(0);
+    expect(p.timing.avgHttpCalls).toBe(8);
   });
 
   it("omits the funnel for rows without the field and survives malformed values", () => {

@@ -396,6 +396,23 @@ function renderEnginePulse(p) {
         + fmtAge(f.avgAgeSec) + (num(f.nearMiss) ? ', ' + num(f.nearMiss) + ' near-miss' : '') + ')').join(' · ')
       : 'Confirmation funnel: no confirmation reached the live gate in this window — no setup completed the full chain yet.';
   }
+
+  // Phase timings: where each tick's wall clock actually goes. This is the
+  // number that decides scan cadence, and therefore how much of the freshness
+  // window is left for discovery.
+  const timing = (p.timing && typeof p.timing === 'object') ? p.timing : null;
+  const timingEl = $('enginePulseTiming');
+  if (timingEl) {
+    const secs = (ms) => (num(ms) / 1000).toFixed(1);
+    timingEl.textContent = timing && num(timing.ticks) > 0
+      ? 'Tick cost (last 24h, ' + num(timing.ticks) + ' timed ticks): pair scan '
+        + secs(timing.avgPairScanMs) + 's avg / ' + secs(timing.maxPairScanMs) + 's max · live resolve '
+        + secs(timing.avgLiveResolveMs) + 's · shadow resolve ' + secs(timing.avgShadowResolveMs)
+        + 's for ' + num(timing.avgShadowChecked) + ' of ' + num(timing.avgShadowGroups)
+        + ' open research groups per tick · ' + num(timing.avgHttpCalls) + ' HTTP requests/tick (max '
+        + num(timing.maxHttpCalls) + ')'
+      : 'Tick cost: no phase timings recorded in this window yet.';
+  }
 }
 
 async function loadStats() {
