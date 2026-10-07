@@ -38,9 +38,9 @@
     "PAPER_NOTIFY": "true",
     "ENGINE_DIGEST": "true",
     // Free pre-entry posts are paused; if re-enabled, only one SHIFT card per setup is sent.
-    "WATCH_NOTIFY": "false",
+    "WATCH_NOTIFY": "true",
     // Higher-timeframe context cards are a separate opt-in and remain off.
-    "BIAS_NOTIFY": "false",
+    "BIAS_NOTIFY": "true",
     // Keep VIP channels (Institutional & Synthetics) clean: only confirmed entry signals + outcomes delivered
     "VIP_WATCH_NOTIFY": "false",
     // Automated visual chart snapshots via Telegram sendPhoto (Recommendation 3)
