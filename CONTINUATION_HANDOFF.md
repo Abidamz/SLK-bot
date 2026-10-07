@@ -99,12 +99,21 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 ### Required workflow invariants
 
-- `.github/workflows/deploy.yml` must remain **exactly** the version inherited from the production lineage (`origin/arena/08df9077-slk-bot`): push triggers include `arena/**` and `main`; tests gate deployment; the deploy job is not opt-in gated. Do not replace it with workflow-dispatch-only logic or otherwise alter it.
+- `.github/workflows/deploy.yml` must keep: push triggers for `arena/**` and `main`; tests gating deployment; a deploy job that is not opt-in gated. Its current content is the production-lineage workflow **plus one deliberate addition** — the `Stamp Dashboard Asset Versions` step described below. Do not replace the workflow with workflow-dispatch-only logic, and do not remove the stamping step.
 - Session work stays on `arena/0e17c27a-slk-bot`. Push only with `git push origin arena/0e17c27a-slk-bot`. Never switch branches for this session.
 - Do **not** merge PRs or ask the owner to merge. Pushing this branch is what deploys. Do not push to or deploy `main`; it is stale and hands-off.
 - Before each push, run the full local validation suite below. Do not push partially validated work.
 - After each push, wait for the GitHub Actions run to finish successfully and allow about three minutes for propagation. Then request `/health` with a fresh random query parameter and report the returned JSON. `/api/engine-pulse` or an observed behavior change can also verify a release. An unauthorized response from an unknown `/api/*` route does **not** prove that route exists.
 - A failing “Workers Builds” preview check is known benign noise. Cloudflare's native Git integration also duplicates deploys only for the production lineage branch; neither is a reason to change the required workflow.
+
+### Dashboard (Cloudflare Pages) deploy path — fragile, read this
+
+The `slk-radar` Pages project is **git-integrated**, and Cloudflare classifies an upload as a production deploy **only when the branch label on the upload equals the project's Production branch setting**. CI uploads with `--branch=main`, so the project's **Production branch setting must stay `main`**. Those two values are one setting expressed in two places; change either one alone and the custom domain silently keeps serving an old build with no error surfaced anywhere.
+
+- This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-slk-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `slk-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
+- **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `slk-radar.pages.dev` shows old data, and `main.slk-radar.pages.dev` serves a **newer** build than the production hostname.
+- Pages serves static assets with a browser cache window of roughly four hours that `_headers` cannot override. The `Stamp Dashboard Asset Versions` step rewrites `app.js?v=…` and `styles.css?v=…` in `dashboard/index.html` to the commit SHA before upload, so every release gets a fresh cache key. Keep that step, and keep the `?v=` query strings in the HTML.
+- **After each push, check:** the Live Desk tape on `https://slk-radar.pages.dev/` shows today's UTC timestamps, and `https://slk-radar.pages.dev/app.js` contains the string `tail=1`.
 
 ### Full local validation suite
 
@@ -131,6 +140,14 @@ curl -fsS "https://slk-alert-worker.abidogundamilola.workers.dev/health?v=$(date
 ```
 
 Always use a fresh query parameter. Never use a 401 from an unknown API route as deploy proof.
+
+Dashboard proof (Pages production host, also use a fresh query parameter):
+
+```bash
+curl -fsS "https://slk-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
+```
+
+Expect a non-zero count. A zero means the upload landed as a preview — re-read the Pages deploy-path section above.
 
 ## 4. Production environment and tuning reference
 
@@ -226,6 +243,7 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 ## 9. Owner self-serve paths
 
 - **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on the production lineage branch, commit → auto-deploys.
+- **Stale Pages dashboard:** Cloudflare Dashboard → Workers & Pages → `slk-radar` → Settings → Builds & deployments → confirm **Production branch** is `main`, matching the `--branch` value in `.github/workflows/deploy.yml`.
 - **Automatic 21-day audit after release:** open the Pages dashboard → **Market Health** → **Run 21-Day Audit**. It asks for the existing owner key and displays aggregate results only.
 - **D1 queries/fixes or manual audit fallback:** Cloudflare Dashboard → Storage & Databases → D1 → `slk-alert-db` → Console.
 - **Read-only 21-day signal-drought audit** (UTC window 2026-09-14 through 2026-10-05; run the query, then return the result for diagnosis):
