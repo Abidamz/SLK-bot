@@ -75,7 +75,10 @@ export interface Store {
   updateAlertStatus(setupId: string, status: string, reason?: string): Promise<void>;
   insertEvent(ev: EngineEvent): Promise<boolean>;            // false = duplicate
   openAlerts(pair?: string, tf?: string): Promise<AlertRow[]>;
-  lastAlertTime(pair: string, direction: string, excludeSetupId?: string): Promise<number | null>;
+  /** Most recent *delivered* (PAPER/SENT) alert time for this pair+direction.
+   *  Pass `timeframe` to scope the lookback to a single entry timeframe; omit
+   *  it for the legacy pair+direction-only behaviour. */
+  lastAlertTime(pair: string, direction: string, excludeSetupId?: string, timeframe?: string): Promise<number | null>;
   recordOutcome(setupId: string, oc: Outcome): Promise<void>;
   getKv(key: string): Promise<string | null>;
   setKv(key: string, value: string): Promise<void>;
@@ -605,11 +608,14 @@ export class D1Store implements Store {
     return res.results as AlertRow[];
   }
 
-  async lastAlertTime(pair: string, direction: string, excludeSetupId?: string): Promise<number | null> {
+  async lastAlertTime(pair: string, direction: string, excludeSetupId?: string, timeframe?: string): Promise<number | null> {
     let sql = `SELECT candle_close_time FROM slk_alerts
                WHERE canonical_symbol=? AND direction=?
                  AND alert_status IN ('PAPER','SENT')`;
     const args: unknown[] = [pair, direction];
+    // Scope to one entry timeframe when asked. Without this a delivered 30m
+    // signal silences a later 1h signal on the same pair for the whole window.
+    if (timeframe) { sql += " AND entry_timeframe=?"; args.push(timeframe); }
     if (excludeSetupId) { sql += " AND setup_id != ?"; args.push(excludeSetupId); }
     sql += " ORDER BY candle_close_time DESC LIMIT 1";
     const row = await this.db.prepare(sql).bind(...args).first();
@@ -1446,11 +1452,12 @@ export class MemStore implements Store {
     );
   }
 
-  async lastAlertTime(pair: string, direction: string, excludeSetupId?: string): Promise<number | null> {
+  async lastAlertTime(pair: string, direction: string, excludeSetupId?: string, timeframe?: string): Promise<number | null> {
     const rows = [...this.alerts.values()]
       .filter((r) => r.canonical_symbol === pair && r.direction === direction
         && (r.alert_status === "PAPER" || r.alert_status === "SENT")
-        && r.setup_id !== excludeSetupId)
+        && r.setup_id !== excludeSetupId
+        && (!timeframe || r.entry_timeframe === timeframe))
       .map((r) => Date.parse(r.candle_close_time as string));
     return rows.length ? Math.max(...rows) : null;
   }

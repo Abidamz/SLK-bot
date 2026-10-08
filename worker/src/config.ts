@@ -49,6 +49,16 @@ export interface StrategyConfig {
   maxStopAtr: number;
   minTpR: number; // minimum reward:risk to the selected target (1:3 ⇒ 3.0)
   cooldownMinutes: number;
+  /** What the cooldown is keyed on.
+   *  - "pair_direction_tf"  (default, fixed): a signal only blocks repeats on
+   *    the *same* pair, direction and entry timeframe.
+   *  - "pair_direction"     (legacy): a signal blocks every other timeframe on
+   *    that pair+direction too, so a delivered 30m XAUUSD SHORT silences a
+   *    later 1h XAUUSD SHORT for the full window. With ENTRY_TFS at
+   *    15m/30m/1h that made the gate ~3x more restrictive than intended.
+   *  Set COOLDOWN_SCOPE=pair_direction to restore the old behaviour without
+   *  a redeploy. */
+  cooldownScope?: "pair_direction" | "pair_direction_tf";
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;
   trailingBeEnabled?: boolean;
@@ -116,6 +126,7 @@ export function defaultStrategy(): StrategyConfig {
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
     minTpR: 2.5,     // 1:2.5 minimum reward:risk
     cooldownMinutes: 240,
+    cooldownScope: "pair_direction_tf",
     sessionsAllowlist: [],
     mapTfLabel: "4h",
     trailingBeEnabled: true,  // automatically move stop loss to entry at +1.5R favorable excursion
@@ -138,6 +149,8 @@ interface EnvVars {
   SL_BUFFER_ATR?: string;
   TRAILING_BE_ENABLED?: string;
   TRAILING_BE_TRIGGER_R?: string;
+  /** "pair_direction_tf" (default) | "pair_direction" (legacy cooldown keying). */
+  COOLDOWN_SCOPE?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> supported provider name
@@ -224,6 +237,13 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   if (env.TRAILING_BE_ENABLED !== undefined) strategy.trailingBeEnabled = env.TRAILING_BE_ENABLED.toLowerCase() !== "false";
   const trailingBeTriggerR = Number(env.TRAILING_BE_TRIGGER_R ?? "");
   if (Number.isFinite(trailingBeTriggerR) && trailingBeTriggerR > 0) strategy.trailingBeTriggerR = trailingBeTriggerR;
+
+  // Cooldown keying. Default is per-timeframe; COOLDOWN_SCOPE=pair_direction
+  // restores the legacy pair+direction-only behaviour as a live kill switch.
+  const cooldownScopeRaw = (env.COOLDOWN_SCOPE ?? "").trim().toLowerCase();
+  if (cooldownScopeRaw === "pair_direction" || cooldownScopeRaw === "pair_direction_tf") {
+    strategy.cooldownScope = cooldownScopeRaw;
+  }
 
   return {
     pairs,

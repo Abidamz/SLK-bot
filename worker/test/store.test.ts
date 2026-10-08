@@ -57,6 +57,34 @@ describe("MemStore", () => {
     expect(await s.lastAlertTime("EURUSD", "LONG")).toBeNull();
   });
 
+  it("cooldown lookback can be scoped to one entry timeframe", async () => {
+    const s = new MemStore();
+    const m30 = mkAlert("tf:30m");
+    m30.entryTf = "30m";
+    m30.candleCloseTime = BASE;
+    await s.insertAlert(m30, "td");
+
+    const h1 = mkAlert("tf:1h");
+    h1.entryTf = "1h";
+    h1.candleCloseTime = BASE + 60 * 60_000;
+    await s.insertAlert(h1, "td");
+
+    // Unscoped (legacy): newest delivered alert on the pair+direction wins.
+    expect(await s.lastAlertTime("EURUSD", "SHORT", "other")).toBe(BASE + 60 * 60_000);
+    // Scoped: only that timeframe's delivered alerts are visible, so the 30m
+    // signal no longer inherits the 1h signal's cooldown clock.
+    expect(await s.lastAlertTime("EURUSD", "SHORT", "other", "30m")).toBe(BASE);
+    expect(await s.lastAlertTime("EURUSD", "SHORT", "other", "1h")).toBe(BASE + 60 * 60_000);
+    expect(await s.lastAlertTime("EURUSD", "SHORT", "other", "15m")).toBeNull();
+    // Suppressed rows stay invisible either way.
+    const suppressed1h = mkAlert("tf:1h:sup");
+    suppressed1h.entryTf = "1h";
+    suppressed1h.candleCloseTime = BASE + 120 * 60_000;
+    suppressed1h.alertStatus = "SUPPRESSED";
+    await s.insertAlert(suppressed1h, "td");
+    expect(await s.lastAlertTime("EURUSD", "SHORT", "other", "1h")).toBe(BASE + 60 * 60_000);
+  });
+
   it("records outcomes", async () => {
     const s = new MemStore();
     await s.insertAlert(mkAlert("a1"), "td");

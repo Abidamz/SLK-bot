@@ -997,10 +997,20 @@ export async function deliver(
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
   if (alert.alertStatus !== "SUPPRESSED") {
-    const last = await store.lastAlertTime(alert.pair, alert.direction, alert.setupId);
+    // Cooldown keying: by default the lookback is scoped to this setup's own
+    // entry timeframe, so a delivered 30m signal no longer silences a later 1h
+    // signal on the same pair. COOLDOWN_SCOPE=pair_direction restores the old
+    // behaviour. The reason string records which scope applied, so the two are
+    // distinguishable in the audit rollup and on /alerts.
+    const perTimeframe = cfg.strategy.cooldownScope !== "pair_direction";
+    const last = await store.lastAlertTime(
+      alert.pair, alert.direction, alert.setupId, perTimeframe ? alert.entryTf : undefined,
+    );
     if (last !== null && alert.candleCloseTime - last < cfg.strategy.cooldownMinutes * 60_000) {
       alert.alertStatus = "SUPPRESSED";
-      alert.suppressReason = `cooldown (${cfg.strategy.cooldownMinutes}m)`;
+      alert.suppressReason = perTimeframe
+        ? `cooldown (${cfg.strategy.cooldownMinutes}m, ${alert.entryTf})`
+        : `cooldown (${cfg.strategy.cooldownMinutes}m)`;
       await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
     }
   }
