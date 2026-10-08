@@ -28,9 +28,16 @@
     // Deriv synthetics confirm on the selected primary timeframes; institutional
     // pairs continue to use the full ENTRY_TFS set.
     "SYNTH_ENTRY_TFS": "30m,1h",
-    // 100 preserves the legacy retest threshold; 1–99 require that percent of penetration into the directional FVG.
-    // 60 activates partial-retest entries at 60% zone penetration (FVG-penetration semantics already implemented).
-    "RETEST_DEPTH_PCT": "60",
+    // 100 preserves the legacy retest threshold (return to the origin zone,
+    // ATR-tolerant); 1–99 require that percent of penetration into a
+    // direction-matched FVG that overlaps the origin zone.
+    // Reverted 100 -> 60 -> 100: at 60 the retest check depends on
+    // fvgRetestThreshold(), which returns null (making a retest impossible)
+    // whenever no such FVG exists. Retest candidates fell from ~220/day to
+    // zero within hours of switching to 60 on 2026-10-06 14:29Z. See
+    // CONTINUATION_HANDOFF.md. Do not re-enable 1-99 without reading
+    // diagnostics.replay.retestNoFvg / retestWithFvg first.
+    "RETEST_DEPTH_PCT": "100",
     // HTF Bias Hard Gate: suppress VIP counter-trend alerts on synthetics when
     // the shadow classifier flags HTF_CONFLICT (behavior-neutral on entries)
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",

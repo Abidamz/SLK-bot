@@ -1057,6 +1057,8 @@ export class D1Store implements Store {
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.recorded.confirmedAlerts') AS INTEGER), 0) ELSE 0 END) AS recorded_confirmed_alerts,
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.RETEST') AS INTEGER), 0) ELSE 0 END) AS replay_retest_transitions,
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.retestCandidates') AS INTEGER), 0) ELSE 0 END) AS retest_candidates,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.retestNoFvg') AS INTEGER), 0) ELSE 0 END) AS retest_no_fvg,
+        SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.retestWithFvg') AS INTEGER), 0) ELSE 0 END) AS retest_with_fvg,
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.targetRejects') AS INTEGER), 0) ELSE 0 END) AS target_rejects,
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.replay.riskRejects') AS INTEGER), 0) ELSE 0 END) AS risk_rejects,
         SUM(CASE WHEN json_valid(diagnostics_json) = 1 THEN COALESCE(CAST(json_extract(diagnostics_json, '$.recorded.staleConfirmationSkips') AS INTEGER), 0) ELSE 0 END) AS stale_confirmation_skips,
@@ -1084,7 +1086,8 @@ export class D1Store implements Store {
         MAX(ts) AS last_scan_utc,
         ${includeDiagnostics ? diagnosticDailySelect : `
           0 AS diagnostic_rows, 0 AS invalid_diagnostic_rows, 0 AS recorded_confirmed_alerts,
-          0 AS replay_retest_transitions, 0 AS retest_candidates, 0 AS target_rejects,
+          0 AS replay_retest_transitions, 0 AS retest_candidates, 0 AS retest_no_fvg,
+          0 AS retest_with_fvg, 0 AS target_rejects,
           0 AS risk_rejects, 0 AS stale_confirmation_skips,
           0 AS duplicate_confirmation_skips, 0 AS gate_metrics_rows`}
       FROM slk_scan_log WHERE ts >= ? AND ts <= ?
@@ -1166,6 +1169,8 @@ export class D1Store implements Store {
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.INVALID') AS INTEGER), 0)) AS invalid_count,
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.EXPIRED') AS INTEGER), 0)) AS expired_count,
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.retestCandidates') AS INTEGER), 0)) AS retest_candidates,
+          SUM(COALESCE(CAST(json_extract(item.value, '$.replay.retestNoFvg') AS INTEGER), 0)) AS retest_no_fvg,
+          SUM(COALESCE(CAST(json_extract(item.value, '$.replay.retestWithFvg') AS INTEGER), 0)) AS retest_with_fvg,
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.riskRejects') AS INTEGER), 0)) AS risk_rejects,
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.riskRejectReasons.nonPositiveRisk') AS INTEGER), 0)) AS non_positive_risk,
           SUM(COALESCE(CAST(json_extract(item.value, '$.replay.riskRejectReasons.belowMinRiskAtr') AS INTEGER), 0)) AS below_min_risk_atr,
@@ -1196,6 +1201,7 @@ export class D1Store implements Store {
           SWEEP: asNumber(row.sweep_count), SHIFT: asNumber(row.shift_count),
           RETEST: asNumber(row.retest_count), INVALID: asNumber(row.invalid_count),
           EXPIRED: asNumber(row.expired_count), retestCandidates: asNumber(row.retest_candidates),
+          retestNoFvg: asNumber(row.retest_no_fvg), retestWithFvg: asNumber(row.retest_with_fvg),
           riskRejects: asNumber(row.risk_rejects),
           riskRejectReasons: {
             nonPositiveRisk: asNumber(row.non_positive_risk),
@@ -1217,6 +1223,7 @@ export class D1Store implements Store {
       summary.byDay = summary.byDay.map((day) => ({
         ...day, diagnosticRows: 0, invalidDiagnosticRows: 0, gateMetricsRows: 0,
         recordedConfirmedAlerts: 0, replayRetestTransitions: 0, retestCandidates: 0,
+        retestNoFvg: 0, retestWithFvg: 0,
         targetRejects: 0, riskRejects: 0, staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
       }));
     }

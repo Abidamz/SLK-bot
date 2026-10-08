@@ -107,6 +107,50 @@ describe("RETEST_DEPTH_PCT compatibility and FVG penetration", () => {
       expect(runShortWithStory(story, rows, { retestDepthPct: 50 }).alerts).toHaveLength(0);
     }
   });
+
+  it("counts RETEST arrivals by whether an overlapping direction-matched FVG exists", () => {
+    const rows = [...SHORT_ROWS];
+    rows[14] = [103.55, 104.99, 103.50, 104.90];
+    const matched = {
+      ...SHORT_STORY,
+      imbalances: [{ lo: 104.95, hi: 105.05, direction: "bearish" as const, time: BASE }],
+    };
+    const mismatchedDirection = {
+      ...SHORT_STORY,
+      imbalances: [{ lo: 104.2, hi: 105.05, direction: "bullish" as const, time: BASE }],
+    };
+    const noneAtAll = { ...SHORT_STORY, imbalances: [] };
+
+    const withFvg = runShortWithStory(matched, rows).diagnostics;
+    const wrongDirection = runShortWithStory(mismatchedDirection, rows).diagnostics;
+    const noImbalances = runShortWithStory(noneAtAll, rows).diagnostics;
+
+    expect(withFvg.retestWithFvg).toBeGreaterThan(0);
+    expect(withFvg.retestNoFvg).toBe(0);
+    expect(wrongDirection.retestNoFvg).toBeGreaterThan(0);
+    expect(wrongDirection.retestWithFvg).toBe(0);
+    expect(noImbalances.retestNoFvg).toBeGreaterThan(0);
+    expect(noImbalances.retestWithFvg).toBe(0);
+
+    // The probe asks only "does a usable FVG exist", which is depth-independent,
+    // so it keeps reporting after the deployed value returned to 100.
+    expect(runShortWithStory(noneAtAll, rows, { retestDepthPct: 100 }).diagnostics.retestNoFvg).toBeGreaterThan(0);
+  });
+
+  it("the legacy depth-100 check still fires where every FVG depth is impossible", () => {
+    // Regression guard for the 2026-10-06 outage. At 1-99 a retest needs a
+    // direction-matched FVG overlapping the origin zone; without one the retest
+    // is impossible rather than merely unlikely, and no alert can ever be
+    // produced. The legacy check measures the return against the origin zone
+    // itself, so it still fires.
+    const rows = [...SHORT_ROWS];
+    rows[14] = [103.55, 104.99, 103.50, 104.90];
+    const story = { ...SHORT_STORY, imbalances: [] };
+    const candles = rows.slice(0, 15);
+
+    expect(runShortWithStory(story, candles, { retestDepthPct: 60 }).alerts).toHaveLength(0);
+    expect(runShortWithStory(story, candles, { retestDepthPct: 100 }).alerts).toHaveLength(1);
+  });
 });
 
 describe("short confirmation path", () => {
@@ -365,7 +409,10 @@ describe("behavior-neutral replay diagnostics", () => {
     const result = runShort();
     expect(result.diagnostics).toEqual({
       MAP: 1, TOUCH: 1, SWEEP: 1, SHIFT: 1, RETEST: 1, INVALID: 0, EXPIRED: 0,
-      retestCandidates: 1, riskRejects: 0,
+      // The default fixture carries no direction-matched imbalance overlapping
+      // the origin zone, which is exactly the condition the FVG retest path
+      // cannot accept at any depth.
+      retestCandidates: 1, retestNoFvg: 1, retestWithFvg: 0, riskRejects: 0,
       riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
       targetRejects: 0, confirmedAlerts: 1,
     });
@@ -433,7 +480,7 @@ describe("behavior-neutral replay diagnostics", () => {
     expect(short).toEqual(noStory);
     expect(short.diagnostics).toEqual({
       MAP: 0, TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0, INVALID: 0, EXPIRED: 0,
-      retestCandidates: 0, riskRejects: 0,
+      retestCandidates: 0, retestNoFvg: 0, retestWithFvg: 0, riskRejects: 0,
       riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
       targetRejects: 0, confirmedAlerts: 0,
     });

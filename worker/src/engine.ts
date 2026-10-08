@@ -431,6 +431,14 @@ export function scanEntry(args: ScanEntryArgs): {
           cur.bosIndex = i;
           cur.bosTime = c.t;
           cur.state = "RETEST";
+          // Diagnostics only — never read by any gate, delivery or outcome rule.
+          // fvgRetestThreshold() returns null exactly when no direction-matched
+          // imbalance overlaps the origin zone; the FVG retest path treats null
+          // as "no retest is possible". Counting it here separates "there is no
+          // FVG to retest into" from "price never came back", and is recorded on
+          // both paths so the legacy and FVG thresholds stay comparable.
+          if (fvgRetestThreshold(cur, isShort, retestDepthPct) === null) diagnostics.retestNoFvg++;
+          else diagnostics.retestWithFvg++;
           emit(cur, "SHIFT", c, `BOS through pullback structure ${cur.refPrice}`);
         }
         if (cur.state === "SHIFT" && i - cur.sweepIndex > cfg.bosWindow) {

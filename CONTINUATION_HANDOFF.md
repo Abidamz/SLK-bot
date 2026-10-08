@@ -60,6 +60,26 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 - **View modes (2026-10-08).** The Pages dashboard has two views, toggled in the header and remembered in `localStorage` (`slkViewMode`): **Public Overview** (default) and **Operator Terminal**. `dashboard/styles.css` (and the matching rules inside `worker/src/dashboard_html.ts`) hides `.operator-only` unless `body.operator-mode` is set, and hides `.marketing-only` when it is. The owner-key-gated **21-Day Scan & Delivery Audit** card now carries `operator-only`, so it no longer appears in the public view — switch to **Operator Terminal** to use it. That card exists only in the Pages build (`dashboard/index.html` + `dashboard/app.js`); the worker-hosted single-file dashboard never had it. `worker/test/dashboard_markup.test.ts` pins the class, both copies of the visibility rules, the toggle buttons, and the card's wiring.
 
+### The 2026-10-06 signal drought: root cause and revert
+
+- **Symptom.** No alert row stored since 2026-09-30. Retest candidates ran 165–234/day from Oct 1 to Oct 6, then **0 on Oct 7 and Oct 8** — across 660 active scans on Oct 7, the most of any day. MAP/TOUCH/SWEEP/SHIFT all kept firing, so the pipeline was alive; the chain died specifically at SHIFT → RETEST.
+- **Cause (dated, named).** Commit `573e363` (previous session, **2026-10-06 14:29Z**) changed `RETEST_DEPTH_PCT` **100 → 60**. The feature itself landed earlier the same week (`dc53bfa` "add partial retest control", `fd3782b` "align retest depth with FVG penetration") but with the flag at 100, so the legacy path was still used.
+- **Mechanism.** In `engine.ts` the retest check has two paths:
+  ```ts
+  let returns = isShort ? c.h >= z.zoneLo - tol : c.l <= z.zoneHi + tol;   // 100 = legacy
+  if (retestDepthPct < 100) {
+    const partialThreshold = fvgRetestThreshold(cur, isShort, retestDepthPct);
+    returns = partialThreshold !== null && (...);                          // 1–99 = FVG path
+  }
+  ```
+  `fvgRetestThreshold()` looks for a **direction-matched imbalance overlapping the origin key-level zone** (`story.imbalances`, i.e. H4 FVGs). It returns `null` when there is none — and the FVG path treats `null` as **"no retest is possible"**, not merely unlikely. So at 60, a setup with no qualifying H4 FVG can never produce a retest at *any* depth.
+- **Why the timing fits.** Oct 6's 219 candidates fit the pre-14:45Z window (~15/hr, vs Oct 5's ~10/hr); the rest of Oct 6, all of Oct 7 and Oct 8 produced zero. A market-regime explanation would not produce a step function that lands on a config deploy.
+- **Corroboration.** The 41 `NO_RETEST` research rows — setups that expired waiting for a retest — resolved **35W–3L, +15.24R**. The setups were fine; the retest gate was refusing entries.
+- **Fix (2026-10-08).** `RETEST_DEPTH_PCT` reverted to **100**, restoring the legacy origin-zone check. `deploy_config.test.ts` now pins `"RETEST_DEPTH_PCT":"100"` with a comment explaining the failure mode, and `engine.test.ts` adds a regression test proving the same setup produces 0 alerts at 60 and 1 alert at 100.
+- **Standing warning.** Do not set 1–99 again without first reading `diagnostics.replay.retestNoFvg` / `retestWithFvg` (below). If `retestNoFvg` dominates, FVG semantics will zero out retests regardless of the depth chosen.
+- **New counters (read-only).** `ReplayDiagnostics` gained `retestNoFvg` / `retestWithFvg`, incremented once per setup as it enters RETEST. `fvgRetestThreshold` returns null based only on whether the FVG exists — depth only scales the returned threshold — so the probe is depth-independent and keeps reporting even now that the deployed value is 100. Surfaced per-day by `/api/scan-audit` (`retestNoFvg`, `retestWithFvg`). Nothing reads them for gating, delivery, or outcome decisions.
+- **Also relevant.** During the "healthy" period, Oct 6 produced 16 retest transitions but **15 were dropped as stale** — the discovery-latency bug fixed by the cadence work. Both problems had to be understood: cadence was fixed first, and this revert removes the second.
+
 ### Private scan and delivery audit
 
 - `GET /api/scan-audit?days=21` is owner/admin-key protected; valid windows are 1–31 days. The Pages dashboard exposes it under **Market Health → 21-Day Scan & Delivery Audit** and prompts for the existing owner key.

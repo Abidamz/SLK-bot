@@ -544,7 +544,7 @@ describe("video-aligned directional bias shadow classification", () => {
     expect(shortResult.events.map((e) => e.state)).toEqual(["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]);
     expect(shortResult.diagnostics).toEqual({
       MAP: 1, TOUCH: 1, SWEEP: 1, SHIFT: 1, RETEST: 1, INVALID: 0, EXPIRED: 0,
-      retestCandidates: 1, riskRejects: 0,
+      retestCandidates: 1, retestNoFvg: 1, retestWithFvg: 0, riskRejects: 0,
       riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
       targetRejects: 0, confirmedAlerts: 1,
     });

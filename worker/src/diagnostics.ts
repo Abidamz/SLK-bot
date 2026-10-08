@@ -9,6 +9,11 @@ export type RiskRejectReason = "nonPositiveRisk" | "belowMinRiskAtr" | "aboveMax
 
 export interface ReplayDiagnostics extends LifecycleCounts {
   retestCandidates: number;
+  /** Setups entering RETEST with no direction-matched, zone-overlapping
+   *  imbalance — the FVG retest path cannot accept these at any depth. */
+  retestNoFvg: number;
+  /** Setups entering RETEST that do have one. */
+  retestWithFvg: number;
   riskRejects: number;
   riskRejectReasons: Record<RiskRejectReason, number>;
   targetRejects: number;
@@ -101,6 +106,8 @@ export interface ScanAuditDaySummary {
   recordedConfirmedAlerts: number;
   replayRetestTransitions: number;
   retestCandidates: number;
+  retestNoFvg: number;
+  retestWithFvg: number;
   targetRejects: number;
   riskRejects: number;
   staleConfirmationSkips: number;
@@ -273,7 +280,8 @@ export function countTransition(counts: LifecycleCounts, state: string): void {
 
 export function emptyReplayDiagnostics(): ReplayDiagnostics {
   return {
-    ...emptyLifecycleCounts(), retestCandidates: 0, riskRejects: 0,
+    ...emptyLifecycleCounts(), retestCandidates: 0, retestNoFvg: 0, retestWithFvg: 0,
+    riskRejects: 0,
     riskRejectReasons: { nonPositiveRisk: 0, belowMinRiskAtr: 0, aboveMaxStopAtr: 0 },
     targetRejects: 0, confirmedAlerts: 0,
   };
@@ -283,7 +291,7 @@ export function addReplayCounts(target: ReplayDiagnostics, source: Partial<Repla
   for (const state of LIFECYCLE_STATES) {
     target[state] += Number.isFinite(Number(source[state])) ? Math.max(0, Number(source[state])) : 0;
   }
-  for (const key of ["retestCandidates", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
+  for (const key of ["retestCandidates", "retestNoFvg", "retestWithFvg", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
     target[key] += Number.isFinite(Number(source[key])) ? Math.max(0, Number(source[key])) : 0;
   }
   for (const key of ["nonPositiveRisk", "belowMinRiskAtr", "aboveMaxStopAtr"] as const) {
@@ -308,7 +316,8 @@ export function emptyScanAuditDay(utcDay: string): ScanAuditDaySummary {
     errorCategories: { staleFeed: 0, rateLimitOrCredits: 0, networkOrTimeout: 0, other: 0 },
     diagnosticRows: 0, invalidDiagnosticRows: 0, gateMetricsRows: 0,
     alertRowsWritten: 0, eventRowsWritten: 0, recordedConfirmedAlerts: 0,
-    replayRetestTransitions: 0, retestCandidates: 0, targetRejects: 0, riskRejects: 0,
+    replayRetestTransitions: 0, retestCandidates: 0, retestNoFvg: 0, retestWithFvg: 0,
+    targetRejects: 0, riskRejects: 0,
     staleConfirmationSkips: 0, duplicateConfirmationSkips: 0,
     firstScanUtc: null, lastScanUtc: null,
   };
@@ -365,6 +374,8 @@ export function mapScanAuditDayAggregateRows(
       recordedConfirmedAlerts: asCount(row.recorded_confirmed_alerts),
       replayRetestTransitions: asCount(row.replay_retest_transitions),
       retestCandidates: asCount(row.retest_candidates),
+      retestNoFvg: asCount(row.retest_no_fvg),
+      retestWithFvg: asCount(row.retest_with_fvg),
       targetRejects: asCount(row.target_rejects),
       riskRejects: asCount(row.risk_rejects),
       staleConfirmationSkips: asCount(row.stale_confirmation_skips),
@@ -485,6 +496,8 @@ export function buildScanAuditSummary(
       day.recordedConfirmedAlerts += recordedConfirms;
       day.replayRetestTransitions += asCount(diagnostics.replay.RETEST);
       day.retestCandidates += asCount(diagnostics.replay.retestCandidates);
+      day.retestNoFvg += asCount(diagnostics.replay.retestNoFvg);
+      day.retestWithFvg += asCount(diagnostics.replay.retestWithFvg);
       day.targetRejects += asCount(diagnostics.replay.targetRejects);
       day.riskRejects += asCount(diagnostics.replay.riskRejects);
       day.staleConfirmationSkips += asCount(recorded.staleConfirmationSkips);
@@ -580,7 +593,7 @@ export function emptyScanDiagnostics(): ScanDiagnostics {
 export function addReplayDiagnostics(scan: ScanDiagnostics, pair: string, timeframe: string, replay: ReplayDiagnostics): void {
   scan.byPairTimeframe.push({ pair, timeframe, replay });
   for (const state of LIFECYCLE_STATES) scan.replay[state] += replay[state];
-  for (const key of ["retestCandidates", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
+  for (const key of ["retestCandidates", "retestNoFvg", "retestWithFvg", "riskRejects", "targetRejects", "confirmedAlerts"] as const) {
     scan.replay[key] += replay[key];
   }
   for (const key of ["nonPositiveRisk", "belowMinRiskAtr", "aboveMaxStopAtr"] as const) {

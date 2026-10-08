@@ -35,7 +35,12 @@ describe("deployed wrangler.jsonc", () => {
       '"MODE":"paper"',
       '"MIN_TP_R":"2.5"',
       '"MIN_RISK_ATR":"0.8"',
-      '"RETEST_DEPTH_PCT":"60"',
+      // 100 = the legacy "return to the origin zone" retest check. Any value
+      // 1-99 switches to FVG-penetration semantics, where a retest becomes
+      // impossible (not merely unlikely) unless a direction-matched imbalance
+      // overlaps the origin zone. That switch took retest candidates from
+      // ~220/day to zero on 2026-10-06; see CONTINUATION_HANDOFF.md.
+      '"RETEST_DEPTH_PCT":"100"',
       '"PAPER_NOTIFY":"true"',
     ]) {
       expect(compact).toContain(entry);
