@@ -56,8 +56,8 @@ export interface StrategyConfig {
    *    that pair+direction too, so a delivered 30m XAUUSD SHORT silences a
    *    later 1h XAUUSD SHORT for the full window. With ENTRY_TFS at
    *    15m/30m/1h that made the gate ~3x more restrictive than intended.
-   *  Set COOLDOWN_SCOPE=pair_direction to restore the old behaviour without
-   *  a redeploy. */
+   *  Set COOLDOWN_SCOPE=pair_direction to restore the old behaviour. Note this
+   *  is a config flag, not a hot switch — changing it takes a deploy. */
   cooldownScope?: "pair_direction" | "pair_direction_tf";
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;

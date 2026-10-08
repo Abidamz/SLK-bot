@@ -65,7 +65,13 @@
     "PAIR_BATCH_SIZE": "2",
     "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
-    "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
+    // Cooldown keying. "pair_direction_tf" scopes the 240m cooldown to the
+    // setup's own entry timeframe, so a delivered 30m signal no longer silences
+    // a later 1h signal on the same pair. "pair_direction" restores the old
+    // behaviour, where one signal blocked every timeframe on that pair and
+    // direction for the full window. Config flag: switching takes a deploy.
+    // (FILTER_HTF_CONFLICT_DERIV_ONLY was duplicated here; one copy removed.)
+    "COOLDOWN_SCOPE": "pair_direction_tf",
     "PROVIDER_MAP": "{\"EURUSD\":\"oanda\",\"GBPUSD\":\"oanda\",\"USDJPY\":\"oanda\",\"AUDJPY\":\"oanda\",\"GBPJPY\":\"oanda\",\"USDCAD\":\"oanda\",\"NZDUSD\":\"oanda\",\"EURJPY\":\"oanda\",\"XAUUSD\":\"oanda\",\"US30\":\"oanda\",\"GER40\":\"oanda\",\"JAPAN225\":\"oanda\",\"NAS100\":\"oanda\"}"
   }
   // secrets (set via `npx wrangler secret put ...`):

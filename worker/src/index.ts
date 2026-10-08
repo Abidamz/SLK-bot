@@ -1000,7 +1000,8 @@ export async function deliver(
     // Cooldown keying: by default the lookback is scoped to this setup's own
     // entry timeframe, so a delivered 30m signal no longer silences a later 1h
     // signal on the same pair. COOLDOWN_SCOPE=pair_direction restores the old
-    // behaviour. The reason string records which scope applied, so the two are
+    // behaviour (it is a config flag, so switching takes a deploy). The reason
+    // string records which scope applied, so the two are
     // distinguishable in the audit rollup and on /alerts.
     const perTimeframe = cfg.strategy.cooldownScope !== "pair_direction";
     const last = await store.lastAlertTime(
@@ -1786,7 +1787,13 @@ export default {
     if (url.pathname === "/dashboard/preferences/notifications" && request.method === "GET") {
       if (!readAuthed(request, env)) return json({ error: "unauthorized" }, 401);
       const prefs = await makeStore(env.DB).getNotificationPreferences();
-      return json({ primaryConfirmed: true, telegram: { enabled: true, watchEnabled: prefs.telegramWatch, operationalEnabled: prefs.operationalEnabled }, discord: { enabled: true, watchEnabled: prefs.discordWatch, operationalEnabled: prefs.operationalEnabled }, cooldownMinutes: prefs.cooldownMinutes, updatedUtc: prefs.updatedUtc });
+      // `cooldownMinutes` is deliberately NOT returned here. It is stored on
+      // notification_preferences but no delivery gate has ever read it, and it
+      // has no setter endpoint — advertising it implied a working per-channel
+      // throttle that does not exist. The only cooldown that gates anything is
+      // cfg.strategy.cooldownMinutes, keyed by COOLDOWN_SCOPE. The DB column is
+      // left in place; dropping it is a schema change with no upside.
+      return json({ primaryConfirmed: true, telegram: { enabled: true, watchEnabled: prefs.telegramWatch, operationalEnabled: prefs.operationalEnabled }, discord: { enabled: true, watchEnabled: prefs.discordWatch, operationalEnabled: prefs.operationalEnabled }, updatedUtc: prefs.updatedUtc });
     }
     if (url.pathname === "/dashboard/preferences/notifications" && request.method === "PATCH") {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
