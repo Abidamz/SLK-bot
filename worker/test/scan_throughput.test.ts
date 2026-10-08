@@ -265,7 +265,12 @@ describe("scheduler KV batching", () => {
     expect(idle.pairs).toEqual([]);
     const idleRow = store.scanLog[store.scanLog.length - 1];
     expect(String(idleRow.note)).toContain("idle");
-    expect(idleRow.diagnostics!.timing).toMatchObject({ pairScanMs: 0, scheduleMs: expect.any(Number) });
+    // Same rule as diagnostics.test.ts: pairScanMs is a measured wall-clock
+    // duration, so it is bounded rather than pinned to an exact 0 — an idle
+    // tick can read 1ms on a loaded machine. scheduleMs must merely be present.
+    expect(idleRow.diagnostics!.timing!.pairScanMs).toBeGreaterThanOrEqual(0);
+    expect(idleRow.diagnostics!.timing!.pairScanMs).toBeLessThan(100);
+    expect(idleRow.diagnostics!.timing!.scheduleMs).toEqual(expect.any(Number));
     expect(idleRow.diagnostics!.timing!.storeCalls).toBeGreaterThan(0);
     expect(idleRow.diagnostics!.timing!.storeMs).toBeGreaterThanOrEqual(0);
   });

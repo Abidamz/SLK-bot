@@ -64,9 +64,18 @@ describe("scan diagnostics", () => {
     // explicit zero counters.
     const { timing: idleTiming, ...idleCounters } = idle.diagnostics;
     expect(idleCounters).toEqual(emptyScanDiagnostics());
-    expect(idleTiming).toMatchObject({
-      shadowResolveMs: 0, pairScanMs: 0, shadowGroups: 0, shadowChecked: 0, httpCalls: 0,
-    });
+    if (!idleTiming) throw new Error("expected timing diagnostics on an idle tick");
+    // Counters are structural and asserted exactly; durations are measured
+    // wall-clock values and only bounded, because an idle tick can legitimately
+    // take 1ms on a loaded runner. Asserting an exact 0 on shadowResolveMs /
+    // pairScanMs made this test flaky on CI (it failed there, passed locally).
+    expect(idleTiming.shadowGroups).toBe(0);
+    expect(idleTiming.shadowChecked).toBe(0);
+    expect(idleTiming.httpCalls).toBe(0);
+    expect(idleTiming.shadowResolveMs).toBeGreaterThanOrEqual(0);
+    expect(idleTiming.shadowResolveMs).toBeLessThan(100);
+    expect(idleTiming.pairScanMs).toBeGreaterThanOrEqual(0);
+    expect(idleTiming.pairScanMs).toBeLessThan(100);
     expect(idle.timeframes).toEqual([]);
     expect(fetchFn).not.toHaveBeenCalled();
     expect(store.scanLog[1]).toMatchObject({ note: "idle (no candle close)", diagnostics: idle.diagnostics });
