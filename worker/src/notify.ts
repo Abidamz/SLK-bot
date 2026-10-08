@@ -21,6 +21,11 @@ export interface TelegramSendOptions {
   pin?: boolean;
   chatId?: string;
   photoUrl?: string;
+  /** Compact caption used when the full text exceeds Telegram's 1024-char
+   *  photo-caption limit. Without it the alert loses its tail — historically
+   *  the risk protocol, invalidation, setup ID and chart link never reached
+   *  the channel. The full text is always sent as a follow-up message. */
+  shortCaption?: string;
 }
 
 export function parseChatIds(raw?: string): string[] {
@@ -60,7 +65,12 @@ export async function sendTelegram(
     // Serverless visual chart snapshot via Telegram sendPhoto (Recommendation 3)
     if (options.photoUrl && env.CHART_SNAPSHOTS === "true") {
       const photoUrl = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`;
-      const caption = text.length <= 1024 ? text : text.slice(0, 1020) + "...";
+      // Telegram caps photo captions at 1024 chars — a hard API limit. When the
+      // alert is longer, the chart carries a short caption and the complete text
+      // follows as its own message, so nothing is lost.
+      const caption = text.length <= 1024
+        ? text
+        : options.shortCaption ?? text.slice(0, 1020) + "...";
       const photoBody: Record<string, unknown> = {
         chat_id: chatId,
         photo: options.photoUrl,
@@ -83,7 +93,10 @@ export async function sendTelegram(
       }
     }
 
-    if (!photoSent) {
+    // Send the message body unless the caption already carried all of it.
+    // When the photo succeeded but the text was too long for a caption, this is
+    // a second message rather than a lost tail.
+    if (!photoSent || text.length > 1024) {
       const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
       const body: Record<string, unknown> = {
         chat_id: chatId,
@@ -746,6 +759,8 @@ export interface BroadcastOptions {
   pair?: string;
   chatId?: string;
   photoUrl?: string;
+  /** See TelegramSendOptions.shortCaption — forwarded to sendTelegram. */
+  shortCaption?: string;
 }
 
 /** Fan out to every configured channel; a failing channel is logged and
@@ -821,12 +836,18 @@ export async function broadcast(
  * and simultaneously sent to personal private DM so it cannot be missed. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
   const photoUrl = await getVisualAlertImageUrl(env, a);
+  // Alerts routinely exceed Telegram's 1024-char caption limit. Give the chart a
+  // caption that still identifies the trade on its own; the full text follows.
+  const shortCaption =
+    `${a.pair} · ${a.direction} · ${a.entryTf} · ` +
+    `${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"} @ ${fmtPrice(a.pair, a.entry)}`;
   return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, {
     silent: false,
     pin: true,
     sendToDm: true,
     pair: a.pair,
     photoUrl,
+    shortCaption,
   });
 }
 

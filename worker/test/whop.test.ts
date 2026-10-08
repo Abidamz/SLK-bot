@@ -152,6 +152,73 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       expect(photoCall.body.photo).toBe("https://quickchart.io/chart?c=test");
       expect(photoCall.body.caption).toContain("SLK CONFIRMED ENTRY");
     });
+
+    // Telegram caps photo captions at 1024 chars. Alerts routinely exceed that,
+    // and the old behaviour silently dropped the tail — the risk protocol,
+    // invalidation level, setup ID and chart link never reached the channel.
+    it("sends the full text as a follow-up when it exceeds the 1024-char caption limit", async () => {
+      const { sendTelegram } = await import("../src/notify");
+      const calls: any[] = [];
+      const fakeFetch = (async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const longText = "X".repeat(1500) + "|TAIL_MARKER|";
+      await sendTelegram(
+        { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "-100", CHART_SNAPSHOTS: "true", fetchFn: fakeFetch },
+        longText,
+        { photoUrl: "https://quickchart.io/chart?c=test", shortCaption: "EURUSD · SHORT · 1h · SELL LIMIT @ 1.1000" },
+      );
+
+      const photoCall = calls.find((c) => c.url.includes("/sendPhoto"));
+      const msgCall = calls.find((c) => c.url.includes("/sendMessage"));
+      // The chart carries the compact caption, not a mangled slice of the alert.
+      expect(photoCall.body.caption).toBe("EURUSD · SHORT · 1h · SELL LIMIT @ 1.1000");
+      // And the complete text still goes out — this is the actual regression fix.
+      expect(msgCall).toBeDefined();
+      expect(msgCall.body.text).toBe(longText);
+      expect(msgCall.body.text).toContain("|TAIL_MARKER|");
+    });
+
+    it("does not duplicate the message when the text fits in a caption", async () => {
+      const { sendTelegram } = await import("../src/notify");
+      const calls: any[] = [];
+      const fakeFetch = (async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const shortText = "SHORT ALERT";
+      await sendTelegram(
+        { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "-100", CHART_SNAPSHOTS: "true", fetchFn: fakeFetch },
+        shortText,
+        { photoUrl: "https://quickchart.io/chart?c=test" },
+      );
+
+      expect(calls.filter((c) => c.url.includes("/sendPhoto"))).toHaveLength(1);
+      expect(calls.filter((c) => c.url.includes("/sendMessage"))).toHaveLength(0);
+    });
+
+    it("falls back to sendMessage when the photo fails, even for a long alert", async () => {
+      const { sendTelegram } = await import("../src/notify");
+      const calls: any[] = [];
+      const fakeFetch = (async (url: string | URL, init?: RequestInit) => {
+        calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+        if (String(url).includes("/sendPhoto")) return new Response("bad", { status: 400 });
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), { status: 200 });
+      }) as unknown as typeof fetch;
+
+      const longText = "Y".repeat(1500) + "|TAIL|";
+      await sendTelegram(
+        { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "-100", CHART_SNAPSHOTS: "true", fetchFn: fakeFetch },
+        longText,
+        { photoUrl: "https://quickchart.io/chart?c=test" },
+      );
+
+      const msgCall = calls.find((c) => c.url.includes("/sendMessage"));
+      expect(msgCall.body.text).toBe(longText);
+    });
   });
 
   describe("createTelegramInviteLink & kickTelegramMember", () => {
