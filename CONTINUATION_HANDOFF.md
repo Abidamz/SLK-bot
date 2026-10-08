@@ -106,6 +106,21 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - Expect **alert volume to rise**, since a 30m signal no longer silences the 1h and 15m signals on the same pair. Watch the VIP/free channels for the first few days.
 - Tests: `worker/test/cooldown_scope.test.ts` (5 cases: default scope, 1h-not-blocked, same-TF repeat still blocked, legacy scope, outside-the-window in both scopes) plus a store-level timeframe-scoping case.
 
+### HTF conflict gate: inert on institutional pairs — now measurable
+
+- **Observed live 2026-10-08:** a USDCAD 15m SHORT was delivered carrying `Bias Grade: ⚠️ HTF_CONFLICT` (1H bullish vs 4H bearish). `applyHtfConflictGate()` exists to suppress exactly this, but `FILTER_HTF_CONFLICT_DERIV_ONLY=true` scopes it to `isDerivPair()`, which matches **only the ten volatility indices**. Verified directly:
+  ```
+  USDCAD / EURUSD / XAUUSD / JAPAN225  isDerivPair: false  -> gate inert
+  V75                                  isDerivPair: true   -> CAN suppress
+  ```
+  So `FILTER_HTF_CONFLICT: "true"` currently means *"true for the 10 synthetics, silently off for the other 13 pairs"*. No decision has been made on widening it.
+- **Nuance worth keeping in view before widening it:** the spec (`docs/SLK_MODEL_SPEC.md`, Layer 1 §3) says *"H4 is the key intraday vantage point; execution refines on H1/M30"*. In that USDCAD alert **4H was bearish and the trade was SHORT — H4 agreed with the direction**; only the 1H refinement timeframe disagreed. By the spec's own hierarchy the trade was aligned with the stated key vantage. Whether that counts as a violation is the owner's call.
+- **Measurement path (commit `3a60390`):** `slk_alerts.shadow_classification` (migration 0009, nullable, indexed on `status`), returned by `/alerts` as `shadowClassification`. Diagnostics only — no gate, dedupe, notification or outcome rule reads it. Null means "not recorded", not "no conflict".
+  - To decide: group stored alerts by `shadowClassification` and compare net R and win rate for HTF_CONFLICT against ALIGNED. Only rows written after 2026-10-08 carry the value, so this needs time to accumulate.
+- **Not a violation — FVG Rebalance ❌.** Spec Layer 2 requires `MAP → TOUCH → SWEEP → SHIFT → RETEST`; FVG appears in Layer 1 as *context*, not an execution requirement. In code, `RETEST_DEPTH_PCT=100` makes the check `if (retestDepthPct < 100)` skip FVG penetration entirely, falling back to the legacy ATR-tolerant origin-zone test. The ❌ is reported context, like `Opposing liq. standing ✅`.
+  - **Do not lower `RETEST_DEPTH_PCT` casually.** At 60 it previously took retest candidates from ~220/day to **zero within hours**, because `fvgRetestThreshold()` returns null whenever no direction-matched FVG overlaps the origin zone, making a retest impossible.
+- **Reading a setup ID:** the trailing ISO timestamp is the **origin key level's birth time** (`buildSetupId()` uses `level.originTime`), *not* the signal time. `USDCAD:15m:SHORT:DECISION:1.425050:2026-10-06T08:00:00.000Z` means the decision candle closed on 10-06 and price retested that same level on 10-08 — which is why the level price still matches the current market. The signal time is `candleCloseTime`, and the freshness gate is `TF_SECONDS × 2.5` (37.5 min for 15m), so a genuinely stale confirmation would have been skipped.
+
 ### Coverage gap: 23 pairs configured, 7 have ever produced a setup
 
 - All 28 stored rows come from XAUUSD, GER40, JAPAN225, US30, AUDJPY, GBPUSD, EURUSD (USDZAR also appears but is no longer in `PAIRS`). **16 of the 23 configured pairs have never produced a single stored alert**: all ten synthetics (V75/V100/V50/V25/V10 + five `1s` variants), NAS100, USDJPY, GBPJPY, and the three recently added forex pairs (USDCAD, NZDUSD, EURJPY — likely innocent, no history yet).
