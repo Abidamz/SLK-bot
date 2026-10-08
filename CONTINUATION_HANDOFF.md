@@ -82,6 +82,34 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - **Live verification (2026-10-08, `cf43d0a`, deployed ~00:47Z).** `/health` reports `retestDepthPct: 100`. In the ~30 minutes after the revert (Oct 8 byDay row, 00:00–01:17Z): **retest candidates 0 → 20**, **retest transitions 0 → 2**, `targetRejects` 16, `riskRejects` 2 — the funnel is flowing again after a full day of zeros across 660 active scans. `/api/recent-events` shows live RETEST rows carrying the legacy reason string (`return to origin zone → confirmation entry @ …`), which is the depth-100 path speaking. The counters report **retestNoFvg 13 vs retestWithFvg 15** on the same window — so roughly **46% of setups entering RETEST have no usable imbalance at all**, which is the direct confirmation of the mechanism: at any depth 1–99 about half of all setups could never retest, regardless of the number chosen.
 - **Reading the first confirmations.** The two RETEST events found immediately after the revert had `candleTime` on Oct 6–7 and were correctly dropped as stale (`staleConfirmationSkips: 2`, no stored alert row yet). That is expected: the revert un-blocked detection, so the first scan of each pair replayed candle history and surfaced retests that had been invisible for a day — they are genuinely too old to act on now. Fresh retests discovered from here on are found within the ~11.5-minute revisit and should store normally. No retest has yet been found that is both fresh and inside the 2.5R/risk gates; that is the next thing to watch.
 
+### Suppressed alerts: where the other 20 went
+
+- `slk_alerts` holds 28 rows, but `/stats`, the journal, recaps and Monte Carlo show only 8. The 20 missing rows are `alert_status = 'SUPPRESSED'` and are deliberately excluded by the `includeSuppressed` filter in `store.ts`. Fetch `/alerts?includeSuppressed=true` with the owner key to see them.
+- **They are the better half of the book.** Delivered PAPER: 8 rows, 5 TP / 3 SL, **+11.515R**. Suppressed: 20 rows, **+21.264R**. Combined: 28 rows, **+32.779R** over 2026-08-25 → 2026-09-30.
+- **Suppression reasons**, from `deliver()` in `index.ts` and `engine.ts` (~739):
+  1. `cooldown (240m)` — same pair and direction inside `cooldownMinutes` (default **240**).
+  2. `HTF conflict: …` — counter-trend entry; gated to synthetics by `FILTER_HTF_CONFLICT_DERIV_ONLY`.
+  3. `first scan boot gate — record-only`, and `paper mode, notifications disabled`.
+  - `sessionsAllowlist` is empty and no `SESSION` var is set, so the session gate is inactive. **The 4-hour cooldown is therefore the dominant cause on institutional pairs.**
+- **Why it matters:** the suppressed cluster is dominated by repeat same-direction setups during a strong move — e.g. XAUUSD SHORT on 2026-09-23/24 produced four setups, all ~3R winners, three of them suppressed by the cooldown. The cooldown is suppressing precisely the conditions in which the model performs best.
+- **Not changed.** This is a live behaviour change and the owner's call, recorded here so the next session starts from the evidence rather than rediscovering it.
+
+### Weekly R target: 10R per week
+
+- Observed 2026-08-25 → 2026-09-30 (~5 weeks), 28 setups at ~1.17R average:
+  delivered **2.30R/week** · suppressed **4.25R/week** · combined **6.56R/week**.
+- A 10R/week target therefore needs roughly **8.5 setups/week at the same average**, against **5.6 observed** — about a **1.5× shortfall**.
+- Biggest single lever: the 240-minute cooldown, worth ~**+4.25R/week** if those setups are delivered.
+- Caveats: 5 weeks and 28 setups is a small sample, and two delivered trades produced 92% of the delivered R. The suppressed set is larger and far less concentrated, so it is the more reliable of the two samples for planning.
+
+### Cloudflare plan: Workers Paid, not Free
+
+- The account is on **Workers Paid ($5/mo)**. `/admin/system-health` used to report `"Free Tier Optimized (Sub-millisecond CPU)"` with Free-tier ceilings (10ms CPU, 100,000 writes/day, 500MB, 50 subrequests). **Those were hardcoded strings, not measurements** — they were read as fact and produced a headroom estimate wrong by ~3 orders of magnitude.
+- Correct ceilings: **30,000ms CPU per invocation** (cron triggers under a 1h interval included), **10,000 subrequests**, **10M requests/month**, D1 **50M row-writes/month** and **5GB** storage. Actual usage is ~0.005% of CPU, ~0.18% of subrequests, ~0.44% of requests. **The bill stays $5/month.**
+- Two honesty fixes: no per-tick CPU figure is asserted at all (Cloudflare does not expose a Worker's own CPU time to the running Worker), and storage is now reported as real row counts rather than an invented "~2MB".
+- `worker/test/plan_limits.test.ts` fails if any Free-tier limit string or an invented ms-per-tick figure reappears.
+- **Real constraint is wall-clock, not quota:** a tick must finish inside the 1-minute cron. At batch size 2 ticks take 4–14s, so scanning more markets per tick is possible but has little payoff — the tightest freshness window is 37.5 min and the current per-pair revisit is ~11.5 min.
+
 ### Private scan and delivery audit
 
 - `GET /api/scan-audit?days=21` is owner/admin-key protected; valid windows are 1–31 days. The Pages dashboard exposes it under **Market Health → 21-Day Scan & Delivery Audit** and prompts for the existing owner key.

@@ -1605,7 +1605,7 @@ export default {
       const oandaConfigured = Boolean(env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOanda);
       return json({
         ok: true,
-        service: "slk-alert-worker · Free Tier CPU Optimized & Real-Time Intrabar Outcome Resolution",
+        service: "slk-alert-worker · Workers Paid & Real-Time Intrabar Outcome Resolution",
         mode: cfg.mode,
         version: "v2.5.5",
         commit: "v2.5.5",
@@ -3107,20 +3107,31 @@ export default {
         ok: true,
         service: "slk-alert-worker",
         timestamp: new Date().toISOString(),
-        cloudflareTier: "Free Tier Optimized (Sub-millisecond CPU)",
+        // Workers Paid ($5/mo). These are the plan's documented ceilings, not
+        // measured headroom: 30s CPU per invocation (cron triggers under a 1h
+        // interval included), 10,000 subrequests, 10M requests/month.
+        cloudflareTier: "Workers Paid ($5/mo) — 30s CPU per invocation, 10,000 subrequests, 10M requests/month",
         limitsStatus: {
-          cpuSafety: "EXCELLENT — Worker executes ~1.5ms per tick (Well below 10ms limit)",
-          d1WritesSafety: `EXCELLENT — ${logCount} scan logs stored (<1% of 100,000 writes/day)`,
-          d1StorageSafety: "EXCELLENT — ~2MB used (<0.5% of 500MB free storage cap)",
+          // Honest about what is and is not measured: Cloudflare does not expose
+          // a Worker's own CPU time to the running Worker, so no per-tick CPU
+          // figure is asserted here. What is certain is the shape of the cost -
+          // a tick spends almost all of its wall-clock time waiting on market
+          // data and D1, and waiting is not billed as CPU - against a 30,000ms
+          // ceiling on this plan.
+          cpuSafety: "WELL INSIDE LIMIT — the Workers Paid ceiling is 30,000ms of CPU per invocation (cron triggers included). A tick's wall-clock time is overwhelmingly spent waiting on market data and D1, and waiting is not counted as CPU.",
+          // logCount is an all-time total, so it is compared against an
+          // all-time-shaped figure rather than a daily quota.
+          d1WritesSafety: `NEGLIGIBLE — ${logCount.toLocaleString("en-US")} scan-log rows stored in total; the paid D1 allowance is 50,000,000 row-writes per month.`,
+          d1StorageSafety: `NEGLIGIBLE — ${(alertCount + eventCount + logCount).toLocaleString("en-US")} rows across alerts, lifecycle events and scan logs; paid D1 includes 5GB of storage.`,
           // Measured, not asserted: the previous static claim understated the
           // real fan-out (shadow resolution fetched once per open group).
           subrequestsSafety: Number(lastScanTiming?.httpCalls ?? 0) > 0
             ? `MEASURED — ${Number(lastScanTiming?.httpCalls)} HTTP requests in the latest tick `
-              + `(subrequest limit 50); pair scan ${Number(lastScanTiming?.pairScanMs ?? 0)} ms, `
+              + `(limit 10,000 on Workers Paid); pair scan ${Number(lastScanTiming?.pairScanMs ?? 0)} ms, `
               + `live resolve ${Number(lastScanTiming?.liveResolveMs ?? 0)} ms, `
               + `shadow resolve ${Number(lastScanTiming?.shadowResolveMs ?? 0)} ms for `
               + `${Number(lastScanTiming?.shadowChecked ?? 0)} of ${Number(lastScanTiming?.shadowGroups ?? 0)} shadow groups`
-            : "UNMEASURED — no tick timings recorded yet (subrequest limit 50)",
+            : "UNMEASURED — no tick timings recorded yet (limit 10,000 on Workers Paid)",
         },
         databaseCounts: {
           totalConfirmedAlerts: alertCount,
