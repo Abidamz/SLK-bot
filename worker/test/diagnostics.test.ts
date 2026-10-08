@@ -98,7 +98,15 @@ describe("scan diagnostics", () => {
     expect(result.errors).toHaveLength(2);
     const { timing: failedTiming, ...failedCounters } = result.diagnostics;
     expect(failedCounters).toEqual(emptyScanDiagnostics());
-    expect(failedTiming).toMatchObject({ shadowResolveMs: 0, shadowGroups: 0, shadowChecked: 0 });
+    // shadowGroups and shadowChecked are structural: a total provider failure
+    // means nothing was resolved. shadowResolveMs is a *measured* wall-clock
+    // duration, so it can legitimately read 1ms on a loaded machine even when
+    // there was no work to do — asserting an exact 0 here made this test flaky.
+    if (!failedTiming) throw new Error("expected timing diagnostics on provider failure");
+    expect(failedTiming.shadowGroups).toBe(0);
+    expect(failedTiming.shadowChecked).toBe(0);
+    expect(failedTiming.shadowResolveMs).toBeGreaterThanOrEqual(0);
+    expect(failedTiming.shadowResolveMs).toBeLessThan(100);
     expect(store.scanLog[0].diagnostics).toEqual(result.diagnostics);
   });
 });
