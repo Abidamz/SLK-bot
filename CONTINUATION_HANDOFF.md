@@ -96,6 +96,29 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - **The cooldown is timeframe-blind — this is the real defect.** `lastAlertTime(pair, direction, excludeSetupId)` (`store.ts` ~608 D1, ~1449 MemStore) filters on `canonical_symbol` and `direction` **only**; there is no `entry_timeframe` term in either implementation. With `ENTRY_TFS = "15m,30m,1h"`, three independent timeframes on the same pair compete for a single 4-hour window: **a delivered 30m XAUUSD SHORT blocks a later 1h XAUUSD SHORT**, even though they are separate setups with separate theses. The gate is roughly 3× more restrictive than "per-pair+direction" suggests.
 - **`suppress_reason` is now exposed on `/alerts`** (commit `106d2c3`) — it was stored in D1 and aggregated by the scan-audit rollup, but the endpoint's row mapping omitted it. Read-only, and no gate consults it. This lets the reasons be counted directly instead of derived: `/alerts?includeSuppressed=true&limit=60&key=…` and group on `suppressReason`.
 - **Still to do:** the per-row split of the 20 suppressed rows between `cooldown (240m)` and `first scan boot gate` has **not** been measured — outbound access to `*.workers.dev` was down when this was written, so the instrumented endpoint could not be read. The taxonomy above is proven from source; the *counts* are not. Expect the cooldown to take the large majority.
+
+### Cooldown is now timeframe-scoped (fixed 2026-10-08, commit 976161c)
+
+- `lastAlertTime(pair, direction, excludeSetupId, timeframe?)` takes an optional timeframe and filters on `entry_timeframe` when given. `deliver()` passes `alert.entryTf`, so a signal now only blocks repeats on the **same pair, direction and entry timeframe**.
+- **`COOLDOWN_SCOPE`** (`wrangler.jsonc`, `config.ts`) controls this: `pair_direction_tf` (default, the fix) or `pair_direction` (legacy). It is a **config flag — switching takes a deploy**, not a hot kill switch.
+- `cooldownMinutes` is **unchanged at 240**.
+- The suppress reason records which scope applied — `cooldown (240m, 30m)` against the legacy `cooldown (240m)` — so the two stay separable in the audit rollup and on `/alerts`.
+- Expect **alert volume to rise**, since a 30m signal no longer silences the 1h and 15m signals on the same pair. Watch the VIP/free channels for the first few days.
+- Tests: `worker/test/cooldown_scope.test.ts` (5 cases: default scope, 1h-not-blocked, same-TF repeat still blocked, legacy scope, outside-the-window in both scopes) plus a store-level timeframe-scoping case.
+
+### Coverage gap: 23 pairs configured, 7 have ever produced a setup
+
+- All 28 stored rows come from XAUUSD, GER40, JAPAN225, US30, AUDJPY, GBPUSD, EURUSD (USDZAR also appears but is no longer in `PAIRS`). **16 of the 23 configured pairs have never produced a single stored alert**: all ten synthetics (V75/V100/V50/V25/V10 + five `1s` variants), NAS100, USDJPY, GBPJPY, and the three recently added forex pairs (USDCAD, NZDUSD, EURJPY — likely innocent, no history yet).
+- **Static causes ruled out** (verified in source, 2026-10-08): `providerForPair()` routes synthetics to Deriv and everything else correctly; all ten synthetics have entries in `DERIV_SYMBOLS`; NAS100/USDJPY/GBPJPY have OANDA and Dukascopy symbol mappings; `entryTfAppliesToPair()` and the `SYNTH_ENTRY_TFS` handling are sound. There is **no routing or symbol-map bug**.
+- The open question is therefore runtime-only, and splits three ways: **not scanned** (scheduler/batching), **scanned but no candles** (feed or OANDA instrument availability — note `PROVIDER_MAP` sends every silent institutional pair to OANDA), or **candles but no setups** (model reality, which would mean the 10R target needs levers other than coverage).
+- **This is the uncapped lever.** The cooldown fix is capped at ~+4.25R/week; coverage is not. Answer it with `GET /api/scan-audit?days=31` and read `scan.byPairTimeframe` — pairs absent from it were never scanned.
+- Also fixed while here: `wrangler.jsonc` had a **duplicated `FILTER_HTF_CONFLICT_DERIV_ONLY` key** (both `"true"`, so no behaviour change).
+
+### `notification_preferences.cooldown_minutes` was advertised but inert
+
+- The preference was stored in D1 and **returned by `/api/notification-preferences`**, implying a working 30-minute per-channel throttle. **No delivery gate has ever read it**, there is no setter endpoint, and the dashboard does not consume it.
+- Removed from the API response (commit `1eaecfc`) rather than left to mislead, especially with alert volume about to rise. The DB column stays — dropping it is a schema change with no upside. Wiring it into delivery as a real throttle remains an option, but that is a behaviour change nobody has asked for.
+- The only cooldown that gates anything is `cfg.strategy.cooldownMinutes`.
 - **Why it matters:** the suppressed cluster is dominated by repeat same-direction setups during a strong move — e.g. XAUUSD SHORT on 2026-09-23/24 produced four setups, all ~3R winners, three of them suppressed by the cooldown. The cooldown is suppressing precisely the conditions in which the model performs best.
 - **Not changed.** This is a live behaviour change and the owner's call, recorded here so the next session starts from the evidence rather than rediscovering it.
 
@@ -104,7 +127,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - Observed 2026-08-25 → 2026-09-30 (~5 weeks), 28 setups at ~1.17R average:
   delivered **2.30R/week** · suppressed **4.25R/week** · combined **6.56R/week**.
 - A 10R/week target therefore needs roughly **8.5 setups/week at the same average**, against **5.6 observed** — about a **1.5× shortfall**.
-- Biggest single lever: the 240-minute cooldown, worth ~**+4.25R/week** if those setups are delivered.
+- Cooldown lever: worth ~**+4.25R/week** if those setups are delivered. **Partially pulled as of 2026-10-08** — the cooldown is now scoped to the setup's own entry timeframe (`COOLDOWN_SCOPE=pair_direction_tf`), so cross-timeframe blocks are gone. Same-timeframe repeats are still blocked, so this is not the full +4.25R; the realized figure has to be measured, not assumed.
 - **But un-suppressing alone cannot reach 10R — treat 6.56R/week as a hard ceiling.** Suppression happens at *delivery*, not at *detection*, so the 28 rows are every setup the engine found. Removing suppression entirely converts 2.30R/wk delivered into 6.56R/wk combined — a 2.85× improvement and by far the largest available lever, but still ~34% short of 10R. Hitting 10R needs the cooldown fix **and** more signal: ~8.5 setups/week against 5.6 observed, i.e. wider coverage or a higher average R. Do not present a cooldown change as sufficient on its own.
 - Caveats: 5 weeks and 28 setups is a small sample, and two delivered trades produced 92% of the delivered R. The suppressed set is larger and far less concentrated, so it is the more reliable of the two samples for planning.
 
