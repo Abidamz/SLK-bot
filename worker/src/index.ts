@@ -2092,6 +2092,12 @@ export default {
         // per row lets the suppression rules be audited against outcomes
         // instead of inferred. Read-only and never consulted by any gate.
         suppressReason: (r.suppress_reason as string) ?? null,
+        // Shadow directional-bias classification (HTF_CONFLICT / ALIGNED / …).
+        // Diagnostics only: never read by a gate, notification or outcome rule.
+        // Exposed so HTF_CONFLICT outcomes can be measured against ALIGNED ones
+        // before deciding whether to widen the HTF conflict gate beyond Deriv
+        // synthetics. Null on pre-migration rows means "not recorded".
+        shadowClassification: (r.shadow_classification as string) ?? null,
         exitTime: (r.exit_time as string) ?? null,
         exitPrice: (r.exit_price as number) ?? null,
         createdUtc: (r.created_utc as string) ?? null,

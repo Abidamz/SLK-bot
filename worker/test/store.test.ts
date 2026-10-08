@@ -259,3 +259,79 @@ describe("MemStore", () => {
     expect(list.map((r) => r.email)).toContain("trader2@example.com");
   });
 });
+
+/** Migration 0009: persist the shadow directional-bias classification so
+ *  HTF_CONFLICT outcomes can be measured before deciding whether to widen the
+ *  HTF conflict gate beyond Deriv synthetics. Diagnostics only. */
+describe("shadow classification persistence (migration 0009)", () => {
+  it("MemStore records the classification on the stored row", async () => {
+    const s = new MemStore();
+    const a = mkAlert("sc:mem");
+    a.shadowClassification = "HTF_CONFLICT";
+    await s.insertAlert(a, "td");
+    const rows = await s.recentAlerts(10);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shadow_classification).toBe("HTF_CONFLICT");
+  });
+
+  it("MemStore defaults a missing classification to null, not a fabricated value", async () => {
+    const s = new MemStore();
+    await s.insertAlert(mkAlert("sc:mem:null"), "td");
+    const rows = await s.recentAlerts(10);
+    expect(rows[0].shadow_classification).toBeNull();
+  });
+
+  function dbRecording(
+    calls: { sql: string; values: unknown[] }[],
+    opts: { failOn?: string },
+  ) {
+    const prepare = (sql: string) => ({
+      bind: (...values: unknown[]) => {
+        calls.push({ sql, values });
+        return {
+          run: async () => ({ meta: { changes: 1 } }),
+          first: async () => null,
+          all: async () => {
+            if (opts.failOn && sql.includes(opts.failOn)) {
+              throw new Error(`no such column: ${opts.failOn}`);
+            }
+            return { results: [] };
+          },
+        };
+      },
+    });
+    return { prepare } as unknown as D1Like;
+  }
+
+  it("D1Store writes the classification when its column exists", async () => {
+    const calls: { sql: string; values: unknown[] }[] = [];
+    const store = new D1Store(dbRecording(calls, {}));
+    const a = mkAlert("sc:d1");
+    a.shadowClassification = "HTF_CONFLICT";
+
+    expect(await store.insertAlert(a, "td")).toBe(true);
+    const insert = calls.filter((c) => c.sql.includes("INSERT OR IGNORE INTO slk_alerts")).pop();
+    expect(insert).toBeTruthy();
+    expect(insert!.sql).toContain("shadow_classification");
+    expect(insert!.values).toContain("HTF_CONFLICT");
+  });
+
+  // The important one: a deploy racing migration 0009 must not silently cost us
+  // the 0008 confluence tags, which are a separate additive migration.
+  it("D1Store sheds only the classification column when it is absent, keeping the 0008 tags", async () => {
+    const calls: { sql: string; values: unknown[] }[] = [];
+    const store = new D1Store(dbRecording(calls, { failOn: "shadow_classification" }));
+    const a = mkAlert("sc:d1:legacy");
+    a.shadowClassification = "HTF_CONFLICT";
+    a.h4ConfluenceGrade = "H4_KL_IN_FVG";
+
+    expect(await store.insertAlert(a, "td")).toBe(true);
+    const insert = calls.filter((c) => c.sql.includes("INSERT OR IGNORE INTO slk_alerts")).pop();
+    expect(insert).toBeTruthy();
+    expect(insert!.sql).not.toContain("shadow_classification");
+    expect(insert!.values).not.toContain("HTF_CONFLICT");
+    // The 0008 columns survive.
+    expect(insert!.sql).toContain("h4_confluence_grade");
+    expect(insert!.values).toContain("H4_KL_IN_FVG");
+  });
+});

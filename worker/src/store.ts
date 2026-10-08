@@ -347,6 +347,8 @@ function markScanDiagnosticsColumn(db: D1Like, exists: boolean): void {
 
 const alertTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
 const alertTagColumnProbe = new WeakMap<object, Promise<boolean>>();
+const alertShadowClassColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
+const alertShadowClassColumnProbe = new WeakMap<object, Promise<boolean>>();
 const shadowTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
 const shadowTagColumnProbe = new WeakMap<object, Promise<boolean>>();
 const shadowExperimentTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
@@ -399,6 +401,14 @@ const shadowTagColumns = makeColumnProbe({
   sql: "SELECT h4_confluence_grade, h4_confluence_tags, session_bucket FROM slk_shadow_trades LIMIT 0",
   message: "shadow diagnostics columns unavailable; using legacy shadow schema",
 });
+/** Migration 0009. Probed separately from the 0008 tag columns so that a
+ *  deploy racing one migration does not disable the other. */
+const alertShadowClassColumns = makeColumnProbe({
+  cache: alertShadowClassColumnCache,
+  probe: alertShadowClassColumnProbe,
+  sql: "SELECT shadow_classification FROM slk_alerts LIMIT 0",
+  message: "alert shadow classification column unavailable; using legacy alert schema",
+});
 const shadowExperimentTagColumns = makeColumnProbe({
   cache: shadowExperimentTagColumnCache,
   probe: shadowExperimentTagColumnProbe,
@@ -407,6 +417,7 @@ const shadowExperimentTagColumns = makeColumnProbe({
 });
 
 const hasAlertTagColumns = (db: D1Like) => alertTagColumns.has(db);
+const hasAlertShadowClassColumn = (db: D1Like) => alertShadowClassColumns.has(db);
 const hasShadowTagColumns = (db: D1Like) => shadowTagColumns.has(db);
 const hasShadowExperimentTagColumns = (db: D1Like) => shadowExperimentTagColumns.has(db);
 
@@ -512,6 +523,7 @@ export class D1Store implements Store {
     }
     // Additive diagnostics tags: written only when the migration is applied.
     const withTags = await hasAlertTagColumns(this.db);
+    const withShadowClass = await hasAlertShadowClassColumn(this.db);
     const values: unknown[] = [
       a.setupId, provider, a.pair, a.mapTf, a.entryTf,
       iso(a.candleCloseTime), a.direction, a.environment, a.phase, a.htfAlignment,
@@ -529,8 +541,21 @@ export class D1Store implements Store {
     const tagValues: unknown[] = [
       a.h4ConfluenceGrade ?? null, serializeDiagnosticTags(a.h4ConfluenceTags), a.sessionBucket ?? null,
     ];
-    const insert = (includeTags: boolean) => this.db
-      .prepare(`INSERT OR IGNORE INTO slk_alerts (
+    // Two independent additive migrations (0008 tags, 0009 classification), so
+    // each column is included on its own probe result rather than as one block.
+    const insert = (includeTags: boolean, includeShadowClass: boolean) => {
+      const extraCols: string[] = [];
+      const extraVals: unknown[] = [];
+      if (includeTags) {
+        extraCols.push("h4_confluence_grade", "h4_confluence_tags", "session_bucket");
+        extraVals.push(...tagValues);
+      }
+      if (includeShadowClass) {
+        extraCols.push("shadow_classification");
+        extraVals.push(a.shadowClassification ?? null);
+      }
+      return this.db
+        .prepare(`INSERT OR IGNORE INTO slk_alerts (
           setup_id, provider, canonical_symbol, map_timeframe, entry_timeframe,
           candle_close_time, direction, environment, phase, htf_alignment,
           origin_key_level, key_level_type, key_level_bounds, key_level_tested,
@@ -540,22 +565,39 @@ export class D1Store implements Store {
           entry_mode, entry, stop_loss, tp_internal, tp_external, sweep_time,
           bos_time, return_time, invalidation_level, invalidation_reason,
           parameter_version, setup_ref, alert_status, suppress_reason,
-          created_utc${includeTags ? ", h4_confluence_grade, h4_confluence_tags, session_bucket" : ""}
-        ) VALUES (${[...values, ...(includeTags ? tagValues : [])].map(() => "?").join(",")})`)
-      .bind(...values, ...(includeTags ? tagValues : []))
-      .run();
-    try {
-      const res = await insert(withTags);
-      return res.meta.changes > 0;
-    } catch (err) {
-      if (!withTags) throw err;
-      // The deployment can race the additive migration: fall back once and
-      // remember the legacy schema for this D1 binding.
-      alertTagColumns.mark(this.db, false);
-      console.warn(JSON.stringify({ level: "warn", msg: "insertAlert diagnostics fallback", error: String(err) }));
-      const res = await insert(false);
-      return res.meta.changes > 0;
+          created_utc${extraCols.length ? `, ${extraCols.join(", ")}` : ""}
+        ) VALUES (${[...values, ...extraVals].map(() => "?").join(",")})`)
+        .bind(...values, ...extraVals)
+        .run();
+    };
+    // The deployment can race an additive migration. Shed one column group at a
+    // time, newest (0009) first, so a missing 0009 never costs us the 0008
+    // tags — and remember the legacy schema for this D1 binding.
+    const attempts: Array<[boolean, boolean]> = [[withTags, withShadowClass]];
+    if (withShadowClass) attempts.push([withTags, false]);
+    if (withTags) attempts.push([false, false]);
+
+    let lastErr: unknown = null;
+    for (let i = 0; i < attempts.length; i++) {
+      const [useTags, useShadow] = attempts[i];
+      try {
+        const res = await insert(useTags, useShadow);
+        return res.meta.changes > 0;
+      } catch (err) {
+        lastErr = err;
+        const next = attempts[i + 1];
+        if (!next) break;
+        if (useTags && !next[0]) {
+          alertTagColumns.mark(this.db, false);
+          console.warn(JSON.stringify({ level: "warn", msg: "insertAlert tag-column fallback", error: String(err) }));
+        }
+        if (useShadow && !next[1]) {
+          alertShadowClassColumns.mark(this.db, false);
+          console.warn(JSON.stringify({ level: "warn", msg: "insertAlert shadow-classification fallback", error: String(err) }));
+        }
+      }
     }
+    throw lastErr;
   }
 
   async hasIdentityMatch(pair: string, entryTf: string, direction: string, keyLevelType: string, originTimeMs: number): Promise<boolean> {
@@ -1401,6 +1443,9 @@ export class MemStore implements Store {
       h4_confluence_grade: a.h4ConfluenceGrade ?? null,
       h4_confluence_tags: serializeDiagnosticTags(a.h4ConfluenceTags),
       session_bucket: a.sessionBucket ?? null,
+      // Diagnostics-only: shadow directional-bias classification (migration
+      // 0009). Never read by any gate, notification or outcome rule.
+      shadow_classification: a.shadowClassification ?? null,
       // The memory store uses the confirmation candle as a deterministic
       // creation timestamp; D1 stores the actual insert time.
       created_utc: iso(a.candleCloseTime),

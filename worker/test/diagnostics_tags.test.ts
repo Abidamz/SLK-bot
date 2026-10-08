@@ -46,17 +46,27 @@ function taggedAlert(): Alert {
     h4ConfluenceGrade: "H4_PLUG_AND_PLAY",
     h4ConfluenceTags: ["H4_PLUG_AND_PLAY", "H4_KL_OC", "H4_BREAKOUT_BEARISH", "OBSERVATION_ONLY", "S08_12"],
     sessionBucket: "S08_12",
+    shadowClassification: "HTF_CONFLICT",
   };
 }
 
 /** Minimal D1 stub: records statements and rejects the diagnostics columns
  *  when `withTagColumns` is false (pre-migration production schema). */
-function fakeD1(withTagColumns: boolean, opts: { failOnce?: boolean } = {}) {
+/** `withShadowClassColumn` defaults to `withTagColumns` so existing call sites
+ *  keep expressing "both migrations applied" / "neither applied". Pass it
+ *  explicitly to model a deploy that has applied one but not the other. */
+function fakeD1(withTagColumns: boolean, opts: { failOnce?: boolean; withShadowClassColumn?: boolean } = {}) {
+  const withShadowClass = opts.withShadowClassColumn ?? withTagColumns;
   const statements: { sql: string; values: unknown[] }[] = [];
   let tagWriteAttempts = 0;
   const handle = (sql: string, values: unknown[] = []) => {
     const touchesTags = /h4_confluence_(grade|tags)|session_bucket/.test(sql);
+    const touchesShadowClass = /shadow_classification/.test(sql);
     if (touchesTags && !withTagColumns) {
+      tagWriteAttempts++;
+      return { ok: false };
+    }
+    if (touchesShadowClass && !withShadowClass) {
       tagWriteAttempts++;
       return { ok: false };
     }
@@ -134,8 +144,11 @@ describe("diagnostics-only tag persistence", () => {
 
     const alertInsert = d1.statements.find((s) => s.sql.includes("INSERT OR IGNORE INTO slk_alerts"));
     expect(alertInsert?.sql).toContain("h4_confluence_grade, h4_confluence_tags, session_bucket");
-    expect(alertInsert?.values.slice(-3)).toEqual([
+    // Migration 0009 appends the classification after the 0008 tag columns.
+    expect(alertInsert?.sql).toContain("shadow_classification");
+    expect(alertInsert?.values.slice(-4)).toEqual([
       "H4_PLUG_AND_PLAY", JSON.stringify(["H4_PLUG_AND_PLAY", "H4_KL_OC", "H4_BREAKOUT_BEARISH", "OBSERVATION_ONLY", "S08_12"]), "S08_12",
+      "HTF_CONFLICT",
     ]);
     const tradeInsert = d1.statements.find((s) => s.sql.includes("INSERT OR IGNORE INTO slk_shadow_trades"));
     expect(tradeInsert?.sql).toContain("h4_confluence_grade, h4_confluence_tags, session_bucket");
@@ -155,7 +168,28 @@ describe("diagnostics-only tag persistence", () => {
     expect(d1.attempts()).toBeGreaterThan(0);
     const alertInsert = d1.statements.find((s) => s.sql.includes("INSERT OR IGNORE INTO slk_alerts"));
     expect(alertInsert?.sql).not.toContain("h4_confluence_grade");
+    expect(alertInsert?.sql).not.toContain("shadow_classification");
     expect(alertInsert?.values).toHaveLength(38); // legacy column count
+  });
+
+  // A deploy that has applied 0009 but not 0008 (or vice versa) must still
+  // write the row with whichever columns exist.
+  it("mixes the two additive migrations independently", async () => {
+    const with009Only = fakeD1(false, { withShadowClassColumn: true });
+    expect(await new D1Store(with009Only.db).insertAlert(taggedAlert(), "twelvedata")).toBe(true);
+    const insert = with009Only.statements.find((s) => s.sql.includes("INSERT OR IGNORE INTO slk_alerts"));
+    expect(insert?.sql).toContain("shadow_classification");
+    expect(insert?.sql).not.toContain("h4_confluence_grade");
+    expect(insert?.values).toContain("HTF_CONFLICT");
+    expect(insert?.values).toHaveLength(39); // 38 legacy + shadow_classification
+
+    const with008Only = fakeD1(true, { withShadowClassColumn: false });
+    expect(await new D1Store(with008Only.db).insertAlert(taggedAlert(), "twelvedata")).toBe(true);
+    const insert8 = with008Only.statements.find((s) => s.sql.includes("INSERT OR IGNORE INTO slk_alerts"));
+    expect(insert8?.sql).toContain("h4_confluence_grade");
+    expect(insert8?.sql).not.toContain("shadow_classification");
+    expect(insert8?.values).not.toContain("HTF_CONFLICT"); // tags survive a missing 0009
+    expect(insert8?.values).toHaveLength(41); // 38 legacy + 3 tag columns
   });
 
   it("keeps the memory store row shape explicit for untagged and tagged rows", async () => {
