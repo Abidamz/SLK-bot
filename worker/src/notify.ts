@@ -619,7 +619,11 @@ export function formatAlert(a: Alert): string {
   lines.push(
     `Story       : ${a.environment} · ${a.phase} · ${a.htfAlignment}`,
     `Key level   : ${kl}`,
-    `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close)`,
+    // The entry is the retest candle's CLOSE (spec Layer 2), so it is already a
+    // historical price by the time this alert is delivered — it cannot be a
+    // market entry. Say so explicitly: subscribers were previously left to infer
+    // the execution mode, and market-filling changes the trade's R.
+    `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close · ${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"})`,
     `Stop        : ${fmtPrice(a.pair, a.stopLoss)} (${fmtPips(a.pair, a.entry - a.stopLoss)} · beyond sweep extreme)`,
     `Target 1    : ${fmtPrice(a.pair, a.tpInternal)} internal liquidity (${fmtPips(a.pair, a.tpInternal - a.entry)}${a.rrInternal ? ` · ${a.rrInternal}R` : ""})`,
   );
@@ -627,6 +631,14 @@ export function formatAlert(a: Alert): string {
     lines.push(
       `Target 2    : ${fmtPrice(a.pair, a.tpExternal)} nearest external liquidity (targets beyond are anticipatory)`,
     );
+  // Execution mode. A SHORT fills on a bounce back up to entry; a LONG on a
+  // pullback down to it. If price runs away the order never fills and there is
+  // simply no trade — which is a legitimate outcome, not a missed alert.
+  lines.push(
+    a.direction === "LONG"
+      ? `👉 EXECUTION  : Pending buy limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price pulls back to that level.`
+      : `👉 EXECUTION  : Pending sell limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price bounces back to that level.`,
+  );
   const risk = Math.abs(a.entry - a.stopLoss);
   const bePrice = a.direction === "LONG" ? a.entry + risk * 1.5 : a.entry - risk * 1.5;
   lines.push(
