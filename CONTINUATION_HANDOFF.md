@@ -86,11 +86,16 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 - `slk_alerts` holds 28 rows, but `/stats`, the journal, recaps and Monte Carlo show only 8. The 20 missing rows are `alert_status = 'SUPPRESSED'` and are deliberately excluded by the `includeSuppressed` filter in `store.ts`. Fetch `/alerts?includeSuppressed=true` with the owner key to see them.
 - **They are the better half of the book.** Delivered PAPER: 8 rows, 5 TP / 3 SL, **+11.515R**. Suppressed: 20 rows, **+21.264R**. Combined: 28 rows, **+32.779R** over 2026-08-25 → 2026-09-30.
-- **Suppression reasons**, from `deliver()` in `index.ts` and `engine.ts` (~739):
-  1. `cooldown (240m)` — same pair and direction inside `cooldownMinutes` (default **240**).
-  2. `HTF conflict: …` — counter-trend entry; gated to synthetics by `FILTER_HTF_CONFLICT_DERIV_ONLY`.
-  3. `first scan boot gate — record-only`, and `paper mode, notifications disabled`.
-  - `sessionsAllowlist` is empty and no `SESSION` var is set, so the session gate is inactive. **The 4-hour cooldown is therefore the dominant cause on institutional pairs.**
+- **Suppression reasons**, from `deliver()` in `index.ts` (~994–1036) and `engine.ts` (~739). Five exist; **only two can actually fire on the current watchlist** (verified 2026-10-08 by reading each gate, not inferred):
+  1. `cooldown (240m)` — **live.** Same pair and direction inside `cooldownMinutes` (default **240**).
+  2. `first scan boot gate — record-only` — **live, but one-shot.** `deliverAllowed()` returns `!isFirstScan || opts.force`, and `isFirstScan` is per **pair+timeframe** (`last_scan:${pair}:${tf}` unset). It can only suppress each pair+TF's very first scan, so it cannot explain 20 rows spread across 5 weeks.
+  3. `HTF conflict: …` — **cannot fire on the stored book.** `FILTER_HTF_CONFLICT_DERIV_ONLY=true` restricts it to `isDerivPair()`, and `DERIV_SYNTHETIC_PAIRS` (`config.ts` ~264) is *only* volatility indices (V10–V100, `R_*`, `1HZ*`). The 28 stored rows are XAUUSD / GER40 / JAPAN225 / US30 / USDZAR / AUDJPY / GBPUSD / EURUSD — **not one is a Deriv synthetic.** The gate looks configured-on but is inert on institutional pairs.
+  4. `paper mode, notifications disabled` — **cannot fire.** `PAPER_NOTIFY: "true"` is set in `wrangler.jsonc`.
+  5. `outside session allowlist` — **cannot fire.** Requires `cfg.sessionsAllowlist.length`, which is `[]`.
+- **The cooldown is therefore the dominant cause on institutional pairs — now proven, not assumed.** With reasons 3–5 unreachable and reason 2 one-shot per pair+TF, the cooldown is the only gate that can explain the bulk of the 20 suppressed rows. (This corrects the earlier version of this line, which reached the same conclusion by elimination without checking `isDerivPair`'s actual membership or `PAPER_NOTIFY`.)
+- **The cooldown is timeframe-blind — this is the real defect.** `lastAlertTime(pair, direction, excludeSetupId)` (`store.ts` ~608 D1, ~1449 MemStore) filters on `canonical_symbol` and `direction` **only**; there is no `entry_timeframe` term in either implementation. With `ENTRY_TFS = "15m,30m,1h"`, three independent timeframes on the same pair compete for a single 4-hour window: **a delivered 30m XAUUSD SHORT blocks a later 1h XAUUSD SHORT**, even though they are separate setups with separate theses. The gate is roughly 3× more restrictive than "per-pair+direction" suggests.
+- **`suppress_reason` is now exposed on `/alerts`** (commit `106d2c3`) — it was stored in D1 and aggregated by the scan-audit rollup, but the endpoint's row mapping omitted it. Read-only, and no gate consults it. This lets the reasons be counted directly instead of derived: `/alerts?includeSuppressed=true&limit=60&key=…` and group on `suppressReason`.
+- **Still to do:** the per-row split of the 20 suppressed rows between `cooldown (240m)` and `first scan boot gate` has **not** been measured — outbound access to `*.workers.dev` was down when this was written, so the instrumented endpoint could not be read. The taxonomy above is proven from source; the *counts* are not. Expect the cooldown to take the large majority.
 - **Why it matters:** the suppressed cluster is dominated by repeat same-direction setups during a strong move — e.g. XAUUSD SHORT on 2026-09-23/24 produced four setups, all ~3R winners, three of them suppressed by the cooldown. The cooldown is suppressing precisely the conditions in which the model performs best.
 - **Not changed.** This is a live behaviour change and the owner's call, recorded here so the next session starts from the evidence rather than rediscovering it.
 
@@ -100,6 +105,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
   delivered **2.30R/week** · suppressed **4.25R/week** · combined **6.56R/week**.
 - A 10R/week target therefore needs roughly **8.5 setups/week at the same average**, against **5.6 observed** — about a **1.5× shortfall**.
 - Biggest single lever: the 240-minute cooldown, worth ~**+4.25R/week** if those setups are delivered.
+- **But un-suppressing alone cannot reach 10R — treat 6.56R/week as a hard ceiling.** Suppression happens at *delivery*, not at *detection*, so the 28 rows are every setup the engine found. Removing suppression entirely converts 2.30R/wk delivered into 6.56R/wk combined — a 2.85× improvement and by far the largest available lever, but still ~34% short of 10R. Hitting 10R needs the cooldown fix **and** more signal: ~8.5 setups/week against 5.6 observed, i.e. wider coverage or a higher average R. Do not present a cooldown change as sufficient on its own.
 - Caveats: 5 weeks and 28 setups is a small sample, and two delivered trades produced 92% of the delivered R. The suppressed set is larger and far less concentrated, so it is the more reliable of the two samples for planning.
 
 ### Cloudflare plan: Workers Paid, not Free
