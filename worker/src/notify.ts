@@ -612,7 +612,14 @@ export function formatAlert(a: Alert): string {
       ? "Standing ✅"
       : "Taken";
     lines.push(`Weekly Cont.: ${sweepSide} · ${oppSide} ${standingStr}`);
-    const dBreakout = db.daily.bodyToBodyBreakout === "bullish"
+    // Daily context needs 10 closed bars to be meaningful, but bodyToBodyBreakout
+    // only needs 2. Without this branch the line reads a confident "Bullish
+    // Breakout" while classifyShadowSetup() has already returned
+    // OBSERVATION_ONLY for want of history — the alert looks confirming when the
+    // model is actually saying it could not assess the context. Say so instead.
+    const dBreakout = db.daily.incomplete
+      ? "Insufficient history — context not assessed"
+      : db.daily.bodyToBodyBreakout === "bullish"
       ? "Bullish Breakout"
       : db.daily.bodyToBodyBreakout === "bearish"
       ? "Bearish Breakout"
