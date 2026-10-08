@@ -59,6 +59,13 @@ export interface StrategyConfig {
    *  Set COOLDOWN_SCOPE=pair_direction to restore the old behaviour. Note this
    *  is a config flag, not a hot switch — changing it takes a deploy. */
   cooldownScope?: "pair_direction" | "pair_direction_tf";
+  /** Suppress a second alert on the *same key level* that another timeframe
+   *  has already published. Two timeframes confirming the same origin level
+   *  are one trade, not two — publishing both quietly doubles a subscriber's
+   *  risk on a single thesis. The first timeframe to confirm wins, since that
+   *  is the better entry and the faster notification.
+   *  Set DEDUP_SAME_LEVEL=false to disable (a deploy, not a hot switch). */
+  dedupSameLevel?: boolean;
   sessionsAllowlist: [string, string, string][]; // [name, "HH:MM", "HH:MM"] UTC
   mapTfLabel: string;
   trailingBeEnabled?: boolean;
@@ -151,6 +158,8 @@ interface EnvVars {
   TRAILING_BE_TRIGGER_R?: string;
   /** "pair_direction_tf" (default) | "pair_direction" (legacy cooldown keying). */
   COOLDOWN_SCOPE?: string;
+  /** "false" disables the same-level cross-timeframe dedupe (default: on). */
+  DEDUP_SAME_LEVEL?: string;
   PAIR_BATCH_SIZE?: string;
   SYMBOL_MAP?: string; // JSON object: canonical -> provider symbol
   PROVIDER_MAP?: string; // JSON object: canonical -> supported provider name
@@ -244,6 +253,10 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   if (cooldownScopeRaw === "pair_direction" || cooldownScopeRaw === "pair_direction_tf") {
     strategy.cooldownScope = cooldownScopeRaw;
   }
+
+  // Same-level cross-timeframe dedupe. On by default; the double JAPAN225
+  // entry (15m then 1h on one origin level) is what prompted it.
+  strategy.dedupSameLevel = (env.DEDUP_SAME_LEVEL ?? "").trim().toLowerCase() !== "false";
 
   return {
     pairs,

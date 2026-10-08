@@ -79,6 +79,14 @@ export interface Store {
    *  Pass `timeframe` to scope the lookback to a single entry timeframe; omit
    *  it for the legacy pair+direction-only behaviour. */
   lastAlertTime(pair: string, direction: string, excludeSetupId?: string, timeframe?: string): Promise<number | null>;
+  /** Newest delivered alert on the *same key level* (same pair, direction,
+   *  level kind and origin time) but a DIFFERENT entry timeframe — i.e. the
+   *  same trade detected twice. Returns its candle close time, or null.
+   *  Used by the same-level dedupe guard; see DEDUP_SAME_LEVEL. */
+  lastAlertTimeSameLevel(
+    pair: string, direction: string, keyLevelType: string | undefined,
+    originTimeMs: number | undefined | null, excludeSetupId: string, excludeTf: string,
+  ): Promise<number | null>;
   recordOutcome(setupId: string, oc: Outcome): Promise<void>;
   getKv(key: string): Promise<string | null>;
   setKv(key: string, value: string): Promise<void>;
@@ -662,6 +670,32 @@ export class D1Store implements Store {
     sql += " ORDER BY candle_close_time DESC LIMIT 1";
     const row = await this.db.prepare(sql).bind(...args).first();
     return row ? Date.parse(row.candle_close_time as string) : null;
+  }
+
+  async lastAlertTimeSameLevel(
+    pair: string, direction: string, keyLevelType: string | undefined,
+    originTimeMs: number | undefined | null, excludeSetupId: string, excludeTf: string,
+  ): Promise<number | null> {
+    if (!keyLevelType || originTimeMs == null || !Number.isFinite(originTimeMs)) return null;
+    const targetIso = new Date(originTimeMs).toISOString();
+    // Deliberately NOT scoped to entry_timeframe: the whole point is to look
+    // across timeframes. Same-level rows on this timeframe are already blocked
+    // by the identity guard at insert, so anything found here is cross-timeframe.
+    const res = await this.db
+      .prepare(`SELECT setup_id, entry_timeframe, candle_close_time FROM slk_alerts
+                WHERE canonical_symbol=? AND direction=? AND key_level_type=?
+                  AND entry_timeframe != ?
+                  AND setup_id != ?
+                  AND alert_status IN ('PAPER','SENT')
+                ORDER BY candle_close_time DESC LIMIT 50`)
+      .bind(pair, direction, keyLevelType, excludeTf, excludeSetupId)
+      .all();
+    for (const row of res.results) {
+      if (originTimeFromSetupId(String(row.setup_id)) === targetIso) {
+        return Date.parse(row.candle_close_time as string);
+      }
+    }
+    return null;
   }
 
   async recordOutcome(setupId: string, oc: Outcome): Promise<void> {
@@ -1503,6 +1537,23 @@ export class MemStore implements Store {
         && (r.alert_status === "PAPER" || r.alert_status === "SENT")
         && r.setup_id !== excludeSetupId
         && (!timeframe || r.entry_timeframe === timeframe))
+      .map((r) => Date.parse(r.candle_close_time as string));
+    return rows.length ? Math.max(...rows) : null;
+  }
+
+  async lastAlertTimeSameLevel(
+    pair: string, direction: string, keyLevelType: string | undefined,
+    originTimeMs: number | undefined | null, excludeSetupId: string, excludeTf: string,
+  ): Promise<number | null> {
+    if (!keyLevelType || originTimeMs == null || !Number.isFinite(originTimeMs)) return null;
+    const targetIso = new Date(originTimeMs).toISOString();
+    const rows = [...this.alerts.values()]
+      .filter((r) => r.canonical_symbol === pair && r.direction === direction
+        && r.key_level_type === keyLevelType
+        && r.entry_timeframe !== excludeTf
+        && r.setup_id !== excludeSetupId
+        && (r.alert_status === "PAPER" || r.alert_status === "SENT")
+        && originTimeFromSetupId(String(r.setup_id)) === targetIso)
       .map((r) => Date.parse(r.candle_close_time as string));
     return rows.length ? Math.max(...rows) : null;
   }

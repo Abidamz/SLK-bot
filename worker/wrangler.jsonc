@@ -72,6 +72,11 @@
     // direction for the full window. Config flag: switching takes a deploy.
     // (FILTER_HTF_CONFLICT_DERIV_ONLY was duplicated here; one copy removed.)
     "COOLDOWN_SCOPE": "pair_direction_tf",
+    // Suppress a second alert on the same origin level that another timeframe
+    // has already published. Two timeframes confirming one level are a single
+    // trade; publishing both quietly doubles a subscriber's risk on one thesis.
+    // The first timeframe to confirm wins. Set "false" to disable.
+    "DEDUP_SAME_LEVEL": "true",
     "PROVIDER_MAP": "{\"EURUSD\":\"oanda\",\"GBPUSD\":\"oanda\",\"USDJPY\":\"oanda\",\"AUDJPY\":\"oanda\",\"GBPJPY\":\"oanda\",\"USDCAD\":\"oanda\",\"NZDUSD\":\"oanda\",\"EURJPY\":\"oanda\",\"XAUUSD\":\"oanda\",\"US30\":\"oanda\",\"GER40\":\"oanda\",\"JAPAN225\":\"oanda\",\"NAS100\":\"oanda\"}"
   }
   // secrets (set via `npx wrangler secret put ...`):

@@ -129,6 +129,19 @@ async function main(): Promise<void> {
   }
   render("BY SHADOW CLASSIFICATION (migration 0009)", byClass);
 
+  // By entry timeframe. The same-level dedupe suppresses the *later* timeframe
+  // on a shared origin level, on the reasoning that the first to confirm has the
+  // better entry. Whether that is actually right is an empirical question this
+  // table is here to answer: if 1h materially outperforms 15m, the rule should
+  // flip to prefer the higher timeframe instead.
+  const byTf = new Map<string, Bucket>();
+  for (const r of rows) {
+    const key = r.timeframe ?? "(unknown)";
+    if (!byTf.has(key)) byTf.set(key, empty());
+    accumulate(byTf.get(key)!, r);
+  }
+  render("BY ENTRY TIMEFRAME (validates the same-level dedupe rule)", byTf);
+
   const recorded = rows.filter((r) => r.shadowClassification).length;
   console.log(
     `\n${recorded}/${rows.length} rows carry a classification. ` +

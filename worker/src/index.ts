@@ -1014,6 +1014,33 @@ export async function deliver(
         : `cooldown (${cfg.strategy.cooldownMinutes}m)`;
       await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
     }
+
+    // Same-level cross-timeframe dedupe. The cooldown above is now scoped per
+    // timeframe, so a 15m signal no longer silences a later 1h signal on the
+    // same pair — but when both fire off the *same origin level* they are one
+    // trade, not two. Publishing both quietly doubles a subscriber's risk on a
+    // single thesis. The first timeframe to confirm wins: it has the better
+    // entry and notifies sooner. Disable with DEDUP_SAME_LEVEL=false.
+    if (alert.alertStatus !== "SUPPRESSED" && cfg.strategy.dedupSameLevel !== false) {
+      const dupe = await store.lastAlertTimeSameLevel(
+        alert.pair, alert.direction, alert.keyLevelType, alert.originTime,
+        alert.setupId, alert.entryTf,
+      );
+      if (dupe !== null && alert.candleCloseTime - dupe < cfg.strategy.cooldownMinutes * 60_000) {
+        alert.alertStatus = "SUPPRESSED";
+        alert.suppressReason =
+          `same-level duplicate (${alert.entryTf} levels already alerted within ${cfg.strategy.cooldownMinutes}m)`;
+        await store.updateAlertStatus(alert.setupId, "SUPPRESSED", alert.suppressReason);
+        console.info(JSON.stringify({
+          level: "info",
+          msg: "alert suppressed: same-level duplicate",
+          pair: alert.pair,
+          setupId: alert.setupId,
+          entryTf: alert.entryTf,
+          reason: alert.suppressReason,
+        }));
+      }
+    }
   }
 
   // HTF Conflict Hard Gate: filter counter-trend setups opposing higher
