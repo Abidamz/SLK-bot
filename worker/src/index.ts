@@ -2070,6 +2070,11 @@ export default {
         phase: r.phase, htfAlignment: r.htf_alignment, keyLevel: r.key_level_type,
         originLevel: r.origin_key_level, status: r.status,
         alertStatus: r.alert_status, candleCloseTime: r.candle_close_time,
+        // Why this alert was held back, when it was. The value is already
+        // stored and already surfaced by the scan-audit rollup; exposing it
+        // per row lets the suppression rules be audited against outcomes
+        // instead of inferred. Read-only and never consulted by any gate.
+        suppressReason: (r.suppress_reason as string) ?? null,
         exitTime: (r.exit_time as string) ?? null,
         exitPrice: (r.exit_price as number) ?? null,
         createdUtc: (r.created_utc as string) ?? null,
