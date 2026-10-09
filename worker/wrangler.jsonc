@@ -75,11 +75,16 @@
     // Suppress a second alert on the same origin level that another timeframe
     // has already published. Two timeframes confirming one level are a single
     // trade; publishing both quietly doubles a subscriber's risk on one thesis.
-    // Set "true" to enable (first timeframe to confirm wins).
-    // Disabled 2026-10-08 by owner decision: both timeframes are allowed to
-    // run. The guard stays in the tree, tested, so this is reversible in one
-    // deploy rather than a re-implementation.
-    "DEDUP_SAME_LEVEL": "false",
+    // The first timeframe to confirm wins: better entry, faster notification.
+    //
+    // Re-enabled 2026-10-09. It was switched off the previous day so both
+    // timeframes could run. The JAPAN225 setup that decided it is now closed:
+    // both the 15m and the 1h confirmed the same origin level
+    // (68918.000000:2026-10-02T04:00) and both hit SL, so publishing both
+    // cost -2R where either one alone would have cost -1R. One trade is not
+    // proof, but it is the first real evidence and it points this way.
+    // Set "false" to disable.
+    "DEDUP_SAME_LEVEL": "true",
     "PROVIDER_MAP": "{\"EURUSD\":\"oanda\",\"GBPUSD\":\"oanda\",\"USDJPY\":\"oanda\",\"AUDJPY\":\"oanda\",\"GBPJPY\":\"oanda\",\"USDCAD\":\"oanda\",\"NZDUSD\":\"oanda\",\"EURJPY\":\"oanda\",\"XAUUSD\":\"oanda\",\"US30\":\"oanda\",\"GER40\":\"oanda\",\"JAPAN225\":\"oanda\",\"NAS100\":\"oanda\"}"
   }
   // secrets (set via `npx wrangler secret put ...`):
