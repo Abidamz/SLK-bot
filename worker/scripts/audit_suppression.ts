@@ -80,6 +80,7 @@ function render(title: string, buckets: Map<string, Bucket>): void {
     "res".padStart(5) +
     "open".padStart(6) +
     "win".padStart(5) +
+    "BE".padStart(4) +
     "loss".padStart(6) +
     "netR".padStart(10) +
     "avgR".padStart(8) +
@@ -94,6 +95,7 @@ function render(title: string, buckets: Map<string, Bucket>): void {
       String(b.resolved).padStart(5) +
       String(b.open).padStart(6) +
       String(b.wins).padStart(5) +
+      String(b.scratched).padStart(4) +
       String(b.losses).padStart(6) +
       b.netR.toFixed(2).padStart(10) +
       (Number.isNaN(avgR) ? "-" : avgR.toFixed(2)).padStart(8) +
