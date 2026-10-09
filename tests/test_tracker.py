@@ -4,9 +4,9 @@ Synthetic fixtures only — logic verification, not performance evidence.
 """
 from datetime import datetime, timedelta, timezone
 
-from slk_bot.models import Candle, Direction, SignalStatus
-from slk_bot.slk.types import Alert, Event
-from slk_bot.tracking import Tracker, evaluate_signal, format_stats
+from tayo_bot.models import Candle, Direction, SignalStatus
+from tayo_bot.tayo.types import Alert, Event
+from tayo_bot.tracking import Tracker, evaluate_signal, format_stats
 
 BASE = datetime(2024, 3, 4, tzinfo=timezone.utc)
 

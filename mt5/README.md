@@ -1,4 +1,4 @@
-# SLK MT5 demo execution scaffold
+# TAYO MT5 demo execution scaffold
 
 This directory is intentionally **demo-only**. The Worker endpoint is
 `GET /signals/confirmed`; it returns only open, confirmed paper alerts with a

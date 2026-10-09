@@ -1,8 +1,8 @@
-# SLK Dashboard Summary
+# TAYO Dashboard Summary
 
 ## Purpose
 
-Create a lightweight, read-only dashboard for the SLK alert Worker. The dashboard should make the signal lifecycle, evidence, paper outcomes, and data health easy to inspect without implying that alerts are executed trades.
+Create a lightweight, read-only dashboard for the TAYO alert Worker. The dashboard should make the signal lifecycle, evidence, paper outcomes, and data health easy to inspect without implying that alerts are executed trades.
 
 The dashboard improves observability and trust; it does **not** imply higher profitability or replace the replay and paper-validation process.
 

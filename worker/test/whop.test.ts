@@ -81,7 +81,7 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       };
       const url = generateQuickChartUrl(fakeAlert);
       expect(url).toContain("https://quickchart.io/chart");
-      expect(url).toContain("SLK%20MODEL");
+      expect(url).toContain("TAYO%20MODEL");
       expect(url).toContain("EURUSD");
     });
 
@@ -141,7 +141,7 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
           CHART_SNAPSHOTS: "true",
           fetchFn: fakeFetch,
         },
-        "🚨 SLK CONFIRMED ENTRY — EURUSD 30m LONG",
+        "🚨 TAYO CONFIRMED ENTRY — EURUSD 30m LONG",
         {
           photoUrl: "https://quickchart.io/chart?c=test",
         },
@@ -150,7 +150,7 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       const photoCall = calls.find((c) => c.url.includes("/sendPhoto"));
       expect(photoCall).toBeDefined();
       expect(photoCall.body.photo).toBe("https://quickchart.io/chart?c=test");
-      expect(photoCall.body.caption).toContain("SLK CONFIRMED ENTRY");
+      expect(photoCall.body.caption).toContain("TAYO CONFIRMED ENTRY");
     });
 
     // Telegram caps photo captions at 1024 chars. Alerts routinely exceed that,
@@ -238,7 +238,7 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
       const link = await createTelegramInviteLink(
         { TELEGRAM_BOT_TOKEN: "fake_bot_token", fetchFn: fakeFetch },
         "-1001234567890",
-        "SLK VIP Test",
+        "TAYO VIP Test",
         1,
         48,
       );

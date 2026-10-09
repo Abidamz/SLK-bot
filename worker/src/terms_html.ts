@@ -3,7 +3,7 @@ export const TERMS_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SLK Radar · Subscriber Terms & Conditions & Risk Disclaimer</title>
+  <title>TAYO Radar · Subscriber Terms & Conditions & Risk Disclaimer</title>
   <style>
     :root {
       --bg: #090c12;
@@ -146,14 +146,14 @@ export const TERMS_HTML = `<!doctype html>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">SLK</span>
+      <span class="brand-mark">TAYO</span>
       <div>
-        <strong>SLK Radar</strong>
+        <strong>TAYO Radar</strong>
         <small>Quantitative Research</small>
       </div>
     </div>
     <div class="header-actions">
-      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+      <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access</span>
       </a>
@@ -164,7 +164,7 @@ export const TERMS_HTML = `<!doctype html>
     <article class="legal-card">
       <p class="eyebrow">LEGAL AGREEMENT & RISK WARNING</p>
       <h1>Subscriber Terms & Conditions</h1>
-      <p style="color: var(--muted); font-size: 13px;">Last Updated: September 18, 2026 · Effective for all SLK Radar and Whop VIP Subscribers</p>
+      <p style="color: var(--muted); font-size: 13px;">Last Updated: September 18, 2026 · Effective for all TAYO Radar and Whop VIP Subscribers</p>
 
       <div class="highlight-box">
         <strong>HIGH-RISK INVESTMENT WARNING & DISCLAIMER</strong>
@@ -172,17 +172,17 @@ export const TERMS_HTML = `<!doctype html>
       </div>
 
       <h2>1. Nature of the Service & No Financial Advice</h2>
-      <p>SLK Radar is an automated algorithmic research system that monitors institutional market structure, liquidity sweeps, order blocks, and key-level retests across select currency pairs, metals, and indices.</p>
+      <p>TAYO Radar is an automated algorithmic research system that monitors institutional market structure, liquidity sweeps, order blocks, and key-level retests across select currency pairs, metals, and indices.</p>
       <ul>
         <li><strong>Informational & Educational Use Only:</strong> All alerts, directional bias cards, watch notifications, technical levels, and journal entries are provided strictly for educational and informational purposes.</li>
-        <li><strong>Not an Investment Advisor:</strong> SLK Radar, its authors, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.</li>
-        <li><strong>No Personal Recommendations:</strong> Content does not constitute financial, investment, legal, or tax advice. No communication from SLK Radar shall be construed as a solicitation, endorsement, or recommendation to buy or sell any financial instrument.</li>
+        <li><strong>Not an Investment Advisor:</strong> TAYO Radar, its authors, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.</li>
+        <li><strong>No Personal Recommendations:</strong> Content does not constitute financial, investment, legal, or tax advice. No communication from TAYO Radar shall be construed as a solicitation, endorsement, or recommendation to buy or sell any financial instrument.</li>
       </ul>
 
       <h2>2. Subscriber Responsibility & Execution Discretion</h2>
       <p>All trading decisions are executed entirely at your own independent discretion and risk.</p>
       <ul>
-        <li><strong>Self-Directed Trading:</strong> SLK Radar does not execute orders on your behalf, does not hold custody of client funds, and does not have access to your personal brokerage account.</li>
+        <li><strong>Self-Directed Trading:</strong> TAYO Radar does not execute orders on your behalf, does not hold custody of client funds, and does not have access to your personal brokerage account.</li>
         <li><strong>Execution Variables:</strong> Live market execution differs from paper research. Broker spreads, slippage, commission fees, financing charges, swap rates, and latency vary between brokers and may significantly impact trading outcomes.</li>
         <li><strong>Risk Management:</strong> You are solely responsible for setting your own lot size, stop loss, and capital allocation. Never risk more than a conservative percentage of your total trading equity on any individual setup.</li>
       </ul>
@@ -210,7 +210,7 @@ export const TERMS_HTML = `<!doctype html>
       </ul>
 
       <h2>6. Intellectual Property & Anti-Piracy Policy</h2>
-      <p>All materials, algorithms, technical specifications, bias grades, trade formats, and branding are the exclusive intellectual property of SLK Radar.</p>
+      <p>All materials, algorithms, technical specifications, bias grades, trade formats, and branding are the exclusive intellectual property of TAYO Radar.</p>
       <ul>
         <li><strong>Strict Anti-Forwarding:</strong> VIP subscribers are granted a single-user, non-transferable, revocable license for personal use.</li>
         <li><strong>Prohibited Actions:</strong> You may not copy, forward, rebroadcast, screenshot, resell, distribute, or share alerts, signals, or educational materials to any third party, group, chat, or public platform.</li>
@@ -218,17 +218,17 @@ export const TERMS_HTML = `<!doctype html>
       </ul>
 
       <h2>7. Platform Availability & Third-Party Dependencies</h2>
-      <p>Alert delivery relies on third-party cloud infrastructure (Cloudflare, Telegram Bot API, Discord webhooks, and institutional data feeds). While we maintain a 24/7 high-availability architecture, SLK Radar does not warrant that notifications will be uninterrupted, error-free, or instantaneous during periods of feed maintenance, market holidays, or global telecommunication outages.</p>
+      <p>Alert delivery relies on third-party cloud infrastructure (Cloudflare, Telegram Bot API, Discord webhooks, and institutional data feeds). While we maintain a 24/7 high-availability architecture, TAYO Radar does not warrant that notifications will be uninterrupted, error-free, or instantaneous during periods of feed maintenance, market holidays, or global telecommunication outages.</p>
 
       <h2>8. Limitation of Liability</h2>
-      <p>To the fullest extent permitted by applicable law, in no event shall SLK Radar, its creators, operators, or affiliates be liable for any direct, indirect, incidental, punitive, or consequential damages, including but not limited to loss of capital, trading losses, or loss of profits arising out of or in connection with the use of this service.</p>
+      <p>To the fullest extent permitted by applicable law, in no event shall TAYO Radar, its creators, operators, or affiliates be liable for any direct, indirect, incidental, punitive, or consequential damages, including but not limited to loss of capital, trading losses, or loss of profits arising out of or in connection with the use of this service.</p>
 
       <h2>9. Agreement & Modifications</h2>
-      <p>By subscribing to SLK Radar VIP or accessing our channels, you confirm that you have read, understood, and agreed to be bound by these Terms and Conditions. We reserve the right to amend these terms at any time by updating this document.</p>
+      <p>By subscribing to TAYO Radar VIP or accessing our channels, you confirm that you have read, understood, and agreed to be bound by these Terms and Conditions. We reserve the right to amend these terms at any time by updating this document.</p>
 
       <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
         <span style="color: var(--muted); font-size: 12px;">Questions or inquiries? Contact support via Whop.</span>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+        <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
           <span>Manage VIP Subscription on Whop</span>
         </a>
       </div>
@@ -237,11 +237,11 @@ export const TERMS_HTML = `<!doctype html>
 
   <footer>
     <div class="footer-content" style="display:flex; justify-content:space-between; align-items:center; max-width:860px; margin:0 auto; padding:0 24px; font-size:12px; color:var(--muted);">
-      <span>SLK Radar · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
+      <span>TAYO Radar · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
       <div>
         <a href="/" style="color:var(--muted); margin-right: 18px; text-decoration:none;">Performance Journal</a>
-        <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #c084fc; margin-right: 18px; text-decoration:none; font-weight:600;">⚡ Free Synthetics (@SLK_Hub_synthetics_free)</a>
-        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; margin-right: 18px; text-decoration:none; font-weight:600;">Free Telegram</a>
+        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #c084fc; margin-right: 18px; text-decoration:none; font-weight:600;">⚡ Free Synthetics (@TAYO_Hub_synthetics_free)</a>
+        <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; margin-right: 18px; text-decoration:none; font-weight:600;">Free Telegram</a>
         <a href="/terms" style="color: var(--accent); font-weight: 600; text-decoration:none;">Terms & Conditions</a>
       </div>
     </div>

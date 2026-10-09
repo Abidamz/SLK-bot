@@ -1,4 +1,4 @@
-"""Typed records for the SLK model engine."""
+"""Typed records for the TAYO model engine."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -118,7 +118,7 @@ class Setup:
 
 @dataclass
 class Alert:
-    """A fired SLK confirmation-entry alert (persisted to the alerts table)."""
+    """A fired TAYO confirmation-entry alert (persisted to the alerts table)."""
 
     setup_id: str
     pair: str

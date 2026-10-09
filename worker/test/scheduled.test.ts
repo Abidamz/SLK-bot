@@ -64,7 +64,7 @@ describe("scheduled scan cycle", () => {
     expect(calls.telegram).toHaveLength(1);
     expect(calls.discord).toHaveLength(1);
     const msg = calls.telegram[0];
-    expect(msg).toContain("SLK 🧪 PAPER ALERT — EURUSD");
+    expect(msg).toContain("TAYO 🧪 PAPER ALERT — EURUSD");
     expect(msg).toContain("Direction   : SHORT");
     expect(msg).toContain("RETEST → CONFIRMED");
     expect(msg).toContain("Research signal only. No order was placed.");
@@ -525,7 +525,7 @@ describe("scheduled scan cycle", () => {
     // VIP Institutional receives the loud confirmed alert
     const vipAlert = rawBodies.find((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL" && b.url.includes("/sendMessage"));
     expect(vipAlert).toBeDefined();
-    expect(vipAlert?.body.text).toContain("SLK CONFIRMED ENTRY");
+    expect(vipAlert?.body.text).toContain("TAYO CONFIRMED ENTRY");
 
     // Free channel does NOT receive the confirmed alert (VIP exclusive)
     const freeAlert = rawBodies.find((b) => b.body.chat_id === "-100_FREE_RADAR" && b.url.includes("/sendMessage"));

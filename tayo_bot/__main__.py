@@ -1,10 +1,10 @@
 """CLI entry point.
 
-    python -m slk_bot run                 # daemon: watch and alert forever
-    python -m slk_bot scan-once           # one full scan pass, then exit
-    python -m slk_bot stats [--send]      # performance summary (optionally pushed)
-    python -m slk_bot events [--limit N]  # recent state-machine transitions
-    python -m slk_bot test-notify         # send a test message to all channels
+    python -m tayo_bot run                 # daemon: watch and alert forever
+    python -m tayo_bot scan-once           # one full scan pass, then exit
+    python -m tayo_bot stats [--send]      # performance summary (optionally pushed)
+    python -m tayo_bot events [--limit N]  # recent state-machine transitions
+    python -m tayo_bot test-notify         # send a test message to all channels
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 
-from .bot import SLKBot
+from .bot import TAYOBot
 from .config import load_config
 from .notify.manager import format_alert
 from .tracking import format_stats
@@ -20,8 +20,8 @@ from .tracking import format_stats
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="slk_bot",
-        description="SLK (Structure · Liquidity · Key levels) forex alert bot",
+        prog="tayo_bot",
+        description="TAYO (Structure · Liquidity · Key levels) forex alert bot",
     )
     p.add_argument("--config", default=None, help="path to config.yaml")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging")
@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
     )
     cfg = load_config(args.config)
-    bot = SLKBot(cfg)
+    bot = TAYOBot(cfg)
 
     if args.cmd == "run":
         try:
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             alert=not args.no_alert,
         )
         if not alerts:
-            print("No new SLK setups completed (check `events` / logs).")
+            print("No new TAYO setups completed (check `events` / logs).")
         else:
             print(f"\n{len(alerts)} new alert(s) recorded:\n")
             for a in alerts:
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "test-notify":
         bot.notifier.broadcast(
-            "✅ SLK bot test — notification channels are wired up correctly."
+            "✅ TAYO bot test — notification channels are wired up correctly."
         )
         print("test message sent (check Telegram / Discord).")
         return 0

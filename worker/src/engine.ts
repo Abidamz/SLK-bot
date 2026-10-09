@@ -1,5 +1,5 @@
 /** Layer 2 — XYZ execution engine (confirmation-entry mode). TS port of
- *  slk_bot/slk/engine.py. Replays the trailing `setupWindow` of entry-TF
+ *  tayo_bot/slk/engine.py. Replays the trailing `setupWindow` of entry-TF
  *  candles against point-in-time storyline snapshots:
  *
  *    MAP → TOUCH → SWEEP → SHIFT → RETEST → ALERT | INVALID | EXPIRED
@@ -278,7 +278,7 @@ export function scanEntry(args: ScanEntryArgs): {
     if (args.shadowOnly) return;
     countTransition(diagnostics, state);
     events.push({ setupId: s.setupId, pair, state, candleTime: c.t, reason, price });
-    console.info(JSON.stringify({ level: "info", msg: "slk.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
+    console.info(JSON.stringify({ level: "info", msg: "tayo.transition", pair, tf: entryTf, setupId: s.setupId, state, reason, price }));
   };
   const kill = (s: Setup, state: string, c: Candle, reason: string) => {
     emit(s, state, c, reason, c.c);

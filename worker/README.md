@@ -1,6 +1,6 @@
-# SLK Alert Worker (Cloudflare-native)
+# TAYO Alert Worker (Cloudflare-native)
 
-Cloudflare Worker port of the SLK price-action alert bot. It runs the full
+Cloudflare Worker port of the TAYO price-action alert bot. It runs the full
 ABC-storyline → XYZ-execution state machine on a 1-minute Cron Trigger,
 confirms signals on **closed candles only**, and delivers paper alerts to
 Telegram and Discord. State lives in D1. **Research tool — it never places
@@ -22,7 +22,7 @@ Configured feeds (Twelve Data/OANDA/Dukascopy/Deriv) ──► Cron */1 * * * * 
 
 - **Engine** (`src/features.ts`, `src/storyline.ts`, `src/engine.ts`,
   `src/outcomes.ts`): dependency-free port of the Python v2 engine
-  (`slk_bot/slk/`). Same state machine: `MAP → TOUCH → SWEEP → SHIFT →
+  (`tayo_bot/slk/`). Same state machine: `MAP → TOUCH → SWEEP → SHIFT →
   RETEST`, close-based invalidation, V-level flips, internal-then-external
   targets, per-pair ATR-derived tolerances (no universal pip constants).
 - **Providers** (`src/provider.ts`): Twelve Data REST is the general FX/metals
@@ -180,7 +180,7 @@ gate, provider-outage safe failure).
 
 Production instance — deployed 2026-09-05:
 
-- **Worker:** https://slk-alert-worker.abidogundamilola.workers.dev
+- **Worker:** https://tayo-alert-worker.abidogundamilola.workers.dev
 - **D1:** `slk-alert-db` (`48ad2f08-d27d-4491-ad6c-13ad741b9ae3`, WEUR)
 - **Cron:** `*/1 * * * *` (UTC) · **Channels:** Telegram → "Trade jounal" channel
   (Discord activates when `DISCORD_WEBHOOK_URL` is set via `wrangler secret put`)
@@ -189,22 +189,22 @@ Routine:
 
 ```bash
 # liveness (open)
-curl https://slk-alert-worker.abidogundamilola.workers.dev/health
+curl https://tayo-alert-worker.abidogundamilola.workers.dev/health
 
 # alert history / paper stats (Bearer ADMIN_KEY)
-curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/alerts
-curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/stats
+curl -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/alerts
+curl -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/stats
 
 # live logs and a manual channel test
 npx wrangler tail
-curl -X POST -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/test-notify
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/test-notify
 ```
 
 Changes:
 
 - **Rotate any credential:** `npx wrangler secret put <NAME>` (needs the env vars
   `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, or `wrangler login`).
-  Dashboard alternative: Workers & Pages → slk-alert-worker → Settings →
+  Dashboard alternative: Workers & Pages → tayo-alert-worker → Settings →
   Variables and Secrets.
 - **Pause scanning:** set `"crons": []` in `wrangler.jsonc` and
   `npx wrangler deploy`; re-add to resume.
@@ -232,7 +232,7 @@ Keep production `MODE=paper`, `WATCH_NOTIFY=false`, `BIAS_NOTIFY=false`,
 
 Every scan row now carries `slk_scan_log.diagnostics_json`; `/scan-now` returns
 that same object as `diagnostics`. Non-idle scans also emit structured
-`slk.scan.diagnostics` console logs. Do **not** force a production scan just to
+`tayo.scan.diagnostics` console logs. Do **not** force a production scan just to
 read diagnostics: `/scan-now` retains its existing notification behavior.
 For routine triage, use the dashboard's **PRIVATE · OWNER KEY REQUIRED**
 21-Day Scan & Delivery Audit. It shows UTC-day scan/alert counts, grouped

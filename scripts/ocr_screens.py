@@ -11,7 +11,7 @@ this script to turn them into text.
 
 It is a fallback, not a replacement for vision. Photographs and charts are
 poorly served by OCR; flat UI text, terminal output and chat messages (which is
-what SLK alerts are) work well.
+what TAYO alerts are) work well.
 
 What it does
 ------------

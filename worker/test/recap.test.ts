@@ -166,7 +166,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 SLK RADAR — DAILY PERFORMANCE RECAP",
+      "📊 TAYO RADAR — DAILY PERFORMANCE RECAP",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "🏛️ Institutional (Forex · Indices · Metals)",
       "📅 New York Close · 2026-09-30",
@@ -178,11 +178,11 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "",
       "🏆 ALL-TIME LEDGER",
       "+4.75R · 66.7% decided win rate (2 TP · 1 SL)",
-      "🔗 Verified on the public ledger: https://slk-radar.pages.dev",
+      "🔗 Verified on the public ledger: https://tayo-radar.pages.dev",
       "",
-      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/tayo-radar/tayo-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "SLK Model (Structure · Liquidity · Key Levels)",
+      "TAYO Model (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
     // branding guardrails
@@ -195,22 +195,22 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 SLK RADAR — DAILY PERFORMANCE RECAP",
+      "📊 TAYO RADAR — DAILY PERFORMANCE RECAP",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "🏛️ Institutional (Forex · Indices · Metals)",
       "📅 New York Close · 2026-09-30",
       "",
       "📈 TODAY'S RESULTS",
       "No setups closed — capital preserved.",
-      "We only act on the highest-conviction SLK confirmations.",
+      "We only act on the highest-conviction TAYO confirmations.",
       "",
       "🏆 ALL-TIME LEDGER",
       "+0.00R · N/A decided win rate (0 TP · 0 SL)",
-      "🔗 Verified on the public ledger: https://slk-radar.pages.dev",
+      "🔗 Verified on the public ledger: https://tayo-radar.pages.dev",
       "",
-      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/tayo-radar/tayo-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "SLK Model (Structure · Liquidity · Key Levels)",
+      "TAYO Model (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
   });
@@ -220,7 +220,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 SLK RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL",
+      "📊 TAYO RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "⚡ Continuous Synthetics (V75 · V100 · V50 · V25 · V10)",
       "📅 Week Ending Friday · 2026-09-30",
@@ -232,11 +232,11 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "",
       "🏆 ALL-TIME LEDGER",
       "+1.80R · 50.0% decided win rate (1 TP · 1 SL)",
-      "🔗 Verified on the public ledger: https://slk-radar.pages.dev?segment=synthetics",
+      "🔗 Verified on the public ledger: https://tayo-radar.pages.dev?segment=synthetics",
       "",
-      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+      "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/tayo-radar/tayo-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "SLK Model (Structure · Liquidity · Key Levels)",
+      "TAYO Model (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
   });
@@ -257,7 +257,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "0 sent — none met our 2.5R minimum.",
       "Top rejection: 2.5R target floor (5)",
       "Research only — paper-mode observations; not audited performance or financial advice.",
-      "SLK Model (Structure · Liquidity · Key Levels)",
+      "TAYO Model (Structure · Liquidity · Key Levels)",
     ].join("\n"));
   });
 

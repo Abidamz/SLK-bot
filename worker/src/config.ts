@@ -1,5 +1,5 @@
 /** Worker configuration: safe defaults + `vars` overrides.
- *  Strategic defaults mirror the Python engine (slk_bot/config.py) — all
+ *  Strategic defaults mirror the Python engine (tayo_bot/config.py) — all
  *  volatility thresholds are ATR-normalized per symbol/timeframe, never
  *  universal constants (per the research). */
 

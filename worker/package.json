@@ -1,8 +1,8 @@
 {
-  "name": "slk-alert-worker",
+  "name": "tayo-alert-worker",
   "version": "1.0.0",
   "private": true,
-  "description": "SLK (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
+  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
   "type": "module",
   "scripts": {
     "test": "vitest run",

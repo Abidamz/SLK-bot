@@ -2,7 +2,7 @@
 .env
 config.yaml
 
-# runtime data (signal DB) — repo root only, NOT slk_bot/data/
+# runtime data (signal DB) — repo root only, NOT tayo_bot/data/
 /data/
 *.db
 *.db-journal

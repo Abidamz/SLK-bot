@@ -1,24 +1,24 @@
-# SLK Radar — Institutional Marketing & Growth Playbook ($100/mo MRR Funnel)
+# TAYO Radar — Institutional Marketing & Growth Playbook ($100/mo MRR Funnel)
 
-> **Product:** SLK Radar VIP Trading Signals & Institutional Orderflow Engine  
+> **Product:** TAYO Radar VIP Trading Signals & Institutional Orderflow Engine  
 > **Target Subscription:** $100 / month (USD) via Whop  
 > **Core Assets:** 
-> - Public Performance Journal & Proof Ledger: `https://slk-radar.pages.dev`
-> - Official Terms & Legal Disclaimer: `https://slk-radar.pages.dev/terms`
+> - Public Performance Journal & Proof Ledger: `https://tayo-radar.pages.dev`
+> - Official Terms & Legal Disclaimer: `https://tayo-radar.pages.dev/terms`
 > - VIP Signal Telegram Delivery (Automated Whop Bot Integration)
 
 ---
 
 ## 1. Executive Summary & Value Proposition
 
-### What Makes SLK Radar Worth $100/Month?
+### What Makes TAYO Radar Worth $100/Month?
 Most retail signal channels fail because they are anonymous admins taking random impulsive trades with poor risk management (e.g., risking 50 pips to gain 10 pips). 
 
-**SLK Radar is an algorithmic, quantitative execution system:**
+**TAYO Radar is an algorithmic, quantitative execution system:**
 1. **Zero Guesswork / 100% Rule-Based:** Built on pure institutional orderflow mechanics (ICT/SMC): 
    `Higher-Timeframe Liquidity Sweep → Market Structure Shift (BOS) → FVG Imbalance Retest`.
 2. **Asymmetric Risk:Reward ($\ge$ 1:2.5R to 1:4R):** Every trade enforces a mathematically sound risk floor. Even with a 40–50% win rate, subscribers compound capital.
-3. **Radical Transparency (The Unfair Advantage):** Every single alert, stop loss, and outcome is logged publicly in real time on `slk-radar.pages.dev`. There is zero manual editing or hiding losses.
+3. **Radical Transparency (The Unfair Advantage):** Every single alert, stop loss, and outcome is logged publicly in real time on `tayo-radar.pages.dev`. There is zero manual editing or hiding losses.
 4. **Zero-Fatigue Alerts:** 
    - Background market bias & sweeps are delivered silently.
    - High-conviction entry alerts arrive **LOUD (`🚨 [ACTION REQUIRED]`)** and **auto-pinned** to the top of Telegram so members never miss an execution.
@@ -36,7 +36,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 ### Persona B: The Busy Professional Trader
 * **Profile:** Full-time job, unable to stare at TradingView for 8 hours during London or New York sessions.
 * **Pain Point:** Sees setups after they’ve already moved 150 points.
-* **Why They Buy:** SLK Radar monitors 10 high-volatility markets 24/7 in the cloud and pings their phone with exact entry, stop, and target levels only when execution is imminent.
+* **Why They Buy:** TAYO Radar monitors 10 high-volatility markets 24/7 in the cloud and pings their phone with exact entry, stop, and target levels only when execution is imminent.
 * **Pitch Angle:** *"You don't need to stare at charts all day. Let algorithmic cloud scanners monitor the liquidity sweeps and deliver verified entries directly to your pocket."*
 
 ---
@@ -63,7 +63,7 @@ Most retail signal channels fail because they are anonymous admins taking random
                                      ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ STAGE 2: MIDDLE-OF-FUNNEL (FREE TELEGRAM COMMUNITY)                    │
-│ • "SLK Market Radar — Free Trading Hub"                                │
+│ • "TAYO Market Radar — Free Trading Hub"                                │
 │ • Receives: Daily Bias Cards, Educational Sweeps, Teaser Wins          │
 │ • "NAS100 Short hit TP1 (+2.7R) for VIPs. Full entry posted 4h ago."   │
 └────────────────────────────────────┬───────────────────────────────────┘
@@ -81,7 +81,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 ## 5. Whop Storefront High-Converting Copy
 
 ### Product Title
-**SLK Radar VIP — Institutional Orderflow & Algorithmic Trade Signals**
+**TAYO Radar VIP — Institutional Orderflow & Algorithmic Trade Signals**
 
 ### Subtitle / Tagline
 *Stop guessing. Start executing mechanical 1:2.5R+ setups powered by 24/7 institutional liquidity algorithms.*
@@ -90,7 +90,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 ```markdown
 Most retail traders lose money because they trade blind: chasing lagging indicators, entering late, and risking 50 pips to make 10.
 
-**SLK Radar is different.** 
+**TAYO Radar is different.** 
 
 Our proprietary algorithmic engine scans 10 high-liquidity markets (NAS100, US30, GER40, Gold, GBPJPY, and Major Forex pairs) 24 hours a day on institutional cloud infrastructure. It filters out 90% of market noise and alerts you ONLY when institutional criteria align:
 
@@ -103,7 +103,7 @@ Our proprietary algorithmic engine scans 10 high-liquidity markets (NAS100, US30
 1. 🎯 **Real-Time Telegram Execution Signals:** Clear Entry, Stop Loss, Target 1, Target 2, and live invalidation levels.
 2. 🚨 **High-Priority Auto-Pinned Alerts:** Trade signals ring loud and pin to the chat header so you never miss an execution.
 3. 🧭 **Daily Directional Bias Cards:** 4H structure status, 1H vantage point, and armed retracement zones.
-4. 📊 **Public Verified Performance Journal:** Audit our complete history 24/7 live at slk-radar.pages.dev.
+4. 📊 **Public Verified Performance Journal:** Audit our complete history 24/7 live at tayo-radar.pages.dev.
 5. 🛡️ **Built for Prop Firm Traders:** Asymmetric payouts designed to pass and retain FTMO, FundedNext, and Topstep accounts.
 
 Join the private desk today and start trading with algorithmic edge.
@@ -114,7 +114,7 @@ Join the private desk today and start trading with algorithmic edge.
 ## 6. Social Media Video Scripts (TikTok, Reels, Shorts)
 
 ### Script 1: The "Why 90% Fail Prop Firms" Hook
-* **Visual:** Split screen showing someone looking stressed at 5 monitors vs. a phone buzzing with a clean SLK Telegram alert.
+* **Visual:** Split screen showing someone looking stressed at 5 monitors vs. a phone buzzing with a clean TAYO Telegram alert.
 * **Hook (0-3s):** *"The reason you keep blowing prop firm challenges has nothing to do with your strategy."*
 * **Body (3-30s):** 
   *"It’s because you're taking 1:1 risk-to-reward setups. If you risk $500 to make $500, you need an impossible 70% win rate just to cover spreads and commissions. Look at this NAS100 setup our bot took today. 
@@ -127,11 +127,11 @@ Join the private desk today and start trading with algorithmic edge.
 ---
 
 ### Script 2: The "Transparency / Anti-Fake Guru" Hook
-* **Visual:** Screen recording of `slk-radar.pages.dev` with live performance statistics.
+* **Visual:** Screen recording of `tayo-radar.pages.dev` with live performance statistics.
 * **Hook (0-3s):** *"If your favorite signal provider doesn't have a live public database like this... run."*
 * **Body (3-30s):** 
   *"Notice how every guru posts photoshopped MT4 profits with blue numbers, but never shows their losses? 
-  We built SLK Radar on Cloudflare Workers and D1 SQL. Every trade, every stop loss, and every target hit is permanently logged in real time. 
+  We built TAYO Radar on Cloudflare Workers and D1 SQL. Every trade, every stop loss, and every target hit is permanently logged in real time. 
   Look at our journal: Here are the wins (+3.0R, +2.5R), and here are the -1R losses. Because we enforce a minimum 1:2.5R floor, even at a 45% win rate, our curve steadily climbs."*
 * **Call to Action (30-40s):** *"Audit the journal yourself at the link in bio. First 20 founding spots are open on Whop now."*
 
@@ -173,7 +173,7 @@ Trader B: 45% Win Rate (Risks $200 to make $600 — 1:3R)
 
 Asymmetry is the only true holy grail in trading.
 
-4/7 That’s why we engineered @SLK_Radar with a strict minimum 1:2.5R to 1:4.0R reward filter. 
+4/7 That’s why we engineered @TAYO_Radar with a strict minimum 1:2.5R to 1:4.0R reward filter. 
 If an ICT/SMC setup does not offer at least 2.5 times the stop distance, our algorithm rejects it automatically.
 
 5/7 Our 3-step criteria for every alert:
@@ -183,7 +183,7 @@ If an ICT/SMC setup does not offer at least 2.5 times the stop distance, our alg
 
 6/7 We don't hide our losses or post photoshopped MT4 screenshots. 
 You can inspect every alert, timestamp, and R-multiple live on our public dashboard:
-👉 slk-radar.pages.dev
+👉 tayo-radar.pages.dev
 
 7/7 The first 20 Founding Member spots are live on Whop at $49/mo (locked forever before the jump to $100/mo).
 Secure your desk: [WHOP LINK]
@@ -209,12 +209,12 @@ VIP members received this alert with exact entry, stop floor, and lot size calcu
 
 Stop trading alone. 
 👉 Join VIP Signals ($100/mo): [WHOP LINK]
-👉 Live Verified Journal: slk-radar.pages.dev
+👉 Live Verified Journal: tayo-radar.pages.dev
 ```
 
 ### Post 2: Weekly Review Post (Every Friday Evening)
 ```text
-📊 WEEKLY PERFORMANCE AUDIT — SLK RADAR
+📊 WEEKLY PERFORMANCE AUDIT — TAYO RADAR
 
 Another disciplined week executed by the algorithmic engine:
 
@@ -228,7 +228,7 @@ On a 1% risk-per-trade model, that is +7.3% on account capital this week alone.
 On a $100k funded account, that represents +$7,300 in profit split.
 
 Everything is recorded live on the public blockchain of our database:
-👉 slk-radar.pages.dev
+👉 tayo-radar.pages.dev
 
 Upgrade to VIP for Monday's London open: [WHOP LINK]
 ```
@@ -238,7 +238,7 @@ Upgrade to VIP for Monday's London open: [WHOP LINK]
 ## 9. Action Checklist for Your Other Browser / Marketing Tab
 
 When you open your marketing repo on Arena AI in Chrome, feed it this file and ask it to:
-1. Build a high-converting **Linktree / Landing Page** or Carrd site with links to `slk-radar.pages.dev`, Free Telegram, and Whop Checkout.
+1. Build a high-converting **Linktree / Landing Page** or Carrd site with links to `tayo-radar.pages.dev`, Free Telegram, and Whop Checkout.
 2. Generate 30 days of pre-scheduled **Twitter / X posts** using Section 7.
-3. Design **social banner graphics and video thumbnail overlays** matching the institutional styling of `slk-radar.pages.dev`.
+3. Design **social banner graphics and video thumbnail overlays** matching the institutional styling of `tayo-radar.pages.dev`.
 4. Set up an automated **Whop email follow-up sequence** for abandoned checkouts.

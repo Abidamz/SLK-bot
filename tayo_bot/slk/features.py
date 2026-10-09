@@ -1,4 +1,4 @@
-"""Feature extraction for the SLK model. Pure functions, no I/O.
+"""Feature extraction for the TAYO model. Pure functions, no I/O.
 
 Structure:      pivot detection, environment (bullish/bearish/consolidation),
                 phase (expansion/pullback/reversal), BOS events, HTF

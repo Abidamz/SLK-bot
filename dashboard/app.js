@@ -1,10 +1,10 @@
 const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
   ? window.location.origin
-  : 'https://slk-alert-worker.abidogundamilola.workers.dev';
+  : 'https://tayo-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
   url: DEFAULT_URL,
-  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('slkAdminKey')) || '',
+  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('tayoAdminKey')) || '',
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
@@ -35,7 +35,7 @@ function setViewMode(mode) {
     $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
     $('activeModeLabel').className = state.viewMode === 'operator' ? 'pill green' : 'pill gray';
   }
-  try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
+  try { localStorage.setItem('tayoViewMode', state.viewMode); } catch (_) {}
 }
 
 if ($('modePublicBtn')) $('modePublicBtn').addEventListener('click', () => setViewMode('public'));
@@ -278,19 +278,19 @@ if ($('clearSyntheticsBtn')) {
 
 function clearAdminKey() {
   state.adminKey = '';
-  try { localStorage.removeItem('slkAdminKey'); } catch (_) {}
+  try { localStorage.removeItem('tayoAdminKey'); } catch (_) {}
 }
 
 async function getAdminKey(forcePrompt = false) {
   if (forcePrompt) clearAdminKey();
   if (!state.adminKey) {
-    try { state.adminKey = localStorage.getItem('slkAdminKey') || ''; } catch (_) {}
+    try { state.adminKey = localStorage.getItem('tayoAdminKey') || ''; } catch (_) {}
   }
   if (state.adminKey) return state.adminKey;
   const key = window.prompt('Enter Admin Key:');
   if (key && key.trim()) {
     state.adminKey = key.trim();
-    try { localStorage.setItem('slkAdminKey', state.adminKey); } catch (_) {}
+    try { localStorage.setItem('tayoAdminKey', state.adminKey); } catch (_) {}
   }
   return state.adminKey;
 }
@@ -447,7 +447,7 @@ function setStatus(text, kind) {
 function renderHealth(h) {
   if (!h) return;
   if ($('mode')) $('mode').textContent = 'PAPER PIPELINE · RULE-CHECKED';
-  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'tayo-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
@@ -471,12 +471,12 @@ function renderHealth(h) {
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML = `
-      <div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>
+      <div class="health-item"><span>Cloud Service</span><strong>tayo-alert-worker</strong></div>
       <div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">${esc(h.version || 'v2.5.3')} (Production)</strong></div>
       <div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>
       <div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong></div>
       <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h')}</strong></div>
-      <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://slk-bot.vercel.app')} · Connected</strong></div>
+      <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://tayo-bot.vercel.app')} · Connected</strong></div>
       <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
       <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
       <div class="health-item"><span>Execution Mode</span><strong>Paper Pipeline · Rule-Checked (Simulation Only)</strong></div>
@@ -950,7 +950,7 @@ function buildReplaySteps(data) {
   }
   if (data.confirmedAt) {
     const idx = idxAt(data.confirmedAt);
-    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. SLK entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. TAYO entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
   }
   const oc = data.outcome;
   if (oc && oc.status && oc.status !== 'OPEN') {
@@ -1119,13 +1119,13 @@ async function exportLedger(fmt) {
     const rows = await fetchLedgerRows();
     const stamp = new Date().toISOString().slice(0, 10);
     if (fmt === 'json') {
-      downloadBlob(`slk-radar-ledger-${stamp}.json`, 'application/json', JSON.stringify(rows, null, 2));
+      downloadBlob(`tayo-radar-ledger-${stamp}.json`, 'application/json', JSON.stringify(rows, null, 2));
       return;
     }
     const escCsv = val => { const s = val == null ? '' : String(val); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
     for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
-    downloadBlob(`slk-radar-ledger-${stamp}.csv`, 'text/csv', lines.join('\n'));
+    downloadBlob(`tayo-radar-ledger-${stamp}.csv`, 'text/csv', lines.join('\n'));
   } catch (e) {
     alert('Export failed: ' + e.message);
   }
@@ -1213,12 +1213,12 @@ function setupWaitlist() {
 // Automatically load live data on open
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
+    try { const m = localStorage.getItem('tayoViewMode'); if (m) setViewMode(m); } catch (_) {}
     setupWaitlist();
     loadAll();
   });
 } else {
-  try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
+  try { const m = localStorage.getItem('tayoViewMode'); if (m) setViewMode(m); } catch (_) {}
   setupWaitlist();
   loadAll();
 }

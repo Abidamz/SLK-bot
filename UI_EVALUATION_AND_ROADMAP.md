@@ -1,16 +1,16 @@
-# SLK Radar · UI/UX Institutional Evaluation & Product Roadmap
+# TAYO Radar · UI/UX Institutional Evaluation & Product Roadmap
 
 **Document Version:** 1.0.0  
 **Date:** September 2026  
-**System:** SLK Radar Quantitative Execution Desk (`slk-alert-worker` v2.5.3)  
-**Branch:** `arena/01a0b153-slk-bot`  
+**System:** TAYO Radar Quantitative Execution Desk (`tayo-alert-worker` v2.5.3)  
+**Branch:** `arena/01a0b153-tayo-bot`  
 **Classification:** Product Design, Technical Documentation & Commercial Strategy  
 
 ---
 
 ## 1. Executive Summary & UI Evaluation Score
 
-The SLK Radar web interface serves a unique hybrid role in financial technology: it acts simultaneously as an **institutional paper execution terminal** for algorithmic oversight and as a **high-converting public proof-of-edge journal** for a premium $100/month subscriber community on Whop and Telegram.
+The TAYO Radar web interface serves a unique hybrid role in financial technology: it acts simultaneously as an **institutional paper execution terminal** for algorithmic oversight and as a **high-converting public proof-of-edge journal** for a premium $100/month subscriber community on Whop and Telegram.
 
 ### Overall Evaluation Score: **8.8 / 10 (Institutional Grade)**
 
@@ -53,14 +53,14 @@ The interface accommodates two distinct user archetypes via an instantaneous cli
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        SLK RADAR TOPBAR & HERO                         │
-│  [SLK] SLK Radar         [● Public Overview | ○ Operator Terminal]     │
+│                        TAYO RADAR TOPBAR & HERO                         │
+│  [TAYO] TAYO Radar         [● Public Overview | ○ Operator Terminal]     │
 │  Quantitative Desk       [● Worker Online · Paper Pipeline] [VIP $100] │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   7-STAGE SLK EXECUTION ARCHITECTURE                    │
+│                   7-STAGE TAYO EXECUTION ARCHITECTURE                    │
 │   MAP  ──►  TOUCH  ──►  SWEEP  ──►  SHIFT  ──►  RETEST  ──► CONFIRMED  │
 │  (Bias)   (Origin)    (Pool)       (BOS)       (FVG)      (Bar Close)  │
 │                                                                        │
@@ -105,7 +105,7 @@ Directly embedded into the dashboard:
 
 ### 3.4 Separate Public & Operator Footers
 - **Public Marketing Footer:** Includes clear Terms & Conditions link, 24/7 Synthetics VIP link, Free Synthetics channel, Free Forex channel, and VIP signup CTA with discount code `FOUNDING20`.
-- **Operator Console Footer:** Displays engine build version (`slk-alert-worker v2.5.3`), runtime environment (`Cloudflare Workers Edge`), market data feed provenance (`Swiss Bank Dukascopy BID feed` + `Deriv WebSocket Relay`), and simulated tick pipeline safety disclaimer.
+- **Operator Console Footer:** Displays engine build version (`tayo-alert-worker v2.5.3`), runtime environment (`Cloudflare Workers Edge`), market data feed provenance (`Swiss Bank Dukascopy BID feed` + `Deriv WebSocket Relay`), and simulated tick pipeline safety disclaimer.
 
 ### 3.5 Graceful Synthetic Empty State Handling
 - When synthetics metrics are zero or cleared, the ledger displays:
@@ -118,7 +118,7 @@ Directly embedded into the dashboard:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                      SLK RADAR PRODUCT ROADMAP                         │
+│                      TAYO RADAR PRODUCT ROADMAP                         │
 ├──────────────┬───────────────────────────────┬─────────────────────────┤
 │ Phase        │ Target Capability             │ Business Impact         │
 ├──────────────┼───────────────────────────────┼─────────────────────────┤
@@ -158,7 +158,7 @@ Directly embedded into the dashboard:
 ### Priority 5: Monte Carlo Simulation & Drawdown Stress Testing (Long-Term) ✅ COMPLETED
 - **Concept:** An interactive quantitative forecasting tab modeling 10,000 randomized iterations of the strategy's historical distribution.
 - **Features:** 95% confidence intervals, probability of consecutive losses, maximum drawdown distribution, and expected compound growth rate.
-- **Branding Impact:** Cementing SLK Radar's positioning as a professional quantitative desk rather than an amateur Telegram signal channel.
+- **Branding Impact:** Cementing TAYO Radar's positioning as a professional quantitative desk rather than an amateur Telegram signal channel.
 
 ---
 
@@ -170,7 +170,7 @@ Directly embedded into the dashboard:
 | **TypeScript Typecheck** | `tsc --noEmit` | 0 errors | PASS |
 | **Client Script Syntax** | `node --check dashboard/app.js` | Valid ES6+ syntax | PASS |
 | **Asset Consistency** | HTML/CSS parity (`dashboard/` vs `dashboard_html.ts`) | Synchronized | PASS |
-| **Branch Safety** | Git branch enforcement | `arena/01a0b153-slk-bot` only | PASS |
+| **Branch Safety** | Git branch enforcement | `arena/01a0b153-tayo-bot` only | PASS |
 | **Risk Enforcement** | Floor R:R constraint | `minTpR >= 2.5` strictly enforced | PASS |
 | **Safety Setting** | Paper execution mode | `MODE=paper`, no live MT5 connectivity | PASS |
 
@@ -178,4 +178,4 @@ Directly embedded into the dashboard:
 
 ## 6. Conclusion
 
-The SLK Radar user interface now fully embodies the institutional rigors of the proprietary SLK Model (Structure · Liquidity · Key Levels). By transparently distinguishing paper simulation operations from live broker connections, detailing the deterministic 7-stage confirmation lifecycle, and providing a clean dual-mode operator experience, the platform establishes maximum trust, compliance safety, and member retention.
+The TAYO Radar user interface now fully embodies the institutional rigors of the proprietary TAYO Model (Structure · Liquidity · Key Levels). By transparently distinguishing paper simulation operations from live broker connections, detailing the deterministic 7-stage confirmation lifecycle, and providing a clean dual-mode operator experience, the platform establishes maximum trust, compliance safety, and member retention.

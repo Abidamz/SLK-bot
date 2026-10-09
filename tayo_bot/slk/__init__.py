@@ -1,4 +1,4 @@
-"""SLK model engine — Structure, Liquidity, Key Levels.
+"""TAYO model engine — Structure, Liquidity, Key Levels.
 
 Architecture (from the user's source-material research):
 

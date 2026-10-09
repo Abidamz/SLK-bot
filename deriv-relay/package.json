@@ -1,5 +1,5 @@
 {
-  "name": "slk-deriv-relay",
+  "name": "tayo-deriv-relay",
   "version": "1.0.0",
   "description": "Ultra-lightweight native WebSocket relay for Deriv synthetic candles",
   "main": "server.js",

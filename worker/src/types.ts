@@ -1,4 +1,4 @@
-/** Typed records for the SLK worker engine — port of slk_bot/slk/types.py. */
+/** Typed records for the TAYO worker engine — port of tayo_bot/slk/types.py. */
 
 import type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow";
 
@@ -39,7 +39,7 @@ export interface DiagnosticTagging {
   sessionBucket?: SessionBucket | null;
 }
 
-/** Counterfactual SLK Model candidate. These experiments never create alerts
+/** Counterfactual TAYO Model candidate. These experiments never create alerts
  *  or events and are persisted in a separate, owner-only research ledger. */
 export interface ShadowExperimentCapture extends DiagnosticTagging {
   experimentId: string;

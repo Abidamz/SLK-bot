@@ -51,7 +51,7 @@ describe("informational Telegram card labels", () => {
 
   it("marks bias cards as context, not confirmation entries", () => {
     const card = formatBiasCard("EURUSD", "LONG", bias);
-    expect(card).toContain("SLK BIAS CONTEXT — NOT AN ENTRY");
+    expect(card).toContain("TAYO BIAS CONTEXT — NOT AN ENTRY");
     expect(card).toContain("Context only—not an entry.");
     expect(card).not.toContain("BIAS CONFIRMATION");
   });

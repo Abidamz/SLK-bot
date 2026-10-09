@@ -1,4 +1,4 @@
-"""End-to-end pipeline test through SLKBot (no network, no real channels).
+"""End-to-end pipeline test through TAYOBot (no network, no real channels).
 
 The provider is fake and the storyline series is stubbed, so this verifies
 the plumbing: multi-TF fetch plan -> engine replay -> dedupe/cooldown ->
@@ -8,10 +8,10 @@ Synthetic fixtures only — logic verification, not performance evidence.
 """
 from datetime import timedelta
 
-from slk_bot.bot import SLKBot
-from slk_bot.config import Config
-from slk_bot.data.base import DataProvider
-from slk_bot.notify.manager import NotifierManager
+from tayo_bot.bot import TAYOBot
+from tayo_bot.config import Config
+from tayo_bot.data.base import DataProvider
+from tayo_bot.notify.manager import NotifierManager
 
 from helpers import BASE, mk_candles, mk_from_closes
 from test_engine import SHORT_ROWS, SHORT_STORY, snaps_for
@@ -63,7 +63,7 @@ def make_bot(tmp_path, monkeypatch):
     cfg.strategy.sessions_allowlist = []
     cfg.tracking.db_path = str(tmp_path / "signals.db")
 
-    bot = SLKBot(cfg)
+    bot = TAYOBot(cfg)
     provider = FakeProvider()
     channel = FakeChannel()
     bot.provider = provider
@@ -78,7 +78,7 @@ def make_bot(tmp_path, monkeypatch):
     provider.set_feed("EURUSD", "30m", entry_feed())
 
     monkeypatch.setattr(
-        "slk_bot.bot.storyline_series",
+        "tayo_bot.bot.storyline_series",
         lambda d1, h4, strategy: snaps_for(SHORT_STORY),
     )
     return bot, provider, channel
@@ -95,7 +95,7 @@ def test_full_pipeline(tmp_path, monkeypatch):
     assert a.alert_status == "PAPER"
     assert len(channel.sent) == 1
     text, _ = channel.sent[0]
-    assert "PAPER" in text and "SLK SHORT — EURUSD" in text
+    assert "PAPER" in text and "TAYO SHORT — EURUSD" in text
     assert "bearish" in text and "pullback" in text
 
     rows = bot.tracker.recent_events(50)

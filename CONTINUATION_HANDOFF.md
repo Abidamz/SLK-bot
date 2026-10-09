@@ -1,24 +1,24 @@
-# SLK Model — Definitive Project Handoff
+# TAYO Model — Definitive Project Handoff
 
 **Updated:** 2026-10-07 (UTC)
-**Repository:** `Abidamz/SLK-bot`
-**This session's branch:** `arena/0e17c27a-slk-bot`
-**Production lineage:** `arena/08df9077-slk-bot`
-**Production Worker:** `https://slk-alert-worker.abidogundamilola.workers.dev`
-**Production dashboard:** `https://slk-radar.pages.dev`
-**Deriv relay:** `https://slk-bot.vercel.app`
+**Repository:** `Abidamz/TAYO-bot`
+**This session's branch:** `arena/0e17c27a-tayo-bot`
+**Production lineage:** `arena/08df9077-tayo-bot`
+**Production Worker:** `https://tayo-alert-worker.abidogundamilola.workers.dev`
+**Production dashboard:** `https://tayo-radar.pages.dev`
+**Deriv relay:** `https://tayo-bot.vercel.app`
 
 This is the source of truth for future sessions. The current owner-provided brief and this file override stale descriptions elsewhere in the repository.
 
 ## 1. Mission and current operating state
 
-The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a paper-simulation trading-signal and research system—not an order-execution service.
+The product is the **TAYO Model (Structure · Liquidity · Key Levels)**. It is a paper-simulation trading-signal and research system—not an order-execution service.
 
 - **Mode is paper only:** `MODE=paper`, `PAPER_NOTIFY=true`; MT5/live execution stays disabled.
 - A Cloudflare Worker scans on a one-minute cron. It currently watches 23 configured markets on `15m,30m,1h`; Deriv synthetics use `30m,1h` as their primary entry timeframes.
 - The confirmation lifecycle is `MAP → TOUCH → SWEEP → SHIFT → RETEST → CONFIRMED`, with invalidation/expiry paths. The minimum target floor is `MIN_TP_R=2.5`; the minimum risk-width gate is `MIN_RISK_ATR=0.8`.
 - Production baseline supplied on 2026-10-05: the delivered ledger had 8 signals, 62.5% win rate, and +11.52R. Treat that as a small paper sample, not a performance promise.
-- Dashboard pages are on Cloudflare Pages project `slk-radar`. The Vercel relay supplies Deriv synthetic candles.
+- Dashboard pages are on Cloudflare Pages project `tayo-radar`. The Vercel relay supplies Deriv synthetic candles.
 - The shadow ledger is a separate, observation-only dataset. It must not change live/paper entries or leak into user-facing trading surfaces.
 
 ## 2. Architecture and data boundaries
@@ -26,7 +26,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 ### Runtime path
 
 1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
-2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
+2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://tayo-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
 4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0008`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes. Migration `0008_diagnostics_tags.sql` adds the nullable diagnostics columns (H4 confluence grade/tags + UTC+1 session bucket); until it is applied the Worker still writes alerts and ledger rows unchanged and simply omits the annotation, re-probing every five minutes.
 5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive teaser cards, weekly recaps, and the Engine Discipline digest. Pre-entry watch cards (`WATCH_NOTIFY`) and bias-context cards (`BIAS_NOTIFY`) are separate opt-ins and are currently disabled to prevent noisy, misleading posts. Synthetic content is never sent to the Forex free channel.
@@ -58,7 +58,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 - `GET /api/shadow-ledger` is owner/admin-key protected. It aggregates only the separate shadow table.
 - Shadow rows never appear in Telegram alerts, public events, `/stats`, `/alerts`, recaps, or Monte Carlo. Keep this strict isolation when changing code.
 
-- **View modes (2026-10-08).** The Pages dashboard has two views, toggled in the header and remembered in `localStorage` (`slkViewMode`): **Public Overview** (default) and **Operator Terminal**. `dashboard/styles.css` (and the matching rules inside `worker/src/dashboard_html.ts`) hides `.operator-only` unless `body.operator-mode` is set, and hides `.marketing-only` when it is. The owner-key-gated **21-Day Scan & Delivery Audit** card now carries `operator-only`, so it no longer appears in the public view — switch to **Operator Terminal** to use it. That card exists only in the Pages build (`dashboard/index.html` + `dashboard/app.js`); the worker-hosted single-file dashboard never had it. `worker/test/dashboard_markup.test.ts` pins the class, both copies of the visibility rules, the toggle buttons, and the card's wiring.
+- **View modes (2026-10-08).** The Pages dashboard has two views, toggled in the header and remembered in `localStorage` (`tayoViewMode`): **Public Overview** (default) and **Operator Terminal**. `dashboard/styles.css` (and the matching rules inside `worker/src/dashboard_html.ts`) hides `.operator-only` unless `body.operator-mode` is set, and hides `.marketing-only` when it is. The owner-key-gated **21-Day Scan & Delivery Audit** card now carries `operator-only`, so it no longer appears in the public view — switch to **Operator Terminal** to use it. That card exists only in the Pages build (`dashboard/index.html` + `dashboard/app.js`); the worker-hosted single-file dashboard never had it. `worker/test/dashboard_markup.test.ts` pins the class, both copies of the visibility rules, the toggle buttons, and the card's wiring.
 
 ### The 2026-10-06 signal drought: root cause and revert
 
@@ -114,12 +114,12 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
   V75                                  isDerivPair: true   -> CAN suppress
   ```
   So `FILTER_HTF_CONFLICT: "true"` currently means *"true for the 10 synthetics, silently off for the other 13 pairs"*. No decision has been made on widening it.
-- **Nuance worth keeping in view before widening it:** the spec (`docs/SLK_MODEL_SPEC.md`, Layer 1 §3) says *"H4 is the key intraday vantage point; execution refines on H1/M30"*. In that USDCAD alert **4H was bearish and the trade was SHORT — H4 agreed with the direction**; only the 1H refinement timeframe disagreed. By the spec's own hierarchy the trade was aligned with the stated key vantage. Whether that counts as a violation is the owner's call.
+- **Nuance worth keeping in view before widening it:** the spec (`docs/TAYO_MODEL_SPEC.md`, Layer 1 §3) says *"H4 is the key intraday vantage point; execution refines on H1/M30"*. In that USDCAD alert **4H was bearish and the trade was SHORT — H4 agreed with the direction**; only the 1H refinement timeframe disagreed. By the spec's own hierarchy the trade was aligned with the stated key vantage. Whether that counts as a violation is the owner's call.
 - **First observation (2026-10-08): the USDCAD 15m SHORT hit SL, −1R.** Recorded here because the row predates migration 0009 (deployed 08:30) and therefore carries a `null` classification — it will **not** appear in the audit's HTF_CONFLICT bucket, and its classification is known only from the pasted alert text. Do not lose this when reading the audit.
   - **Treat it as n=1, not evidence.** It is consistent with the hypothesis that HTF_CONFLICT entries underperform, but one trade proves nothing, and these setups cluster into correlated runs — a single losing example is exactly the kind of confirmation bias to discount. The decision still needs the accumulated comparison.
 - **Measurement path (commit `3a60390`):** `slk_alerts.shadow_classification` (migration 0009, nullable, indexed on `status`), returned by `/alerts` as `shadowClassification`. Diagnostics only — no gate, dedupe, notification or outcome rule reads it. Null means "not recorded", not "no conflict".
   - Only rows written after 2026-10-08 08:30 UTC carry a value. The 28 historical setups and this USDCAD trade cannot be classified from the column.
-  - Run `SLK_ADMIN_KEY=... npx tsx scripts/audit_suppression.ts` (from `worker/`) to get net R, average R and win rate split by classification and by suppression reason.
+  - Run `TAYO_ADMIN_KEY=... npx tsx scripts/audit_suppression.ts` (from `worker/`) to get net R, average R and win rate split by classification and by suppression reason.
   - To decide: group stored alerts by `shadowClassification` and compare net R and win rate for HTF_CONFLICT against ALIGNED. Only rows written after 2026-10-08 carry the value, so this needs time to accumulate.
 - **Not a violation — FVG Rebalance ❌.** Spec Layer 2 requires `MAP → TOUCH → SWEEP → SHIFT → RETEST`; FVG appears in Layer 1 as *context*, not an execution requirement. In code, `RETEST_DEPTH_PCT=100` makes the check `if (retestDepthPct < 100)` skip FVG penetration entirely, falling back to the legacy ATR-tolerant origin-zone test. The ❌ is reported context, like `Opposing liq. standing ✅`.
   - **Do not lower `RETEST_DEPTH_PCT` casually.** At 60 it previously took retest candidates from ~220/day to **zero within hours**, because `fvgRetestThreshold()` returns null whenever no direction-matched FVG overlaps the origin zone, making a retest impossible.
@@ -242,7 +242,7 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 ### Required workflow invariants
 
 - `.github/workflows/deploy.yml` must keep: push triggers for `arena/**` and `main`; tests gating deployment; a deploy job that is not opt-in gated. Its current content is the production-lineage workflow **plus one deliberate addition** — the `Stamp Dashboard Asset Versions` step described below. Do not replace the workflow with workflow-dispatch-only logic, and do not remove the stamping step.
-- Session work stays on `arena/0e17c27a-slk-bot`. Push only with `git push origin arena/0e17c27a-slk-bot`. Never switch branches for this session.
+- Session work stays on `arena/0e17c27a-tayo-bot`. Push only with `git push origin arena/0e17c27a-tayo-bot`. Never switch branches for this session.
 - Do **not** merge PRs or ask the owner to merge. Pushing this branch is what deploys. Do not push to or deploy `main`; it is stale and hands-off.
 - Before each push, run the full local validation suite below. Do not push partially validated work.
 - After each push, wait for the GitHub Actions run to finish successfully and allow about three minutes for propagation. Then request `/health` with a fresh random query parameter and report the returned JSON. `/api/engine-pulse` or an observed behavior change can also verify a release. An unauthorized response from an unknown `/api/*` route does **not** prove that route exists.
@@ -250,12 +250,12 @@ The product is the **SLK Model (Structure · Liquidity · Key Levels)**. It is a
 
 ### Dashboard (Cloudflare Pages) deploy path — fragile, read this
 
-The `slk-radar` Pages project is **git-integrated**, and Cloudflare classifies an upload as a production deploy **only when the branch label on the upload equals the project's Production branch setting**. CI uploads with `--branch=main`, so the project's **Production branch setting must stay `main`**. Those two values are one setting expressed in two places; change either one alone and the custom domain silently keeps serving an old build with no error surfaced anywhere.
+The `tayo-radar` Pages project is **git-integrated**, and Cloudflare classifies an upload as a production deploy **only when the branch label on the upload equals the project's Production branch setting**. CI uploads with `--branch=main`, so the project's **Production branch setting must stay `main`**. Those two values are one setting expressed in two places; change either one alone and the custom domain silently keeps serving an old build with no error surfaced anywhere.
 
-- This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-slk-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `slk-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
-- **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `slk-radar.pages.dev` shows old data, and `main.slk-radar.pages.dev` serves a **newer** build than the production hostname.
+- This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-tayo-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `tayo-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
+- **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `tayo-radar.pages.dev` shows old data, and `main.tayo-radar.pages.dev` serves a **newer** build than the production hostname.
 - Pages serves static assets with a browser cache window of roughly four hours that `_headers` cannot override. The `Stamp Dashboard Asset Versions` step rewrites `app.js?v=…` and `styles.css?v=…` in `dashboard/index.html` to the commit SHA before upload, so every release gets a fresh cache key. Keep that step, and keep the `?v=` query strings in the HTML.
-- **After each push, check:** the Live Desk tape on `https://slk-radar.pages.dev/` shows today's UTC timestamps, and `https://slk-radar.pages.dev/app.js` contains the string `tail=1`.
+- **After each push, check:** the Live Desk tape on `https://tayo-radar.pages.dev/` shows today's UTC timestamps, and `https://tayo-radar.pages.dev/app.js` contains the string `tail=1`.
 
 ### Full local validation suite
 
@@ -278,7 +278,7 @@ The same test, typecheck, and dashboard syntax gates run in GitHub Actions. The 
 ### Post-push proof
 
 ```bash
-curl -fsS "https://slk-alert-worker.abidogundamilola.workers.dev/health?v=$(date +%s)"
+curl -fsS "https://tayo-alert-worker.abidogundamilola.workers.dev/health?v=$(date +%s)"
 ```
 
 Always use a fresh query parameter. Never use a 401 from an unknown API route as deploy proof.
@@ -288,7 +288,7 @@ Post-release proof recorded for `a1c91f0` (confirmation funnel): `/health` → `
 Dashboard proof (Pages production host, also use a fresh query parameter):
 
 ```bash
-curl -fsS "https://slk-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
+curl -fsS "https://tayo-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
 ```
 
 Expect a non-zero count. A zero means the upload landed as a preview — re-read the Pages deploy-path section above.
@@ -321,13 +321,13 @@ These are effective production values as of 2026-10-06, following the notificati
 | `TRAILING_BE_TRIGGER_R` | `1.5` (code default; not overridden in Wrangler) | Favorable excursion that arms breakeven handling. | **Keep exactly `1.50R`.** |
 | `PROVIDER_MAP` | OANDA for `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,USDCAD,NZDUSD,EURJPY,XAUUSD,US30,GER40,JAPAN225,NAS100` | Explicit routing for configured institutional instruments. | Only use source-supported mappings. New Forex symbols must resolve to real instruments in `worker/src/provider.ts`; do not add an unapproved provider. |
 | `SYMBOL_MAP` | unset (`{}` in code) | Optional provider-specific symbol overrides; current production routes use canonical instrument mappings. | Leave unset unless a selected supported provider requires a tested canonical mapping. |
-| `DERIV_PROXY_URL` | `https://slk-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
+| `DERIV_PROXY_URL` | `https://tayo-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
 | `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
 | `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
 
 ### Alert-funnel and notification-source review (live snapshot)
 
-Fresh public probes on `2026-10-06` showed `/health` at `12:24:33.413Z` with `mode=paper`, `watchNotify=false`, `biasNotify=false`, `vipWatchNotify=false`, `paperNotify=true`, and `mt5BridgeActive=false`. These flags mean the current Worker should not generate its automatic pre-entry WATCH/Bias cards. If a Free-channel card arrived after that time, its source cannot be attributed from this repo's public telemetry alone; a timestamp/message sample (not a secret) would be needed. The Worker has a WATCH path that sends only a latest-stage `SHIFT` context card and a separate BIAS path that can send repeatedly when enabled; both are gated off in the observed live configuration. Python `slk_bot` has no WATCH/Bias notification path and only broadcasts alert/outcome/startup/stats/test messages to its single configured Telegram destination; the repo documents it as an optional self-hosted systemd process, not the Cloudflare Worker runtime.
+Fresh public probes on `2026-10-06` showed `/health` at `12:24:33.413Z` with `mode=paper`, `watchNotify=false`, `biasNotify=false`, `vipWatchNotify=false`, `paperNotify=true`, and `mt5BridgeActive=false`. These flags mean the current Worker should not generate its automatic pre-entry WATCH/Bias cards. If a Free-channel card arrived after that time, its source cannot be attributed from this repo's public telemetry alone; a timestamp/message sample (not a secret) would be needed. The Worker has a WATCH path that sends only a latest-stage `SHIFT` context card and a separate BIAS path that can send repeatedly when enabled; both are gated off in the observed live configuration. Python `tayo_bot` has no WATCH/Bias notification path and only broadcasts alert/outcome/startup/stats/test messages to its single configured Telegram destination; the repo documents it as an optional self-hosted systemd process, not the Cloudflare Worker runtime.
 
 Public `/api/engine-pulse` at `2026-10-06T12:24:33.267Z` reported 457 scans, 390 active scans, 23 markets covered, 171 recorded MAP-event rows, lifecycle event rows `{TOUCH:116, SWEEP:104, SHIFT:59, RETEST:1}`, and zero alert rows inserted. Replay rejection attempts were `{nonPositiveRisk:0, belowMinRiskAtr:4, aboveMaxStopAtr:79, targetFloor:227}`. These are not unique setup counts or Telegram-delivery totals. The single recorded RETEST event is emitted only after `buildAlert()` passes the risk/target gates; its absence from inserted alert rows is downstream of that event and can be a freshness skip, duplicate insert, or insert error. The exact blocker was not exposed by the public pulse. The owner-key-only 21-Day Scan & Delivery Audit reports stale/duplicate skips, stored alert status/reasons, and channel API results; run it locally in the Pages dashboard without sharing the key. Its delivery rows are best-effort and API results are not proof a person saw a message.
 
@@ -366,7 +366,7 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 1. Paper mode forever until the owner explicitly says otherwise: `MODE=paper`, `PAPER_NOTIFY=true`, MT5/live execution disabled.
 2. `MIN_TP_R` stays `2.5`. Shadow data is evidence gathering before any floor decision, due after 2–3 weeks of observations.
 3. `MIN_RISK_ATR` stays `0.8`.
-4. Brand only as **SLK Model (Structure · Liquidity · Key Levels)**. Do not label it with unrelated trading-system brands.
+4. Brand only as **TAYO Model (Structure · Liquidity · Key Levels)**. Do not label it with unrelated trading-system brands.
 5. Public journal/dashboard shows only signals actually delivered to Telegram; audit views stay admin-key-gated. Recap cards retain the paper simulation/research-only disclaimer.
 6. VIP receives confirmed entries and final outcomes only. Digests, teasers, and upgrade CTAs are FREE-channel only. No synthetic material goes to the Forex free channel.
 7. Never print, log, or commit secrets. Never ask the owner to paste secrets into chat.
@@ -391,7 +391,7 @@ Do not use GitHub PR merges as a deployment step. PR #3 and PR #8 are owner-mana
 ## 9. Owner self-serve paths
 
 - **Config tweak without a session:** GitHub web-edit `worker/wrangler.jsonc` on the production lineage branch, commit → auto-deploys.
-- **Stale Pages dashboard:** Cloudflare Dashboard → Workers & Pages → `slk-radar` → Settings → Builds & deployments → confirm **Production branch** is `main`, matching the `--branch` value in `.github/workflows/deploy.yml`.
+- **Stale Pages dashboard:** Cloudflare Dashboard → Workers & Pages → `tayo-radar` → Settings → Builds & deployments → confirm **Production branch** is `main`, matching the `--branch` value in `.github/workflows/deploy.yml`.
 - **Automatic 21-day audit after release:** open the Pages dashboard → **Market Health** → **Run 21-Day Audit**. It asks for the existing owner key and displays aggregate results only.
 - **D1 queries/fixes or manual audit fallback:** Cloudflare Dashboard → Storage & Databases → D1 → `slk-alert-db` → Console.
 - **Read-only 21-day signal-drought audit** (UTC window 2026-09-14 through 2026-10-05; run the query, then return the result for diagnosis):
@@ -447,17 +447,17 @@ node --check dashboard/app.js
 (cd worker && npx wrangler deploy --dry-run)
 
 # the only push target for this session
-git push origin arena/0e17c27a-slk-bot
+git push origin arena/0e17c27a-tayo-bot
 
 # owner-side migration (not required for the code to run — tags resume automatically)
 (cd worker && npx wrangler d1 migrations apply slk-alert-db --remote)
 ```
 
-- Fresh health check: `https://slk-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
-- Public engine pulse: `https://slk-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
-- Live-edge event tape bootstrap: `https://slk-alert-worker.abidogundamilola.workers.dev/api/recent-events?tail=1&limit=5&cb=<random>`
-- Shadow aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
-- Shadow-experiment aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
-- Scan/error/funnel/delivery audit (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
-- Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
-- Public dashboard/journal: `https://slk-radar.pages.dev`
+- Fresh health check: `https://tayo-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
+- Public engine pulse: `https://tayo-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
+- Live-edge event tape bootstrap: `https://tayo-alert-worker.abidogundamilola.workers.dev/api/recent-events?tail=1&limit=5&cb=<random>`
+- Shadow aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
+- Shadow-experiment aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
+- Scan/error/funnel/delivery audit (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
+- Deriv relay: `https://tayo-bot.vercel.app/health` and `/candles`
+- Public dashboard/journal: `https://tayo-radar.pages.dev`

@@ -6,7 +6,7 @@ for, or presented as, backtest/performance evidence.
 """
 from datetime import datetime, timedelta, timezone
 
-from slk_bot.models import Candle
+from tayo_bot.models import Candle
 
 BASE = datetime(2024, 3, 4, tzinfo=timezone.utc)  # a Monday, epoch-aligned
 

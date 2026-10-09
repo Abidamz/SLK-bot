@@ -1,8 +1,8 @@
-# SLK-bot
+# TAYO-bot
 
-A forex/indices **alert bot** for the **SLK model — Structure, Liquidity, Key
+A forex/indices **alert bot** for the **TAYO model — Structure, Liquidity, Key
 levels**. It watches markets around the clock, and when price completes your
-SLK confirmation sequence it pushes an alert to **Telegram and Discord** —
+TAYO confirmation sequence it pushes an alert to **Telegram and Discord** —
 then tracks every alert to target/stop so you can review the model's hit rate.
 
 ```
@@ -18,9 +18,9 @@ H1/30m (entry) ─┴─▶ XYZ execution:  MAP → TOUCH → SWEEP → SHIFT �
 
 **Status: paper-alert scanner.** Deliberately no trade execution. Rules are
 engineering defaults distilled from research into your source material
-(see [`docs/SLK_MODEL_SPEC.md`](docs/SLK_MODEL_SPEC.md)) — they are not
+(see [`docs/TAYO_MODEL_SPEC.md`](docs/TAYO_MODEL_SPEC.md)) — they are not
 creator-issued and no profitability is claimed. Your own chart examples remain
-the authority; if a rule here disagrees with how *you* trade SLK, say so and
+the authority; if a rule here disagrees with how *you* trade TAYO, say so and
 the engine gets adjusted — every rule is one small pure function.
 
 ## The model as implemented
@@ -63,14 +63,14 @@ id, and the explicit invalidation price.
 **Tracking**: every alert persists to `data/signals.db` (dedupe by setup id →
 the bot *cannot* double-alert, even across restarts), resolves to
 **TP_HIT / SL_HIT / EXPIRED** (close-based stops by default — the model's
-preferred invalidation style), and `python -m slk_bot stats` summarizes win
-rate / average R / per-pair results. `python -m slk_bot events` shows the raw
+preferred invalidation style), and `python -m tayo_bot stats` summarizes win
+rate / average R / per-pair results. `python -m tayo_bot events` shows the raw
 state-machine audit trail.
 
 ## Quick start
 
 ```bash
-git clone <this repo> && cd SLK-bot
+git clone <this repo> && cd TAYO-bot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -85,11 +85,11 @@ synthetic indices.
 
 ```bash
 python -m pytest tests/ -q        # offline Python suite
-python -m slk_bot test-notify     # delivers a ✅ test message
-python -m slk_bot scan-once       # one full scan pass right now
-python -m slk_bot run             # ← the actual bot (Ctrl-C to stop)
-python -m slk_bot stats           # performance summary ·  --send pushes it
-python -m slk_bot events          # recent MAP/TOUCH/SWEEP/... transitions
+python -m tayo_bot test-notify     # delivers a ✅ test message
+python -m tayo_bot scan-once       # one full scan pass right now
+python -m tayo_bot run             # ← the actual bot (Ctrl-C to stop)
+python -m tayo_bot stats           # performance summary ·  --send pushes it
+python -m tayo_bot events          # recent MAP/TOUCH/SWEEP/... transitions
 ```
 
 **Paper simulation only:** keep `mode: paper` and `paper_notify: true`; every alert
@@ -102,13 +102,13 @@ settings. Do not enable live operation unless the owner explicitly authorizes it
 2. Send any message to your bot, open
    `https://api.telegram.org/bot<TOKEN>/getUpdates`, copy the `"chat":{"id":...}`
    value into `TELEGRAM_CHAT_ID`.
-3. `python -m slk_bot test-notify` should deliver ✅.
+3. `python -m tayo_bot test-notify` should deliver ✅.
    (Channel/group: add the bot as admin and use the `-100…` id.)
 
 ## Connecting Discord
 
 1. Channel → **Edit Channel → Integrations → Webhooks → New Webhook** → copy URL.
-2. Paste into `DISCORD_WEBHOOK_URL`, then `python -m slk_bot test-notify`.
+2. Paste into `DISCORD_WEBHOOK_URL`, then `python -m tayo_bot test-notify`.
 
 ## Market data
 
@@ -136,16 +136,16 @@ pip/ATR constants across forex and indices, and this codebase follows that.
 ## Running 24/7
 
 Any always-on box works — small VPS, Raspberry Pi, NAS. Example systemd unit
-(`/etc/systemd/system/slk-bot.service`):
+(`/etc/systemd/system/tayo-bot.service`):
 
 ```ini
 [Unit]
-Description=SLK alert bot
+Description=TAYO alert bot
 After=network-online.target
 
 [Service]
-WorkingDirectory=/opt/SLK-bot
-ExecStart=/opt/SLK-bot/.venv/bin/python -m slk_bot run
+WorkingDirectory=/opt/TAYO-bot
+ExecStart=/opt/TAYO-bot/.venv/bin/python -m tayo_bot run
 Restart=always
 RestartSec=10
 
@@ -153,16 +153,16 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-Then `sudo systemctl enable --now slk-bot`, watch with `journalctl -u slk-bot -f`.
+Then `sudo systemctl enable --now tayo-bot`, watch with `journalctl -u tayo-bot -f`.
 
 ## Project layout
 
 ```
-slk_bot/
+tayo_bot/
 ├── config.py              # YAML + env configuration
 ├── models.py              # Candle / Direction / price helpers
 ├── data/                  # Twelve Data provider and closed-candle hygiene
-├── slk/                   # ← THE SLK MODEL LIVES HERE
+├── slk/                   # ← THE TAYO MODEL LIVES HERE
 │   ├── features.py        #   pivots, environment, phase, BOS, liquidity pools,
 │   │                      #   A/V/OC/DECISION key levels + flips, FVGs, resampling
 │   ├── storyline.py       #   Layer 1: ABC storyline (point-in-time snapshots)
@@ -172,7 +172,7 @@ slk_bot/
 ├── bot.py                 # orchestration, cooldowns, outcome tracking, loop
 └── __main__.py            # CLI: run / scan-once / stats / events / test-notify
 tests/                     # 38 tests — synthetic fixtures verify LOGIC only
-docs/SLK_MODEL_SPEC.md     # research → rules specification + provenance
+docs/TAYO_MODEL_SPEC.md     # research → rules specification + provenance
 ```
 
 ---

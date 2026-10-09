@@ -1,4 +1,4 @@
-# SLK Radar VIP — Telegram Welcome & Trade Execution Guide
+# TAYO Radar VIP — Telegram Welcome & Trade Execution Guide
 
 > **Instructions for Channel Admins:**  
 > Copy and paste this message into your **VIP Telegram Channel**, pin it to the top (`Pin Message`), and set it as the automated welcome message sent by `@whop_bot` when new members join.
@@ -6,11 +6,11 @@
 ---
 
 ```text
-👑 WELCOME TO SLK RADAR VIP EXECUTION DESK 👑
+👑 WELCOME TO TAYO RADAR VIP EXECUTION DESK 👑
 
 Welcome to the institutional trading room. 
 
-SLK Radar operates on pure algorithmic orderflow mechanics — the proprietary SLK Model (Structure · Liquidity · Key Levels). Our cloud engine monitors 10 high-volatility markets 24/7, filtering out 90% of retail chop and delivering ONLY high-probability, asymmetric setups.
+TAYO Radar operates on pure algorithmic orderflow mechanics — the proprietary TAYO Model (Structure · Liquidity · Key Levels). Our cloud engine monitors 10 high-volatility markets 24/7, filtering out 90% of retail chop and delivering ONLY high-probability, asymmetric setups.
 
 Please read this execution protocol carefully before placing your first trade.
 
@@ -30,7 +30,7 @@ Every signal we issue enforces a strict minimum 1:2.5R to 1:4.0R reward asymmetr
 ──────────────────────────────────────────────
 Your VIP channel is a zero-noise, high-conviction execution feed. You will ONLY receive alerts when a confirmed entry candle closes:
 
-🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY
+🚨🚨🚨 [ACTION REQUIRED] — TAYO CONFIRMED ENTRY
 PAIR: XAUUSD (Gold)
 TIMEFRAME: 30m
 DIRECTION: SHORT 🔴
@@ -67,8 +67,8 @@ To protect capital and maximize high-RR trend days, follow our 3-step exit model
 ──────────────────────────────────────────────
 Unlike retail signal channels that hide losses, every single alert, stop loss, and target hit is permanently logged in real time on our public ledger:
 
-🌐 Live Audited Performance Journal: https://slk-radar.pages.dev
-📜 Terms of Service & Disclaimer: https://slk-radar.pages.dev/terms
+🌐 Live Audited Performance Journal: https://tayo-radar.pages.dev
+📜 Terms of Service & Disclaimer: https://tayo-radar.pages.dev/terms
 👑 Manage Subscription via Whop: https://whop.com/hub
 
 Turn on notifications for this channel and PIN this chat to the top of your Telegram.
@@ -83,7 +83,7 @@ Let the algorithm do the heavy lifting. Trade with edge.
 When configuring `@whop_bot` inside your private VIP Telegram:
 
 1. Add `@whop_bot` as an **Administrator** in your Telegram Channel with permission to invite users.
-2. In your Whop Dashboard under **Products $\to$ SLK Radar VIP $\to$ Experience $\to$ Telegram**:
+2. In your Whop Dashboard under **Products $\to$ TAYO Radar VIP $\to$ Experience $\to$ Telegram**:
    - Enable **"Direct Message Welcome"** or **"Send Welcome Message upon joining"**.
    - Paste the block above into the automated welcome sequence.
 3. Keep this message permanently pinned to the chat header so members can refer back to the lot sizing and breakeven rules at any time.

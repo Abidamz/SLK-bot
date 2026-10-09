@@ -1,10 +1,10 @@
 """
-SLK Model — MetaTrader 5 (MT5) Auto-Execution Webhook Bridge
+TAYO Model — MetaTrader 5 (MT5) Auto-Execution Webhook Bridge
 =============================================================
 Lightweight FastAPI execution service designed to run on a Windows VPS
 alongside the MetaTrader 5 desktop terminal.
 
-Receives authenticated live trade webhooks from the SLK Cloudflare Alert Worker,
+Receives authenticated live trade webhooks from the TAYO Cloudflare Alert Worker,
 calculates dynamic lot sizing based on account equity and risk parameters, and
 submits institutional execution orders directly to MT5 brokers (FTMO, IC Markets,
 FundedNext, Pepperstone, etc.).
@@ -29,7 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("slk.mt5_bridge")
+logger = logging.getLogger("tayo.mt5_bridge")
 
 # Try importing MetaTrader5; gracefully fallback for dry-run testing on Linux/Mac
 try:
@@ -41,12 +41,12 @@ except ImportError:
     logger.warning("MetaTrader5 package not available on this OS. Running in DRY-RUN / SIMULATION mode.")
 
 # Configuration from environment
-WEBHOOK_SECRET = os.getenv("SLK_WEBHOOK_SECRET", "slk_secret_key_change_in_prod")
+WEBHOOK_SECRET = os.getenv("TAYO_WEBHOOK_SECRET", "tayo_secret_key_change_in_prod")
 DEFAULT_RISK_USD = float(os.getenv("DEFAULT_RISK_USD", "100.0"))  # $100 fixed risk per trade
 DEFAULT_RISK_PCT = float(os.getenv("DEFAULT_RISK_PCT", "1.0"))    # or 1% of account equity
 USE_PERCENT_RISK = os.getenv("USE_PERCENT_RISK", "false").lower() == "true"
-MAGIC_NUMBER = int(os.getenv("SLK_MAGIC_NUMBER", "20260930"))
-DEVIATION = int(os.getenv("SLK_DEVIATION_POINTS", "20"))
+MAGIC_NUMBER = int(os.getenv("TAYO_MAGIC_NUMBER", "20260930"))
+DEVIATION = int(os.getenv("TAYO_DEVIATION_POINTS", "20"))
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true" or not MT5_AVAILABLE
 
 # Instrument symbol mappings (Broker specific suffixes, e.g., EURUSD.pro or XAUUSD.raw)
@@ -64,7 +64,7 @@ SYMBOL_MAP = {
 }
 
 app = FastAPI(
-    title="SLK Radar MT5 Bridge",
+    title="TAYO Radar MT5 Bridge",
     description="Automated Institutional Execution Bridge between Cloudflare Worker and MetaTrader 5",
     version="1.0.0",
 )
@@ -89,7 +89,7 @@ class BreakevenPayload(BaseModel):
 
 
 def verify_signature(body_bytes: bytes, signature_header: Optional[str]) -> bool:
-    """Verifies HMAC-SHA256 signature from SLK Alert Worker."""
+    """Verifies HMAC-SHA256 signature from TAYO Alert Worker."""
     if not WEBHOOK_SECRET or WEBHOOK_SECRET == "disabled":
         return True
     if not signature_header:
@@ -250,7 +250,7 @@ async def execute_trade(
         "tp": payload.tp_internal,
         "deviation": DEVIATION,
         "magic": MAGIC_NUMBER,
-        "comment": f"SLK:{payload.setup_id[:15]}",
+        "comment": f"TAYO:{payload.setup_id[:15]}",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
@@ -305,7 +305,7 @@ async def update_breakeven(
 
     updated_count = 0
     for pos in positions:
-        if pos.magic == MAGIC_NUMBER or f"SLK:{payload.setup_id[:15]}" in pos.comment:
+        if pos.magic == MAGIC_NUMBER or f"TAYO:{payload.setup_id[:15]}" in pos.comment:
             mod_req = {
                 "action": mt5.TRADE_ACTION_SLTP,
                 "position": pos.ticket,

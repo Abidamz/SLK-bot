@@ -14,14 +14,14 @@
  *
  *  Usage:
  *    cd worker
- *    SLK_ADMIN_KEY=... npx tsx scripts/audit_suppression.ts
- *    SLK_ADMIN_KEY=... SLK_BASE_URL=https://... npx tsx scripts/audit_suppression.ts
+ *    TAYO_ADMIN_KEY=... npx tsx scripts/audit_suppression.ts
+ *    TAYO_ADMIN_KEY=... TAYO_BASE_URL=https://... npx tsx scripts/audit_suppression.ts
  *
  *  Requires the owner read key (/alerts is authed).
  */
 
-const BASE = process.env.SLK_BASE_URL ?? "https://slk-bot.slk-bot-4c2.workers.dev";
-const KEY = process.env.SLK_ADMIN_KEY ?? "";
+const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-bot.tayo-bot-4c2.workers.dev";
+const KEY = process.env.TAYO_ADMIN_KEY ?? "";
 
 type Row = {
   pair?: string;
@@ -94,7 +94,7 @@ function render(title: string, buckets: Map<string, Bucket>): void {
 
 async function main(): Promise<void> {
   if (!KEY) {
-    console.error("Set SLK_ADMIN_KEY to the owner read key ( /alerts is authed ).");
+    console.error("Set TAYO_ADMIN_KEY to the owner read key ( /alerts is authed ).");
     process.exit(1);
   }
   const url = `${BASE}/alerts?includeSuppressed=true&limit=200&key=${encodeURIComponent(KEY)}`;

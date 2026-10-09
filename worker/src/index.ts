@@ -1,7 +1,7 @@
-/** SLK alert worker — Cloudflare Workers entrypoint.
+/** TAYO alert worker — Cloudflare Workers entrypoint.
  *
  *  scheduled()  cron tick (every minute) → scan timeframes whose candle just
- *               closed, statelessly replay the SLK engine, dedupe in D1,
+ *               closed, statelessly replay the TAYO engine, dedupe in D1,
  *               deliver Telegram/Discord alerts, resolve open alert outcomes.
  *  GET /health            basic health check (runbook: expect ok:true)
  *  GET /alerts?limit=50   sanitized recent alert history  (Bearer ADMIN_KEY)
@@ -746,7 +746,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           if (alert.directionalBias) {
             console.info(JSON.stringify({
               level: "info",
-              msg: "slk.shadow.classification",
+              msg: "tayo.shadow.classification",
               pair: alert.pair,
               tf: alert.entryTf,
               setupId: alert.setupId,
@@ -873,7 +873,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   await recordScanTiming(store, diagnostics);
 
-  console.info(JSON.stringify({ level: "info", msg: "slk.scan.diagnostics", diagnostics }));
+  console.info(JSON.stringify({ level: "info", msg: "tayo.scan.diagnostics", diagnostics }));
 
   return {
     diagnostics,
@@ -1656,13 +1656,13 @@ export default {
       const oandaConfigured = Boolean(env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOanda);
       return json({
         ok: true,
-        service: "slk-alert-worker · Workers Paid & Real-Time Intrabar Outcome Resolution",
+        service: "tayo-alert-worker · Workers Paid & Real-Time Intrabar Outcome Resolution",
         mode: cfg.mode,
         version: "v2.5.5",
         commit: "v2.5.5",
         buildTime: "2026-10-07 00:00 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
-        relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
+        relayUrl: env.DERIV_PROXY_URL ?? "https://tayo-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
         // Effective FVG retest-depth gate: 100 = legacy origin-zone boundary
         // check, 1–99 = literal penetration into the direction-matched FVG.
@@ -2318,7 +2318,7 @@ export default {
       let body: Record<string, unknown> = {};
       try { if (request.method === "POST") body = await request.json() as Record<string, unknown>; } catch { return json({ error: "invalid JSON" }, 400); }
       const channel = body.channel === "telegram" || body.channel === "discord" ? body.channel : "all";
-      const text = "SLK TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
+      const text = "TAYO TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
       const { sendTelegram, sendDiscord } = await import("./notify");
       const results: Record<string, string> = {};
       const store = makeStore(env.DB);
@@ -2443,10 +2443,10 @@ export default {
         // Immediately send a confirmation DM to user
         const { sendTelegram } = await import("./notify");
         const welcomeText = [
-          "🔔 [CONNECTED] SLK PRIVATE DM SIGNALS ACTIVE! 🔔",
+          "🔔 [CONNECTED] TAYO PRIVATE DM SIGNALS ACTIVE! 🔔",
           "",
           `Hello ${lastChat.first_name || lastChat.username || "there"}!`,
-          "Your personal Telegram chat is now linked directly to the SLK Radar engine.",
+          "Your personal Telegram chat is now linked directly to the TAYO Radar engine.",
           "",
           "⚡ Whenever a confirmed entry signal fires, you will receive a loud alert right here simultaneously with the channel so you NEVER miss a trade.",
           `Linked Chat ID : ${dmChatId}`,
@@ -2509,7 +2509,7 @@ export default {
 
         const { sendTelegram } = await import("./notify");
         const verification = [
-          "✅ SLK Free Channel connection verified",
+          "✅ TAYO Free Channel connection verified",
           "",
           "The bot can post to this channel.",
           "This is a delivery check only — no setup, entry, or trade outcome was generated.",
@@ -2576,12 +2576,12 @@ export default {
         const { sendTelegram, toBold } = await import("./notify");
         const boldV75 = toBold("V75");
         const welcome = [
-          `⚡ SLK Radar — 24/7 Synthetics Hub Connected! ⚡`,
+          `⚡ TAYO Radar — 24/7 Synthetics Hub Connected! ⚡`,
           "",
           `📍 Active Instrument: 🌟【 ${boldV75} 】🌟 (Volatility 75 Index)`,
           "• Status     : Connected & Active ✅",
           "• Operational: 24 Hours / 7 Days a Week",
-          "• Engine     : SLK Institutional Market Structure",
+          "• Engine     : TAYO Institutional Market Structure",
           "",
           "VIP delivery is limited to engine-confirmed paper entries and final outcomes. Pre-entry WATCH and bias-context cards are not sent to VIP.",
         ].join("\n");
@@ -2613,7 +2613,7 @@ export default {
       await store.setKv("telegram_deriv_chat_id", derivChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ SLK Synthetics VIP channel linked to ${derivChatId}.\nPaper mode only. VIP delivery is limited to confirmed entries and final outcomes; pre-entry WATCH and bias-context cards are not sent to VIP.`, { silent: false, pin: true, chatId: derivChatId });
+        await sendTelegram(env, `✅ TAYO Synthetics VIP channel linked to ${derivChatId}.\nPaper mode only. VIP delivery is limited to confirmed entries and final outcomes; pre-entry WATCH and bias-context cards are not sent to VIP.`, { silent: false, pin: true, chatId: derivChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2680,7 +2680,7 @@ export default {
         const { sendTelegram, toBold } = await import("./notify");
         const boldV75 = toBold("V75");
         const welcome = [
-          `⚡ SLK Free Synthetics Channel Connected ⚡`,
+          `⚡ TAYO Free Synthetics Channel Connected ⚡`,
           "",
           `📍 Market group: 🌟【 ${boldV75} 】🌟 and supported synthetic markets`,
           "• Status     : Connected ✅",
@@ -2717,7 +2717,7 @@ export default {
       await store.setKv("telegram_deriv_free_chat_id", derivFreeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ SLK Free Synthetics channel linked to ${derivFreeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: derivFreeChatId });
+        await sendTelegram(env, `✅ TAYO Free Synthetics channel linked to ${derivFreeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: derivFreeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2749,7 +2749,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 SLK SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
+        "🧪 TAYO SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -2783,7 +2783,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 SLK SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
+        "🧪 TAYO SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -2813,7 +2813,7 @@ export default {
       await store.setKv("telegram_dm_chat_id", dmChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `🔔 SLK Private DM Alert delivery linked to chat ID ${dmChatId}! Loud signals will now be sent here simultaneously with the channel.`, { silent: false, pin: false, chatId: dmChatId });
+        await sendTelegram(env, `🔔 TAYO Private DM Alert delivery linked to chat ID ${dmChatId}! Loud signals will now be sent here simultaneously with the channel.`, { silent: false, pin: false, chatId: dmChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2841,7 +2841,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const text = [
-        "🧪 SLK PRIVATE DM DELIVERY TEST — NOT A SIGNAL",
+        "🧪 TAYO PRIVATE DM DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies direct Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -2877,7 +2877,7 @@ export default {
       await store.setKv("telegram_free_chat_id", freeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ SLK Free channel linked to ${freeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: freeChatId });
+        await sendTelegram(env, `✅ TAYO Free channel linked to ${freeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: freeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2909,7 +2909,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 SLK FREE CHANNEL DELIVERY TEST — NOT A SIGNAL",
+        "🧪 TAYO FREE CHANNEL DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -2977,7 +2977,7 @@ export default {
         ok: true,
         targetFreeChatId: freeChatId,
         results,
-        message: "Test Bias Confirmation sent! Check VIP channel and Free channel (@SLK_radar).",
+        message: "Test Bias Confirmation sent! Check VIP channel and Free channel (@TAYO_radar).",
       });
     }
 
@@ -3173,7 +3173,7 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true,
-        service: "slk-alert-worker",
+        service: "tayo-alert-worker",
         timestamp: new Date().toISOString(),
         // Workers Paid ($5/mo). These are the plan's documented ceilings, not
         // measured headroom: 30s CPU per invocation (cron triggers under a 1h
@@ -3227,7 +3227,7 @@ export default {
     if ((url.pathname === "/admin/set-deriv-proxy" || url.pathname === "/api/set-deriv-proxy") && (request.method === "GET" || request.method === "POST")) {
       const proxyParam = url.searchParams.get("url") || url.searchParams.get("proxy_url");
       if (!proxyParam) {
-        return json({ ok: false, error: "Missing ?url=<proxy_url> query parameter (e.g. ?url=https://slk-deriv-relay.onrender.com)" }, 400);
+        return json({ ok: false, error: "Missing ?url=<proxy_url> query parameter (e.g. ?url=https://tayo-deriv-relay.onrender.com)" }, 400);
       }
       const store = makeStore(env.DB);
       const cleanUrl = proxyParam.trim().replace(/\/+$/, "");
@@ -3422,7 +3422,7 @@ export default {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 SLK TELEGRAM DELIVERY TEST — NOT A SIGNAL",
+        "🧪 TAYO TELEGRAM DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies channel and optional direct-message delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3592,12 +3592,12 @@ export default {
       if (action === "membership.went_valid" || action === "payment.succeeded") {
         // Generate single-use invite link for primary VIP (Institutional)
         const primaryLink = primaryChatId
-          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `SLK VIP - ${userId}`)
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `TAYO VIP - ${userId}`)
           : null;
 
         // Generate single-use invite link for Synthetics VIP
         const derivLink = derivChatId
-          ? await createTelegramInviteLink(notifyEnv, derivChatId, `SLK Synthetics VIP - ${userId}`)
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `TAYO Synthetics VIP - ${userId}`)
           : null;
 
         const memberRecord = {
@@ -3726,11 +3726,11 @@ export default {
 
       if (event === "went_valid") {
         const primaryLink = primaryChatId
-          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `SLK VIP Test - test_user_789`)
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `TAYO VIP Test - test_user_789`)
           : "TELEGRAM_CHAT_ID not configured";
 
         const derivLink = derivChatId
-          ? await createTelegramInviteLink(notifyEnv, derivChatId, `SLK Synthetics VIP Test - test_user_789`)
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `TAYO Synthetics VIP Test - test_user_789`)
           : "TELEGRAM_DERIV_CHAT_ID not configured";
 
         const memberRecord = {

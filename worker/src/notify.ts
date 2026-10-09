@@ -157,7 +157,7 @@ export async function createTelegramInviteLink(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        name: name ?? "SLK VIP Access",
+        name: name ?? "TAYO VIP Access",
         member_limit: memberLimit,
         expire_date: expireDate,
       }),
@@ -479,7 +479,7 @@ export function generateQuickChartUrl(a: Alert): string {
           pointBackgroundColor: "#ff9800",
         },
         {
-          label: "SLK Trade Path",
+          label: "TAYO Trade Path",
           data: [
             origin || entry,
             isLong ? sl + risk * 0.2 : sl - risk * 0.2, // Sweep
@@ -499,7 +499,7 @@ export function generateQuickChartUrl(a: Alert): string {
     options: {
       title: {
         display: true,
-        text: `SLK MODEL · TradingView · ${a.pair} ${a.entryTf} ${a.direction} · Risk/Reward 1:${a.rrInternal ?? "2.5"}R`,
+        text: `TAYO MODEL · TradingView · ${a.pair} ${a.entryTf} ${a.direction} · Risk/Reward 1:${a.rrInternal ?? "2.5"}R`,
         fontColor: "#d1d4dc",
         fontSize: 15,
       },
@@ -554,7 +554,7 @@ export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Pr
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      username: "SLK Paper Alerts",
+      username: "TAYO Paper Alerts",
       content: "```\n" + text + "\n```",
       allowed_mentions: { parse: [] }, // never ping anyone
     }),
@@ -582,8 +582,8 @@ export function formatAlert(a: Alert): string {
     + (flags.length ? " · " + flags.join(", ") : "");
 
   const lines = [
-    `🚨🚨🚨 [ACTION REQUIRED] — SLK CONFIRMED ENTRY 🚨🚨🚨`,
-    `${emoji} SLK ${paper} — ${a.pair} · 🌟【 ${boldPair} 】🌟`,
+    `🚨🚨🚨 [ACTION REQUIRED] — TAYO CONFIRMED ENTRY 🚨🚨🚨`,
+    `${emoji} TAYO ${paper} — ${a.pair} · 🌟【 ${boldPair} 】🌟`,
     `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction   : ${a.direction} ${emoji}`,
     `Timeframe   : ${a.entryTf} (map ${a.mapTf})`,
@@ -727,8 +727,8 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
     ``,
     `VIP members received this live alert with exact entry, stop floor, and targets.`,
     ``,
-    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
-    `👉 Live Verified Journal: https://slk-radar.pages.dev`,
+    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
+    `👉 Live Verified Journal: https://tayo-radar.pages.dev`,
   ].join("\n");
 }
 
@@ -753,7 +753,7 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   if (oc.status === "BE_HIT") {
     lines.push(
       "🛡️ INSTRUCTION: Trade was secured at Breakeven after reaching +1.50R favorable excursion.",
-      "👉 ACTION: Exit / close position flat at Entry price (0.00R). Zero loss incurred — account 100% protected. Await the next SLK confirmed setup.",
+      "👉 ACTION: Exit / close position flat at Entry price (0.00R). Zero loss incurred — account 100% protected. Await the next TAYO confirmed setup.",
     );
   }
   if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
@@ -909,7 +909,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
       ``,
       `────────────────────────`,
       `👑 VIP receives any separate engine-confirmed entry alert. This is not one.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
     );
   }
   return lines.join("\n");
@@ -936,7 +936,7 @@ export function formatBiasCard(
   const h4Status = diag.h4.breakoutStatus.replace(/_/g, " ").split(" ").map(capitalize).join(" ");
 
   const lines = [
-    `🧭 SLK BIAS CONTEXT — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟`,
+    `🧭 TAYO BIAS CONTEXT — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟`,
     `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
     `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${h4Status})`,
@@ -976,7 +976,7 @@ export function formatBiasCard(
       ``,
       `────────────────────────`,
       `👑 VIP members receive exact entry alerts, stop loss, and 1:2.5R–4.0R target execution.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
     );
   }
 
@@ -1174,11 +1174,11 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   const isInst = stats.segment === "institutional";
   const title = isDaily
     ? isInst
-      ? "📊 SLK RADAR — DAILY PERFORMANCE RECAP"
-      : "📊 SLK RADAR — 24/7 SYNTHETICS DAILY RECAP"
+      ? "📊 TAYO RADAR — DAILY PERFORMANCE RECAP"
+      : "📊 TAYO RADAR — 24/7 SYNTHETICS DAILY RECAP"
     : isInst
-      ? "📊 SLK RADAR — WEEKLY PERFORMANCE JOURNAL"
-      : "📊 SLK RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL";
+      ? "📊 TAYO RADAR — WEEKLY PERFORMANCE JOURNAL"
+      : "📊 TAYO RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL";
 
   const marketLine = isInst
     ? "🏛️ Institutional (Forex · Indices · Metals)"
@@ -1201,12 +1201,12 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   } else {
     resultsLines.push(
       "No setups closed — capital preserved.",
-      "We only act on the highest-conviction SLK confirmations.",
+      "We only act on the highest-conviction TAYO confirmations.",
     );
   }
 
   const allTimeWinRateStr = stats.allTimeWinRate !== null ? `${stats.allTimeWinRate.toFixed(1)}%` : "N/A";
-  const ledgerUrl = isInst ? "https://slk-radar.pages.dev" : "https://slk-radar.pages.dev?segment=synthetics";
+  const ledgerUrl = isInst ? "https://tayo-radar.pages.dev" : "https://tayo-radar.pages.dev?segment=synthetics";
 
   return [
     title,
@@ -1221,9 +1221,9 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     `${sign(stats.allTimeNetR)} · ${allTimeWinRateStr} decided win rate (${stats.allTimeTp} TP · ${stats.allTimeSl} SL)`,
     `🔗 Verified on the public ledger: ${ledgerUrl}`,
     "",
-    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/tayo-radar/tayo-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    "SLK Model (Structure · Liquidity · Key Levels)",
+    "TAYO Model (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",
   ].join("\n");
 }
@@ -1254,7 +1254,7 @@ export function formatEngineDisciplineDigest(totals: EngineDisciplineTotals): st
     disciplineLine,
     `Top rejection: ${top[0]}${top[1] > 0 ? ` (${top[1]})` : ""}`,
     "Research only — paper-mode observations; not audited performance or financial advice.",
-    "SLK Model (Structure · Liquidity · Key Levels)",
+    "TAYO Model (Structure · Liquidity · Key Levels)",
   ].join("\n");
 }
 

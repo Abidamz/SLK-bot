@@ -1,4 +1,4 @@
-"""Unit tests for SLK feature extraction (structure, liquidity, key levels).
+"""Unit tests for TAYO feature extraction (structure, liquidity, key levels).
 
 All fixtures are synthetic — they verify logic, never performance.
 """
@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from slk_bot.config import StrategyConfig
-from slk_bot.data.base import drop_incomplete
-from slk_bot.models import Candle, Direction
-from slk_bot.slk import features as F
+from tayo_bot.config import StrategyConfig
+from tayo_bot.data.base import drop_incomplete
+from tayo_bot.models import Candle, Direction
+from tayo_bot.slk import features as F
 
 from helpers import BASE, mk_candles, mk_from_closes
 
@@ -240,7 +240,7 @@ class TestMisc:
 
 # ------------------------------------------------------------------ storyline
 
-from slk_bot.slk.storyline import build_storyline, storyline_series
+from tayo_bot.tayo.storyline import build_storyline, storyline_series
 
 # engineered H4: clean bearish structure — LHs 107.2 / 105.7, LLs 106 / 104.5,
 # price currently 103.2; origin level should resolve above price

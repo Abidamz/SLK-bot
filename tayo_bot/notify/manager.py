@@ -5,7 +5,7 @@ import logging
 
 from ..config import Config
 from ..models import Direction, fmt_pips, fmt_price
-from ..slk.types import Alert
+from ..tayo.types import Alert
 from .discord import DiscordNotifier
 from .telegram import TelegramNotifier
 
@@ -39,7 +39,7 @@ def format_alert(a: Alert) -> str:
         kl += " · " + ", ".join(flags)
 
     lines = [
-        f"{_paper_tag(a)}{emoji} SLK {a.direction.value} — {pair} · {a.entry_tf}"
+        f"{_paper_tag(a)}{emoji} TAYO {a.direction.value} — {pair} · {a.entry_tf}"
         f" (map {a.map_tf})",
         "",
         f"Story     : {a.environment} · {a.phase} · {a.htf_alignment}",

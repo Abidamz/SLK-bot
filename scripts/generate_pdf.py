@@ -28,7 +28,7 @@ class NumberedCanvas(canvas.Canvas):
         self.setFillColor(colors.HexColor("#718096"))
         page_text = f"Page {self._pageNumber} of {page_count}"
         self.drawRightString(612 - 54, 36, page_text)
-        self.drawString(54, 36, "SLK Radar · Subscriber Terms of Service & Risk Disclaimer")
+        self.drawString(54, 36, "TAYO Radar · Subscriber Terms of Service & Risk Disclaimer")
         self.setStrokeColor(colors.HexColor("#E2E8F0"))
         self.setLineWidth(0.5)
         self.line(54, 48, 612 - 54, 48)
@@ -126,7 +126,7 @@ def generate_pdf(filename):
     story = []
 
     # Header section
-    story.append(Paragraph("SLK RADAR · TERMS OF SERVICE & RISK DISCLAIMER", title_style))
+    story.append(Paragraph("TAYO RADAR · TERMS OF SERVICE & RISK DISCLAIMER", title_style))
     story.append(Paragraph("Official Subscriber Legal Agreement · Last Updated: September 18, 2026", subtitle_style))
     story.append(HRFlowable(width="100%", thickness=1.5, color=c_accent, spaceBefore=0, spaceAfter=12))
 
@@ -135,7 +135,7 @@ def generate_pdf(filename):
         [Paragraph("⚠️ HIGH-RISK INVESTMENT WARNING & REGULATORY DISCLAIMER", warning_title_style)],
         [Paragraph(
             "Trading foreign exchange (Forex), commodities, precious metals, Contracts for Difference (CFDs), and indices on margin carries a high level of risk and may not be suitable for all investors. The high degree of leverage available in these markets can work against you as well as for you. Before deciding to trade, you should carefully consider your investment objectives, level of financial experience, and risk appetite.<br/><br/>"
-            "You could sustain a loss of some or all of your deposited capital. Never trade with funds you cannot afford to lose. All content, signals, directional bias analyses, and journal metrics provided by SLK Radar are intended strictly for educational and informational purposes, not financial or investment advice.",
+            "You could sustain a loss of some or all of your deposited capital. Never trade with funds you cannot afford to lose. All content, signals, directional bias analyses, and journal metrics provided by TAYO Radar are intended strictly for educational and informational purposes, not financial or investment advice.",
             warning_text_style
         )]
     ]
@@ -154,12 +154,12 @@ def generate_pdf(filename):
     # Section 1
     story.append(Paragraph("1. Nature of the Service & No Financial Advice", h1_style))
     story.append(Paragraph(
-        "SLK Radar operates as an algorithmic quantitative research model monitoring institutional market structure, liquidity sweeps, fair value gaps, and key-level confirmation entries.",
+        "TAYO Radar operates as an algorithmic quantitative research model monitoring institutional market structure, liquidity sweeps, fair value gaps, and key-level confirmation entries.",
         body_style
     ))
     story.append(Paragraph("• <b>Educational & Research Tool:</b> All alerts, directional bias cards, watch notifications, technical levels, and track record entries are distributed purely as algorithmic market analysis and research.", bullet_style))
-    story.append(Paragraph("• <b>Not a Financial Advisor:</b> SLK Radar, its creators, operators, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.", bullet_style))
-    story.append(Paragraph("• <b>No Solicitations:</b> No publication or transmission by SLK Radar shall be construed as a solicitation, endorsement, or recommendation to buy or sell any security or financial derivative.", bullet_style))
+    story.append(Paragraph("• <b>Not a Financial Advisor:</b> TAYO Radar, its creators, operators, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.", bullet_style))
+    story.append(Paragraph("• <b>No Solicitations:</b> No publication or transmission by TAYO Radar shall be construed as a solicitation, endorsement, or recommendation to buy or sell any security or financial derivative.", bullet_style))
 
     # Section 2
     story.append(Paragraph("2. Subscriber Responsibility & Execution Discretion", h1_style))
@@ -167,7 +167,7 @@ def generate_pdf(filename):
         "All trading activities and decisions are executed entirely at your own independent risk and discretion.",
         body_style
     ))
-    story.append(Paragraph("• <b>Self-Directed Trading:</b> SLK Radar does not execute orders on your behalf, does not take custody of funds, and has no direct connectivity to your brokerage accounts.", bullet_style))
+    story.append(Paragraph("• <b>Self-Directed Trading:</b> TAYO Radar does not execute orders on your behalf, does not take custody of funds, and has no direct connectivity to your brokerage accounts.", bullet_style))
     story.append(Paragraph("• <b>Live Execution Variables:</b> Real market execution is subject to broker spreads, slippage, financing charges, swap fees, and execution latency that may cause actual live trading results to diverge from research models.", bullet_style))
     story.append(Paragraph("• <b>Risk Management:</b> You are solely responsible for determining position sizing, stop-loss management, and leverage. Conservative risk parameters are strongly recommended at all times.", bullet_style))
 
@@ -198,7 +198,7 @@ def generate_pdf(filename):
     # Section 7
     story.append(Paragraph("7. Limitation of Liability", h1_style))
     story.append(Paragraph(
-        "To the fullest extent permitted by applicable law, in no event shall SLK Radar, its creators, developers, or affiliates be liable for any direct, indirect, incidental, punitive, or consequential damages, including but not limited to loss of capital, trading losses, loss of profits, or data loss arising out of or in connection with the use of this service.",
+        "To the fullest extent permitted by applicable law, in no event shall TAYO Radar, its creators, developers, or affiliates be liable for any direct, indirect, incidental, punitive, or consequential damages, including but not limited to loss of capital, trading losses, loss of profits, or data loss arising out of or in connection with the use of this service.",
         body_style
     ))
 
@@ -206,4 +206,4 @@ def generate_pdf(filename):
     print(f"Successfully generated {filename}")
 
 if __name__ == "__main__":
-    generate_pdf("dashboard/SLK_Radar_Terms_of_Service.pdf")
+    generate_pdf("dashboard/TAYO_Radar_Terms_of_Service.pdf")

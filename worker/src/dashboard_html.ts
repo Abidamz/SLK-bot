@@ -3,7 +3,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SLK Bot · Algorithmic Trading Portfolio & Live Track Record</title>
+  <title>TAYO Bot · Algorithmic Trading Portfolio & Live Track Record</title>
   <style>
 :root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:flex;align-items:center;gap:11px;font-size:20px;letter-spacing:-.03em}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border:1px solid #4c806e;border-radius:12px;color:var(--accent);font-weight:800;font-size:12px}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .alert-row:hover{border-color:#54719c;background:#142033}
@@ -178,9 +178,9 @@ body:not(.operator-mode) .operator-only{display:none!important}
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">SLK</span>
+      <span class="brand-mark">TAYO</span>
       <div>
-        <strong>SLK Radar</strong>
+        <strong>TAYO Radar</strong>
         <small>Quantitative Execution Desk</small>
       </div>
     </div>
@@ -200,7 +200,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span id="statusDot" class="dot ok"></span>
         <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
-      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
+      <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access ($100/mo)</span>
       </a>
@@ -214,7 +214,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span>VIP regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong> (Batch 1: 90% full)</span>
       </div>
       <div class="banner-right">
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
+        <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
       </div>
     </div>
 
@@ -257,7 +257,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 23 markets (13 institutional and 10 synthetic).</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
+          <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             <span>Join VIP Signals ($100/mo · $49 with code FOUNDING20)</span>
           </a>
@@ -269,14 +269,14 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <!-- Discreet, clean community text links -->
         <div class="community-links-row marketing-only">
           <span>Free Telegram Hubs:</span>
-          <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="community-link">
+          <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" class="community-link">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-            <span>Institutional FX & Gold (<strong>@SLK_radar</strong>)</span>
+            <span>Institutional FX & Gold (<strong>@TAYO_radar</strong>)</span>
           </a>
           <span>·</span>
-          <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
+          <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-            <span>24/7 Synthetics Radar (<strong>@SLK_Hub_synthetics_free</strong>)</span>
+            <span>24/7 Synthetics Radar (<strong>@TAYO_Hub_synthetics_free</strong>)</span>
           </a>
         </div>
       </div>
@@ -398,7 +398,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <article class="panel lifecycle">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">SLK CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
+              <p class="eyebrow">TAYO CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
               <h2>7-Stage Execution Lifecycle</h2>
             </div>
             <span class="pill amber">Deterministic rules</span>
@@ -505,7 +505,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <span id="healthPill" class="pill green">Worker Online</span>
           </div>
           <dl>
-            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
+            <div><dt>Cloud Engine</dt><dd id="workerName">tayo-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
             <div><dt>Active Markets (23)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s) · USDCAD · NZDUSD · EURJPY</dd></div>
             <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">13 Institutional · 10 Synthetics (24/7)</dd></div>
@@ -599,7 +599,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
             <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
-            <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
+            <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
               ⚡ Can't wait? 2 Founding Member spots currently open on Whop ($49/mo) →
             </a>
           </div>
@@ -611,10 +611,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
           <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
           <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-            <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
-              Join Free Telegram Hub (@SLK_radar)
+            <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join Free Telegram Hub (@TAYO_radar)
             </a>
-            <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
+            <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
               Join Free Synthetics Radar
             </a>
           </div>
@@ -643,10 +643,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <h3>Deriv Algorithmic Synthetic Indices (10 Volatility Assets)</h3>
           <p>Continuous algorithmic liquidity across 10 Volatility Indices (V75, V100, V50, V25, V10 and the 1s series). While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-            <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
+            <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
               <span>👉 Unlock 24/7 Synthetics VIP Signals (Instant Access)</span>
             </a>
-            <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
+            <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
               <span>💬 Join Free 24/7 Synthetics Radar Channel</span>
             </a>
           </div>
@@ -749,7 +749,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <article class="panel notice">
         <p class="eyebrow">RESEARCH & TRANSPARENCY</p>
         <h2>Algorithmic Paper Ledger</h2>
-        <p>All statistics are derived from automated Cloudflare D1 database trade records executing SLK confirmation rules (Structure, Liquidity, Key Levels) on live broker market data. Not financial advice. See <a href="terms.html" style="color:var(--accent); text-decoration: underline;">Terms & Risk Disclaimer</a>.</p>
+        <p>All statistics are derived from automated Cloudflare D1 database trade records executing TAYO confirmation rules (Structure, Liquidity, Key Levels) on live broker market data. Not financial advice. See <a href="terms.html" style="color:var(--accent); text-decoration: underline;">Terms & Risk Disclaimer</a>.</p>
       </article>
     </section>
 
@@ -826,7 +826,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <div>
               <span class="eyebrow">TELEGRAM</span>
               <h3>Confirmed Entry Alerts</h3>
-              <p>Posts full SLK confirmation entry, stop-loss, 3R target, bias grade, and path to your channel.</p>
+              <p>Posts full TAYO confirmation entry, stop-loss, 3R target, bias grade, and path to your channel.</p>
             </div>
             <span class="pill green">Enabled</span>
           </label>
@@ -957,13 +957,13 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <!-- Public Marketing Footer -->
   <footer class="marketing-only">
     <div class="footer-content">
-      <span>SLK Radar · Institutional Paper Simulation & Clean Automated Monitoring</span>
+      <span>TAYO Radar · Institutional Paper Simulation & Clean Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
-        <a href="https://t.me/SLK_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@SLK_Hub_synthetics_free)</a>
-        <a href="https://t.me/SLK_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@SLK_radar)</a>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
+        <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
+        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@TAYO_Hub_synthetics_free)</a>
+        <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@TAYO_radar)</a>
+        <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
     </div>
   </footer>
@@ -972,7 +972,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <footer class="operator-only" style="border-top: 1px solid var(--line); background: #070b12; padding: 18px 24px; color: var(--muted); font-size: 11.5px;">
     <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <strong style="color: var(--text);">SLK Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
+        <strong style="color: var(--text);">TAYO Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
       </div>
       <div style="display: flex; gap: 16px; align-items: center;">
         <span>Primary Feed: Swiss Bank Dukascopy (Forex) · Deriv WebSocket Relay (Synthetics)</span>
@@ -984,11 +984,11 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <script>
 const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
   ? window.location.origin
-  : 'https://slk-alert-worker.abidogundamilola.workers.dev';
+  : 'https://tayo-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
   url: DEFAULT_URL,
-  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('slkAdminKey')) || '',
+  adminKey: (typeof localStorage !== 'undefined' && localStorage.getItem('tayoAdminKey')) || '',
   alerts: [],
   alertPage: 1,
   alertTotal: 0,
@@ -1018,7 +1018,7 @@ function setViewMode(mode) {
   if ($('activeModeLabel')) {
     $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
   }
-  try { localStorage.setItem('slkViewMode', state.viewMode); } catch (_) {}
+  try { localStorage.setItem('tayoViewMode', state.viewMode); } catch (_) {}
 }
 
 if ($('modePublicBtn')) $('modePublicBtn').addEventListener('click', () => setViewMode('public'));
@@ -1187,19 +1187,19 @@ if ($('clearSyntheticsBtn')) {
 
 function clearAdminKey() {
   state.adminKey = '';
-  try { localStorage.removeItem('slkAdminKey'); } catch (_) {}
+  try { localStorage.removeItem('tayoAdminKey'); } catch (_) {}
 }
 
 async function getAdminKey(forcePrompt = false) {
   if (forcePrompt) clearAdminKey();
   if (!state.adminKey) {
-    try { state.adminKey = localStorage.getItem('slkAdminKey') || ''; } catch (_) {}
+    try { state.adminKey = localStorage.getItem('tayoAdminKey') || ''; } catch (_) {}
   }
   if (state.adminKey) return state.adminKey;
   const key = window.prompt('Enter Admin Key:');
   if (key && key.trim()) {
     state.adminKey = key.trim();
-    try { localStorage.setItem('slkAdminKey', state.adminKey); } catch (_) {}
+    try { localStorage.setItem('tayoAdminKey', state.adminKey); } catch (_) {}
   }
   return state.adminKey;
 }
@@ -1354,7 +1354,7 @@ function renderHealth(h) {
   if (!h) return;
   const isPaper = String(h.mode || 'PAPER').toUpperCase().includes('PAPER');
   if ($('mode')) $('mode').textContent = isPaper ? 'PAPER PIPELINE · RULE-CHECKED' : String(h.mode).toUpperCase();
-  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'tayo-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${isPaper ? 'PAPER PIPELINE' : esc(String(h.mode || 'PAPER').toUpperCase())})\`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
@@ -1378,12 +1378,12 @@ function renderHealth(h) {
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML =
-      '<div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>' +
+      '<div class="health-item"><span>Cloud Service</span><strong>tayo-alert-worker</strong></div>' +
       '<div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">' + esc(h.version || 'v2.5.3') + ' (Production)</strong></div>' +
       '<div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>' +
       '<div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">' + esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)') + '</strong></div>' +
       '<div class="health-item"><span>Active Timeframes</span><strong>' + esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h') + '</strong></div>' +
-      '<div class="health-item"><span>Deriv Synthetics Relay</span><strong>' + esc(h.relayUrl || 'https://slk-bot.vercel.app') + ' · Connected</strong></div>' +
+      '<div class="health-item"><span>Deriv Synthetics Relay</span><strong>' + esc(h.relayUrl || 'https://tayo-bot.vercel.app') + ' · Connected</strong></div>' +
       '<div class="health-item"><span>Server Time (UTC)</span><strong>' + esc(h.time || '—') + '</strong></div>' +
       '<div class="health-item"><span>Coverage</span><strong>' + (h.pairs || []).length + ' Markets Active</strong></div>' +
       '<div class="health-item"><span>Execution Mode</span><strong>Paper / Verified Quantitative</strong></div>' +
@@ -1856,7 +1856,7 @@ function buildReplaySteps(data) {
   }
   if (data.confirmedAt) {
     const idx = idxAt(data.confirmedAt);
-    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. SLK entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. TAYO entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
   }
   const oc = data.outcome;
   if (oc && oc.status && oc.status !== 'OPEN') {
@@ -2025,13 +2025,13 @@ async function exportLedger(fmt) {
     const rows = await fetchLedgerRows();
     const stamp = new Date().toISOString().slice(0, 10);
     if (fmt === 'json') {
-      downloadBlob(\`slk-radar-ledger-\${stamp}.json\`, 'application/json', JSON.stringify(rows, null, 2));
+      downloadBlob(\`tayo-radar-ledger-\${stamp}.json\`, 'application/json', JSON.stringify(rows, null, 2));
       return;
     }
     const escCsv = val => { const s = val == null ? '' : String(val); return /[",\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
     for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
-    downloadBlob(\`slk-radar-ledger-\${stamp}.csv\`, 'text/csv', lines.join('\\n'));
+    downloadBlob(\`tayo-radar-ledger-\${stamp}.csv\`, 'text/csv', lines.join('\\n'));
   } catch (e) {
     alert('Export failed: ' + e.message);
   }
@@ -2119,12 +2119,12 @@ function setupWaitlist() {
 // Automatically load live data on open
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
+    try { const m = localStorage.getItem('tayoViewMode'); if (m) setViewMode(m); } catch (_) {}
     setupWaitlist();
     loadAll();
   });
 } else {
-  try { const m = localStorage.getItem('slkViewMode'); if (m) setViewMode(m); } catch (_) {}
+  try { const m = localStorage.getItem('tayoViewMode'); if (m) setViewMode(m); } catch (_) {}
   setupWaitlist();
   loadAll();
 }

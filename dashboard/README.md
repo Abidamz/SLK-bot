@@ -1,4 +1,4 @@
-# SLK Radar dashboard
+# TAYO Radar dashboard
 
 A lean, read-only dashboard for paper operations. It loads `/health`, `/stats`, and `/alerts` from the Worker and keeps the admin key only in browser `sessionStorage` for the current session.
 

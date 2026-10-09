@@ -1,11 +1,11 @@
-/** Walk-forward replay of the LIVE SLK alert engine on real Dukascopy
+/** Walk-forward replay of the LIVE TAYO alert engine on real Dukascopy
  *  minute data — the same candles the production worker consumes. Nothing is
  *  fabricated or synthesised; statistics come from the replay alone. (The
  *  model spec bans invented backtest/performance numbers; this script is how
  *  you produce real ones yourself.)
  *
  *  Usage (Codespaces terminal):
- *    cd /workspaces/SLK-bot/worker
+ *    cd /workspaces/TAYO-bot/worker
  *    npm i -D tsx                      # one-time
  *    npx tsx scripts/backtest.ts                 # all 7 pairs, 60 days
  *    npx tsx scripts/backtest.ts US30 30         # one pair, 30 days
@@ -264,7 +264,7 @@ async function main() {
 
   const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
-  let lines = `# SLK walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
+  let lines = `# TAYO walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
   const emit = (spreadAdj: boolean) => {
     const block: string[] = [];
     block.push(`| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | PF | maxDD (R) | lose streak |`);

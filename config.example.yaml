@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────────
-# SLK-bot configuration.  Copy to config.yaml and edit.
+# TAYO-bot configuration.  Copy to config.yaml and edit.
 #   cp config.example.yaml config.yaml
 # Secrets (tokens/keys) live in .env — see .env.example.
 #
-# Model defaults follow the research handoff (docs/SLK_MODEL_SPEC.md):
+# Model defaults follow the research handoff (docs/TAYO_MODEL_SPEC.md):
 # context 1d (W/M derived) → map 4h → execution 1h/30m. Sub-15m execution
 # stays disabled unless you explicitly opt in.
 # ─────────────────────────────────────────────────────────────────

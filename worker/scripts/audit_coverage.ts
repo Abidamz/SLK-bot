@@ -20,17 +20,17 @@
  *
  *  Usage:
  *    cd worker
- *    SLK_ADMIN_KEY=... npx tsx scripts/audit_coverage.ts
- *    SLK_ADMIN_KEY=... SLK_BASE_URL=https://... SLK_AUDIT_DAYS=31 npx tsx scripts/audit_coverage.ts
+ *    TAYO_ADMIN_KEY=... npx tsx scripts/audit_coverage.ts
+ *    TAYO_ADMIN_KEY=... TAYO_BASE_URL=https://... TAYO_AUDIT_DAYS=31 npx tsx scripts/audit_coverage.ts
  *
  *  Requires the owner key (/api/scan-audit and /alerts are both authed).
  */
 
 import { readFileSync } from "node:fs";
 
-const BASE = process.env.SLK_BASE_URL ?? "https://slk-bot.slk-bot-4c2.workers.dev";
-const KEY = process.env.SLK_ADMIN_KEY ?? "";
-const DAYS = process.env.SLK_AUDIT_DAYS ?? "31";
+const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-bot.tayo-bot-4c2.workers.dev";
+const KEY = process.env.TAYO_ADMIN_KEY ?? "";
+const DAYS = process.env.TAYO_AUDIT_DAYS ?? "31";
 
 interface FunnelRow {
   pair: string;
@@ -76,7 +76,7 @@ function configuredPairs(): string[] {
   } catch {
     /* fall through to env */
   }
-  return (process.env.SLK_PAIRS ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+  return (process.env.TAYO_PAIRS ?? "").split(",").map((p) => p.trim()).filter(Boolean);
 }
 
 async function getJson(path: string): Promise<unknown> {
@@ -87,7 +87,7 @@ async function getJson(path: string): Promise<unknown> {
 
 async function main(): Promise<void> {
   if (!KEY) {
-    console.error("Set SLK_ADMIN_KEY to the owner read key ( /api/scan-audit and /alerts are authed ).");
+    console.error("Set TAYO_ADMIN_KEY to the owner read key ( /api/scan-audit and /alerts are authed ).");
     process.exit(1);
   }
 
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
 
   const pairs = configuredPairs();
   if (!pairs.length) {
-    console.error("Could not read PAIRS from wrangler.jsonc; set SLK_PAIRS instead.");
+    console.error("Could not read PAIRS from wrangler.jsonc; set TAYO_PAIRS instead.");
     process.exit(1);
   }
 

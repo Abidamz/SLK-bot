@@ -34,7 +34,7 @@ const request = (path: string, authorization?: string) => new Request(`https://w
   headers: authorization ? { authorization } : undefined,
 });
 
-describe("isolated SLK shadow experiments", () => {
+describe("isolated TAYO shadow experiments", () => {
   beforeEach(() => resetDefaultMemStore());
 
   it("compares a latest 50% FVG-retest candidate without accepting stale or suppressed alerts", () => {

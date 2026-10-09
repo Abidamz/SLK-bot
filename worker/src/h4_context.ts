@@ -1,6 +1,6 @@
 /** H4 vantage context + session buckets — DIAGNOSTICS ONLY.
  *
- *  Ports the "H4 vantage" step of the SLK Model into a per-scan context object
+ *  Ports the "H4 vantage" step of the TAYO Model into a per-scan context object
  *  that is attached to setup rows, shadow-ledger rows and experiment rows as
  *  confluence tags:
  *

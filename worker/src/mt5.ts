@@ -101,13 +101,13 @@ export async function dispatchMt5Trade(
     // Only log when the owner actually configured the bridge but the safety
     // gate holds it back — avoids noise on the default paper deployment.
     if (env.MT5_WEBHOOK_URL?.trim() || (env.MT5_ENABLED ?? "").toLowerCase() === "true") {
-      console.info(JSON.stringify({ level: "info", msg: "slk.mt5.skip", setupId: a.setupId, reason }));
+      console.info(JSON.stringify({ level: "info", msg: "tayo.mt5.skip", setupId: a.setupId, reason }));
     }
     return { status: "skipped", reason };
   }
   const riskUsd = Number(env.MT5_RISK_USD ?? "");
   const result = await postMt5(env, "/webhook/trade", buildTradePayload(a, Number.isFinite(riskUsd) && riskUsd > 0 ? riskUsd : undefined), fetchFn);
-  console.info(JSON.stringify({ level: "info", msg: "slk.mt5.trade", setupId: a.setupId, pair: a.pair, direction: a.direction, result }));
+  console.info(JSON.stringify({ level: "info", msg: "tayo.mt5.trade", setupId: a.setupId, pair: a.pair, direction: a.direction, result }));
   return result;
 }
 
@@ -118,6 +118,6 @@ export async function dispatchMt5Breakeven(
 ): Promise<Mt5Result> {
   if (!mt5Active(env, mode)) return { status: "skipped", reason: skipReason(env, mode) };
   const result = await postMt5(env, "/webhook/breakeven", buildBreakevenPayload(setupId, pair, entryPrice), fetchFn);
-  console.info(JSON.stringify({ level: "info", msg: "slk.mt5.breakeven", setupId, pair, entryPrice, result }));
+  console.info(JSON.stringify({ level: "info", msg: "tayo.mt5.breakeven", setupId, pair, entryPrice, result }));
   return result;
 }

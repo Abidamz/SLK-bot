@@ -1,4 +1,4 @@
-"""SQLite-backed journal: SLK alerts + a full auditable event log.
+"""SQLite-backed journal: TAYO alerts + a full auditable event log.
 
 - ``slk_alerts``  — one row per fired alert, keyed by ``setup_id`` (unique →
   duplicate alerts are impossible even across restarts), carrying the whole
@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models import Candle, Direction, SignalStatus
-from ..slk.types import Alert, Event
+from ..tayo.types import Alert, Event
 
 log = logging.getLogger(__name__)
 
@@ -310,7 +310,7 @@ def evaluate_signal(
 
 
 def format_stats(s: dict) -> str:
-    lines = ["📊 SLK BOT PERFORMANCE", ""]
+    lines = ["📊 TAYO BOT PERFORMANCE", ""]
     lines.append(
         f"Alerts : {s['total']} total · {s['open']} open · {s['tp']} TP · "
         f"{s['sl']} SL · {s['expired']} expired"

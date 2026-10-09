@@ -2,7 +2,7 @@
 
 Env vars (see .env.example):
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DISCORD_WEBHOOK_URL,
-    TWELVEDATA_API_KEY, SLK_CONFIG
+    TWELVEDATA_API_KEY, TAYO_CONFIG
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ CONTEXT_TF = "1d"             # bias context (weekly/monthly derived from this)
 
 @dataclass
 class StrategyConfig:
-    """Tunables for the SLK engine (structure / liquidity / key levels).
+    """Tunables for the TAYO engine (structure / liquidity / key levels).
 
     All volatility-derived thresholds are ATR-normalized per symbol and per
     timeframe from live data — no universal pip/ATR constants are applied
@@ -132,7 +132,7 @@ def _sub(cls, data: Any):
 
 def load_config(path: str | None = None) -> Config:
     load_dotenv()
-    cfg_path = path or os.environ.get("SLK_CONFIG", "config.yaml")
+    cfg_path = path or os.environ.get("TAYO_CONFIG", "config.yaml")
     raw: dict[str, Any] = {}
     p = Path(cfg_path)
     if p.exists():

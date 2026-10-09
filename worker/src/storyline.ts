@@ -1,4 +1,4 @@
-/** Layer 1 — ABC storyline (expectation). Port of slk_bot/slk/storyline.py.
+/** Layer 1 — ABC storyline (expectation). Port of tayo_bot/slk/storyline.py.
  *  Snapshots are built point-in-time: each H4 close gets a storyline made
  *  only from data closed at that moment. */
 import * as F from "./features";

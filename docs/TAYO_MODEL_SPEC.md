@@ -1,14 +1,14 @@
-# SLK Model Specification (working document)
+# TAYO Model Specification (working document)
 
-Distilled from the research handoff (`SLK_CONTINUATION_SUMMARY_LATEST`, Manus
+Distilled from the research handoff (`TAYO_CONTINUATION_SUMMARY_LATEST`, Manus
 project `slk-price-action-research`, checkpoint 44f99d8c). That research
-catalogued the user's Plain Fx SLK playlist (10 lessons), the 4TH MAN
+catalogued the user's Plain Fx TAYO playlist (10 lessons), the 4TH MAN
 MENTORSHIP playlist (19 lessons), seven individual videos, the MyTradingLand
 thread, and the JhayFx top-down note. Four video pages were blocked by an
 automated-traffic challenge, so their contents were reviewed via AI-assisted
 analysis rather than verbatim transcript — **this limitation stands**.
 
-> **SLK = Structure, Liquidity, Key Levels.** The recurring architecture is
+> **TAYO = Structure, Liquidity, Key Levels.** The recurring architecture is
 > **"Expectation / ABC storyline first, then Execution / XYZ entry"** — the
 > entry is never evaluated until the storyline conditions have passed.
 
@@ -91,8 +91,8 @@ ever be enabled.
 
 ## References
 
-- Plain Fx SLK playlist — https://www.youtube.com/playlist?list=PLjbd_lkDytnQ656fQVd93-7TLCwX_FN04
+- Plain Fx TAYO playlist — https://www.youtube.com/playlist?list=PLjbd_lkDytnQ656fQVd93-7TLCwX_FN04
 - 4TH MAN MENTORSHIP FULL — https://www.youtube.com/playlist?list=PLluTOcq9uKInvlN00dKr1fcnVrOoa13FU
-- SLK Strategy thread — https://www.mytradingland.com/thread/slk-strategy-c24584/1
-- Top-Down Analysis Using SLK (JhayFx) — https://jhayfx.substack.com/p/top-down-analysis-using-slk-strategy
+- TAYO Strategy thread — https://www.mytradingland.com/thread/slk-strategy-c24584/1
+- Top-Down Analysis Using TAYO (JhayFx) — https://jhayfx.substack.com/p/top-down-analysis-using-slk-strategy
 - X: @The_4thMan, @Kelvinking_

@@ -283,7 +283,7 @@ export async function fetchDukascopy(
       let resp: Response;
       try {
         resp = await fetchFn(b.url, {
-          headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
+          headers: { "user-agent": "Mozilla/5.0 (compatible; tayo-alert-worker/1.0)" },
           signal: AbortSignal.timeout(20_000),
         });
       } catch (e) {
@@ -958,7 +958,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         }
         console.warn(JSON.stringify({
           level: "warn",
-          msg: "slk.provider.fallback",
+          msg: "tayo.provider.fallback",
           pair: req.pair,
           tf: req.tf,
           from: "twelvedata",
@@ -987,7 +987,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
       lastErr = dukaErr instanceof Error ? dukaErr : new Error(String(dukaErr));
       console.warn(JSON.stringify({
         level: "warn",
-        msg: "slk.provider.fallback",
+        msg: "tayo.provider.fallback",
         pair: req.pair,
         tf: req.tf,
         from: "twelvedata",
@@ -1006,7 +1006,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
         } catch (oandaErr) {
           console.warn(JSON.stringify({
             level: "warn",
-            msg: "slk.provider.fallback",
+            msg: "tayo.provider.fallback",
             pair: req.pair,
             tf: req.tf,
             from: "oanda",
@@ -1034,7 +1034,7 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
               try {
                 console.warn(JSON.stringify({
                   level: "warn",
-                  msg: "slk.provider.fallback",
+                  msg: "tayo.provider.fallback",
                   pair: req.pair,
                   tf: req.tf,
                   from: "dukascopy",

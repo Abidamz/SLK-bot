@@ -1,35 +1,35 @@
-# SLK Deriv Relay (Ultra-Lightweight Synthetic Candle Proxy)
+# TAYO Deriv Relay (Ultra-Lightweight Synthetic Candle Proxy)
 
-This micro-service runs outside Cloudflare (on Render, Railway, or Fly.io) to provide continuous, unblocked Deriv synthetic market data (`R_75`, `R_100`, etc.) to the SLK-bot Cloudflare Worker via standard HTTP `GET /candles`.
+This micro-service runs outside Cloudflare (on Render, Railway, or Fly.io) to provide continuous, unblocked Deriv synthetic market data (`R_75`, `R_100`, etc.) to the TAYO-bot Cloudflare Worker via standard HTTP `GET /candles`.
 
 ## 🚀 2-Minute Free Deployment on Render.com
 
 1. Go to [https://dashboard.render.com](https://dashboard.render.com)
 2. Click **New +** → **Web Service**
-3. Select your GitHub repository: `Abidamz/SLK-bot`
+3. Select your GitHub repository: `Abidamz/TAYO-bot`
 4. Configure the settings:
-   - **Name**: `slk-deriv-relay`
+   - **Name**: `tayo-deriv-relay`
    - **Root Directory**: `deriv-relay`
    - **Runtime**: `Node`
    - **Build Command**: `npm install`
    - **Start Command**: `npm start`
    - **Instance Type**: **Free ($0/month)**
 5. Click **Deploy Web Service**
-6. Copy your public service URL (e.g., `https://slk-deriv-relay.onrender.com`).
+6. Copy your public service URL (e.g., `https://tayo-deriv-relay.onrender.com`).
 
 ---
 
 ## 🔗 Connect to Cloudflare Worker
 
 Once your Render relay is live:
-1. Open your Cloudflare Worker Dashboard → **slk-alert-worker** → **Settings** → **Variables and Secrets**.
+1. Open your Cloudflare Worker Dashboard → **tayo-alert-worker** → **Settings** → **Variables and Secrets**.
 2. Add an environment variable:
    - **Variable name**: `DERIV_PROXY_URL`
-   - **Value**: `https://slk-deriv-relay.onrender.com` (your Render URL)
+   - **Value**: `https://tayo-deriv-relay.onrender.com` (your Render URL)
 3. Save and Deploy!
 
 Alternatively, you can save it via your interactive Admin Dashboard:
-- Visit `https://slk-alert-worker.abidogundamilola.workers.dev/admin/settings?deriv_proxy_url=https://slk-deriv-relay.onrender.com`
+- Visit `https://tayo-alert-worker.abidogundamilola.workers.dev/admin/settings?deriv_proxy_url=https://tayo-deriv-relay.onrender.com`
 
 ---
 

@@ -1,4 +1,4 @@
-name: Deploy SLK Radar
+name: Deploy TAYO Radar
 
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci --prefix worker
 
-      - name: Deploy Cloudflare Worker (slk-alert-worker)
+      - name: Deploy Cloudflare Worker (tayo-alert-worker)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -70,9 +70,9 @@ jobs:
           sed -i "s/app\.js?v=[A-Za-z0-9]*/app.js?v=${SHORT_SHA}/" dashboard/index.html
           sed -i "s/styles\.css?v=[A-Za-z0-9]*/styles.css?v=${SHORT_SHA}/" dashboard/index.html
 
-      - name: Deploy Cloudflare Pages (slk-radar)
+      - name: Deploy Cloudflare Pages (tayo-radar)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dashboard --project-name=slk-radar --branch=main
+          command: pages deploy dashboard --project-name=tayo-radar --branch=main

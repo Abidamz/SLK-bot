@@ -183,7 +183,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200);
     res.end(JSON.stringify({
       ok: true,
-      service: "slk-deriv-relay",
+      service: "tayo-deriv-relay",
       uptimeSeconds: Math.round(process.uptime()),
       memoryMb: Math.round(mem.rss / 1024 / 1024),
       wsConnected: activeWs ? activeWs.readyState === 1 : false,
