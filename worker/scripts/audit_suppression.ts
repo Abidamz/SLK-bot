@@ -20,7 +20,11 @@
  *  Requires the owner read key (/alerts is authed).
  */
 
-const BASE = process.env.TAYO_BASE_URL ?? "https://slk-bot.slk-bot-4c2.workers.dev";
+// The worker GitHub Actions deploys: wrangler.jsonc names it tayo-alert-worker,
+// so its URL is https://tayo-alert-worker.<subdomain>.workers.dev. If your
+// alerts live on the pre-rename worker instead, override with
+// TAYO_BASE_URL=https://slk-alert-worker.<subdomain>.workers.dev
+const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-alert-worker.abidogundamilola.workers.dev";
 const KEY = process.env.TAYO_ADMIN_KEY ?? "";
 
 type Row = {
