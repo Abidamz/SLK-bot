@@ -20,7 +20,7 @@
  *  Requires the owner read key (/alerts is authed).
  */
 
-const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-bot.tayo-bot-4c2.workers.dev";
+const BASE = process.env.TAYO_BASE_URL ?? "https://slk-bot.slk-bot-4c2.workers.dev";
 const KEY = process.env.TAYO_ADMIN_KEY ?? "";
 
 type Row = {
@@ -32,6 +32,9 @@ type Row = {
   rMultiple?: number | null;
   suppressReason?: string | null;
   shadowClassification?: string | null;
+  /** Migration 0010. 1 = the pending limit at entry would have filled,
+   *  0 = resolved without ever touching entry, null = not recorded. */
+  fillConfirmed?: number | null;
 };
 
 interface Bucket {
@@ -58,6 +61,9 @@ function accumulate(b: Bucket, r: Row): void {
   else if (rMultiple < 0) b.losses++;
   else b.scratched++;
 }
+
+const pct = (n: number, d: number): string =>
+  d ? `${Math.round((n / d) * 1000) / 10}%` : "n/a";
 
 function render(title: string, buckets: Map<string, Bucket>): void {
   console.log(`\n=== ${title} ===`);
@@ -141,6 +147,41 @@ async function main(): Promise<void> {
     accumulate(byTf.get(key)!, r);
   }
   render("BY ENTRY TIMEFRAME (validates the same-level dedupe rule)", byTf);
+
+  // Fill rate. Every alert tells subscribers to place a pending limit at the
+  // entry price, but a limit only fills if price trades back through entry —
+  // it never does on the cleanest winners, the ones that run without looking
+  // back. So the ledger's R is the R of a hypothetical fill, not the R of
+  // acting on the notification. This quantifies the gap.
+  const scored = rows.filter(
+    (r) => r.fillConfirmed !== null && r.fillConfirmed !== undefined
+      && r.status !== "OPEN" && typeof r.rMultiple === "number",
+  );
+  if (scored.length) {
+    const filled = scored.filter((r) => r.fillConfirmed === 1);
+    const netAll = scored.reduce((s, r) => s + (r.rMultiple ?? 0), 0);
+    const netFilled = filled.reduce((s, r) => s + (r.rMultiple ?? 0), 0);
+    const winners = scored.filter((r) => (r.rMultiple ?? 0) > 0);
+    const winnersFilled = winners.filter((r) => r.fillConfirmed === 1);
+    console.log(`\n=== PENDING-LIMIT FILL RATE (migration 0010) ===`);
+    console.log(`  Scored rows          : ${scored.length}`);
+    console.log(`  Limit would fill     : ${filled.length} (${pct(filled.length, scored.length)})`);
+    console.log(`  Never filled         : ${scored.length - filled.length}`);
+    console.log(`  Net R as recorded    : ${netAll.toFixed(2)}R  (assumes every setup filled)`);
+    console.log(`  Net R filled only    : ${netFilled.toFixed(2)}R  (what a limit-taker captured)`);
+    if (winners.length) {
+      console.log(
+        `  Winners that filled  : ${winnersFilled.length}/${winners.length}` +
+        ` — ${winners.length - winnersFilled.length} winner(s) ran without retracing to entry` +
+        ` and were never entered`,
+      );
+    }
+  } else {
+    console.log(
+      `\n=== PENDING-LIMIT FILL RATE ===\n  No rows carry fill_confirmed yet. ` +
+      `Only outcomes resolved after migration 0010 record it; older rows are null, not zero.`,
+    );
+  }
 
   const recorded = rows.filter((r) => r.shadowClassification).length;
   console.log(

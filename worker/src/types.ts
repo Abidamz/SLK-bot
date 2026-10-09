@@ -232,6 +232,21 @@ export interface Outcome {
   exitPrice: number;
   exitTime: number;
   rMultiple: number;
+  /** Observational only — never read by any gate, delivery or R calculation.
+   *
+   *  The entry price is the retest candle's CLOSE, and alerts tell subscribers
+   *  to place a pending limit there (see the EXECUTION line). A limit only
+   *  fills if price trades back through entry after the alert. It never does
+   *  when the move goes immediately in our favour — so the ledger, which
+   *  assumes a fill on every setup, credits wins a limit-taker would never
+   *  have captured.
+   *
+   *  True when price touched entry at some point after the alert, meaning the
+   *  pending limit would have filled. Null when it could not be determined
+   *  (no candles). See fillRate. */
+  fillConfirmed?: boolean | null;
+  /** Candle time at which the fill condition was first met. */
+  fillTime?: number | null;
 }
 
 export type { DirectionalBiasDiagnostics, ShadowClassification } from "./shadow";

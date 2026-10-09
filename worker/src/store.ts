@@ -357,6 +357,8 @@ const alertTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
 const alertTagColumnProbe = new WeakMap<object, Promise<boolean>>();
 const alertShadowClassColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
 const alertShadowClassColumnProbe = new WeakMap<object, Promise<boolean>>();
+const alertFillColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
+const alertFillColumnProbe = new WeakMap<object, Promise<boolean>>();
 const shadowTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
 const shadowTagColumnProbe = new WeakMap<object, Promise<boolean>>();
 const shadowExperimentTagColumnCache = new WeakMap<object, D1AvailabilityCacheEntry>();
@@ -417,6 +419,14 @@ const alertShadowClassColumns = makeColumnProbe({
   sql: "SELECT shadow_classification FROM slk_alerts LIMIT 0",
   message: "alert shadow classification column unavailable; using legacy alert schema",
 });
+/** Migration 0010. Probed separately so a missing column degrades to
+ *  fill-tracking being skipped rather than breaking outcome writes. */
+const alertFillColumns = makeColumnProbe({
+  cache: alertFillColumnCache,
+  probe: alertFillColumnProbe,
+  sql: "SELECT fill_confirmed FROM slk_alerts LIMIT 0",
+  message: "alert fill-confirmed column unavailable; skipping fill tracking",
+});
 const shadowExperimentTagColumns = makeColumnProbe({
   cache: shadowExperimentTagColumnCache,
   probe: shadowExperimentTagColumnProbe,
@@ -426,6 +436,7 @@ const shadowExperimentTagColumns = makeColumnProbe({
 
 const hasAlertTagColumns = (db: D1Like) => alertTagColumns.has(db);
 const hasAlertShadowClassColumn = (db: D1Like) => alertShadowClassColumns.has(db);
+const hasAlertFillColumn = (db: D1Like) => alertFillColumns.has(db);
 const hasShadowTagColumns = (db: D1Like) => shadowTagColumns.has(db);
 const hasShadowExperimentTagColumns = (db: D1Like) => shadowExperimentTagColumns.has(db);
 
@@ -706,6 +717,22 @@ export class D1Store implements Store {
       )
       .bind(oc.status, oc.exitPrice, iso(oc.exitTime), oc.rMultiple, setupId)
       .run();
+    // Fill tracking is purely observational and must never block an outcome
+    // write, so it runs after the UPDATE and swallows its own errors.
+    if (oc.fillConfirmed !== null && oc.fillConfirmed !== undefined
+        && await hasAlertFillColumn(this.db)) {
+      try {
+        await this.db
+          .prepare("UPDATE slk_alerts SET fill_confirmed=? WHERE setup_id=?")
+          .bind(oc.fillConfirmed ? 1 : 0, setupId)
+          .run();
+      } catch (err) {
+        alertFillColumns.mark(this.db, false);
+        console.warn(JSON.stringify({
+          level: "warn", msg: "recordOutcome fill-tracking fallback", error: String(err),
+        }));
+      }
+    }
   }
 
   async getKv(key: string): Promise<string | null> {

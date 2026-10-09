@@ -28,7 +28,7 @@
 
 import { readFileSync } from "node:fs";
 
-const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-bot.tayo-bot-4c2.workers.dev";
+const BASE = process.env.TAYO_BASE_URL ?? "https://slk-bot.slk-bot-4c2.workers.dev";
 const KEY = process.env.TAYO_ADMIN_KEY ?? "";
 const DAYS = process.env.TAYO_AUDIT_DAYS ?? "31";
 

@@ -30,6 +30,12 @@ export function evaluateSignal(
 
   const window = expireAfter ? candlesAfter.slice(0, expireAfter) : candlesAfter;
   let beArmed = false;
+  // Fill tracking (observational). A pending limit at `entry` fills when price
+  // trades through entry: a buy limit on a dip, a sell limit on a bounce. If
+  // the move goes immediately in our favour it never fills, so no trade ever
+  // happened for a subscriber following the alert's EXECUTION instruction.
+  let fillConfirmed: boolean | null = null;
+  let fillTime: number | null = null;
 
   for (const c of window) {
     let slHit = false;
@@ -38,6 +44,8 @@ export function evaluateSignal(
 
     if (direction === "LONG") {
       tpHit = c.h >= tp;
+      // Buy limit fills when price trades down to entry.
+      if (fillConfirmed === null && c.l <= entry) { fillConfirmed = true; fillTime = c.t; }
       if (beArmed) {
         beHit = slOnClose ? c.c <= entry : c.l <= entry;
       } else {
@@ -45,6 +53,8 @@ export function evaluateSignal(
       }
     } else {
       tpHit = c.l <= tp;
+      // Sell limit fills when price trades up to entry.
+      if (fillConfirmed === null && c.h >= entry) { fillConfirmed = true; fillTime = c.t; }
       if (beArmed) {
         beHit = slOnClose ? c.c >= entry : c.h >= entry;
       } else {
@@ -53,10 +63,10 @@ export function evaluateSignal(
     }
 
     // Conservative conflict resolution: SL/BE beats TP if touched in same candle
-    if (slHit) return { status: "SL_HIT" as SignalStatus, exitPrice: stop, exitTime: c.t, rMultiple: -1 };
-    if (beHit && !tpHit) return { status: "BE_HIT" as SignalStatus, exitPrice: entry, exitTime: c.t, rMultiple: 0 };
-    if (tpHit) return { status: "TP_HIT" as SignalStatus, exitPrice: tp, exitTime: c.t, rMultiple: rMultiple(tp) };
-    if (beHit) return { status: "BE_HIT" as SignalStatus, exitPrice: entry, exitTime: c.t, rMultiple: 0 };
+    if (slHit) return { status: "SL_HIT" as SignalStatus, exitPrice: stop, exitTime: c.t, rMultiple: -1, fillConfirmed: fillConfirmed ?? false, fillTime };
+    if (beHit && !tpHit) return { status: "BE_HIT" as SignalStatus, exitPrice: entry, exitTime: c.t, rMultiple: 0, fillConfirmed: fillConfirmed ?? false, fillTime };
+    if (tpHit) return { status: "TP_HIT" as SignalStatus, exitPrice: tp, exitTime: c.t, rMultiple: rMultiple(tp), fillConfirmed: fillConfirmed ?? false, fillTime };
+    if (beHit) return { status: "BE_HIT" as SignalStatus, exitPrice: entry, exitTime: c.t, rMultiple: 0, fillConfirmed: fillConfirmed ?? false, fillTime };
 
     // Check if favorable excursion reaches trailingBeTriggerR to arm BE for subsequent candles
     if (trailingBeEnabled && !beArmed) {
@@ -71,7 +81,7 @@ export function evaluateSignal(
 
   if (expireAfter && candlesAfter.length >= expireAfter && window.length) {
     const last = window[window.length - 1];
-    return { status: "EXPIRED", exitPrice: last.c, exitTime: last.t, rMultiple: rMultiple(last.c) };
+    return { status: "EXPIRED", exitPrice: last.c, exitTime: last.t, rMultiple: rMultiple(last.c), fillConfirmed: fillConfirmed ?? false, fillTime };
   }
   return null;
 }

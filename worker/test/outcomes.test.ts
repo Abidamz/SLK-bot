@@ -303,3 +303,61 @@ describe("resolveAllOpenAlerts every-minute execution", () => {
   });
 });
 
+
+/** Fill tracking. The entry is the retest candle's CLOSE and alerts tell
+ *  subscribers to place a pending limit there, so a fill is not guaranteed: a
+ *  limit only fills if price trades back through entry. When the move goes
+ *  immediately in our favour it never fills, and no trade ever happened — yet
+ *  the ledger would otherwise record the full win. Tracked observationally so
+ *  fill-adjusted performance can be measured without changing any R figure. */
+describe("pending-limit fill tracking", () => {
+  it("LONG: no fill when price runs to target without ever trading back to entry", () => {
+    // Entry 100, stop 95, tp 115. Price gaps up and never revisits 100.
+    const oc = evaluateSignal("LONG", 100, 95, 115, [
+      { t: 1, o: 101, h: 112, l: 100.5, c: 111 },
+      { t: 2, o: 111, h: 116, l: 108, c: 115 },
+    ]);
+    expect(oc?.status).toBe("TP_HIT");
+    expect(oc?.rMultiple).toBeCloseTo(3);
+    // The win is recorded, but a subscriber's buy limit at 100 never filled.
+    expect(oc?.fillConfirmed).toBe(false);
+  });
+
+  it("LONG: fill confirmed when price dips back through entry first", () => {
+    const oc = evaluateSignal("LONG", 100, 95, 115, [
+      { t: 1, o: 101, h: 102, l: 99, c: 101 },
+      { t: 2, o: 101, h: 116, l: 100, c: 115 },
+    ]);
+    expect(oc?.status).toBe("TP_HIT");
+    expect(oc?.fillConfirmed).toBe(true);
+    expect(oc?.fillTime).toBe(1);
+  });
+
+  it("SHORT: no fill when price drops to target without bouncing back to entry", () => {
+    // Entry 100, stop 105, tp 85. Price falls away immediately.
+    const oc = evaluateSignal("SHORT", 100, 105, 85, [
+      { t: 1, o: 99, h: 99.5, l: 88, c: 89 },
+      { t: 2, o: 89, h: 88, l: 84, c: 85 },
+    ]);
+    expect(oc?.status).toBe("TP_HIT");
+    expect(oc?.fillConfirmed).toBe(false);
+  });
+
+  it("SHORT: fill confirmed when price bounces back up through entry first", () => {
+    const oc = evaluateSignal("SHORT", 100, 105, 85, [
+      { t: 1, o: 99, h: 101, l: 98, c: 98 },
+      { t: 2, o: 98, h: 98, l: 84, c: 85 },
+    ]);
+    expect(oc?.status).toBe("TP_HIT");
+    expect(oc?.fillConfirmed).toBe(true);
+  });
+
+  it("a loss is always backed by a fill — price must trade through entry to reach the stop", () => {
+    const oc = evaluateSignal("LONG", 100, 95, 115, [
+      { t: 1, o: 100, h: 100.5, l: 94, c: 94 },
+    ]);
+    expect(oc?.status).toBe("SL_HIT");
+    expect(oc?.rMultiple).toBe(-1);
+    expect(oc?.fillConfirmed).toBe(true);
+  });
+});
