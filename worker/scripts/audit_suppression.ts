@@ -113,8 +113,10 @@ async function main(): Promise<void> {
     console.error(`/alerts returned ${res.status} ${res.statusText}`);
     process.exit(1);
   }
-  const body = (await res.json()) as { alerts?: Row[] } | Row[];
-  const rows: Row[] = Array.isArray(body) ? body : (body.alerts ?? []);
+  // /alerts returns { items: [...] }. Older builds returned { alerts: [...] },
+  // so accept either shape rather than silently reporting zero.
+  const body = (await res.json()) as { items?: Row[]; alerts?: Row[] } | Row[];
+  const rows: Row[] = Array.isArray(body) ? body : (body.items ?? body.alerts ?? []);
   console.log(`Fetched ${rows.length} stored alerts from ${BASE}`);
 
   // Overall, so the grouped figures have a denominator.

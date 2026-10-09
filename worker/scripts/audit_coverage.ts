@@ -102,7 +102,10 @@ async function main(): Promise<void> {
 
   const scan = audit.scan ?? {};
   const funnel = scan.byPairTimeframe ?? [];
-  const alerts = (alertsBody as { alerts?: { pair?: string }[] }).alerts ?? [];
+  // /alerts returns { items: [...] }. Older builds returned { alerts: [...] },
+  // so accept either shape rather than silently reporting zero.
+  const alertsBodyObj = alertsBody as { items?: { pair?: string }[]; alerts?: { pair?: string }[] };
+  const alerts = alertsBodyObj.items ?? alertsBodyObj.alerts ?? [];
 
   console.log(`Window: last ${DAYS} days   (${scan.firstScanUtc ?? "?"} → ${scan.lastScanUtc ?? "?"})`);
   console.log(`Scan rows: ${scan.scanRows ?? 0} total, ${scan.activeScanRows ?? 0} active, ${scan.scanErrorRows ?? 0} with errors`);
