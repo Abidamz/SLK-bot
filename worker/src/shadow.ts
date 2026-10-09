@@ -453,6 +453,57 @@ export function classifyShadowSetup(args: {
   return "B_GRADE";
 }
 
+/** Which check demoted this setup to OBSERVATION_ONLY, in plain language.
+ *
+ *  The grade alone does not say *why* — several distinct conditions collapse
+ *  into it (thin history, a conflicting daily bias, a neutral 4H/1H, taken
+ *  opposing liquidity, or incomplete entry quality). Without the reason an
+ *  alert can look confirming while carrying the lowest grade: seen live on
+ *  V100_1S:30m:LONG (2026-10-08), which rendered "Bullish Breakout" and full
+ *  entry-quality ticks under "Bias Grade: OBSERVATION_ONLY", then hit SL for
+ *  -1R. Nobody could tell which check had failed.
+ *
+ *  Mirrors classifyShadowSetup's OBSERVATION_ONLY branches, in order. Callers
+ *  MUST only consult this when the classification is already OBSERVATION_ONLY:
+ *  classifyShadowSetup tests HTF_CONFLICT first, so an HTF_CONFLICT setup can
+ *  still satisfy a later condition (e.g. !h1.agreesWith4H) and would otherwise
+ *  be reported with the wrong label. Guarded that way it returns null exactly
+ *  when no OBSERVATION_ONLY condition holds.
+ *
+ *  Note the `!h1.agreesWith4H` branch is only reachable when 1H and 4H point
+ *  the same way but the agreement flag disagrees — opposing directions are
+ *  caught as HTF_CONFLICT upstream and never reach it. */
+export function observationOnlyReason(args: {
+  direction: Direction;
+  weekly: WeeklyLiquidityContext;
+  daily: DailyContext;
+  h4: H4VantageContext;
+  h1: H1ExecutionContext;
+  entryQuality: EntryQuality;
+}): string | null {
+  const { direction, weekly, daily, h4, h1, entryQuality } = args;
+
+  if (daily.incomplete) return "insufficient daily history to assess context";
+  if (weekly.primaryOpposingTarget === null) return "no opposing liquidity target identified";
+
+  const requiredDailyBias = direction === "LONG" ? "bullish" : "bearish";
+  if (daily.bias !== requiredDailyBias) {
+    return `daily bias is ${daily.bias}, not ${requiredDailyBias}`;
+  }
+  if (h1.direction === "neutral") return "1H execution context is neutral";
+  if (!h1.agreesWith4H) return "1H disagrees with 4H";
+  if (h4.direction === "neutral") return "4H vantage is neutral";
+  if (!weekly.opposingLiquidityStanding) return "opposing liquidity already taken";
+
+  const missing: string[] = [];
+  if (!entryQuality.lowerTimeframeSweep) missing.push("sweep");
+  if (!entryQuality.bosStructureShift) missing.push("BOS");
+  if (!entryQuality.retestDetected) missing.push("retest");
+  if (missing.length) return `entry quality incomplete (${missing.join(", ")})`;
+
+  return null;
+}
+
 // ---------------------------------------------------- Unified entry evaluator
 
 export interface DirectionalBiasEvaluationArgs {

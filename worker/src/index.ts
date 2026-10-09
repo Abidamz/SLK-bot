@@ -28,7 +28,7 @@ import type { AlertRowish, OutcomeLike } from "./notify_types";
 import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
-import { evaluateH4VantageContext, evaluateDirectionalBias } from "./shadow";
+import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
 import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
@@ -751,6 +751,19 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               tf: alert.entryTf,
               setupId: alert.setupId,
               classification: alert.shadowClassification,
+              // OBSERVATION_ONLY collapses six conditions into one label; this
+              // names the one that fired, so the demotion is queryable rather
+              // than having to be inferred from the surrounding fields.
+              observationReason: alert.shadowClassification === "OBSERVATION_ONLY"
+                ? observationOnlyReason({
+                    direction: alert.direction,
+                    weekly: alert.directionalBias.weekly,
+                    daily: alert.directionalBias.daily,
+                    h4: alert.directionalBias.h4,
+                    h1: alert.directionalBias.h1,
+                    entryQuality: alert.directionalBias.entryQuality,
+                  })
+                : null,
               weekly: alert.directionalBias.weekly,
               daily: alert.directionalBias.daily,
               h4: alert.directionalBias.h4,

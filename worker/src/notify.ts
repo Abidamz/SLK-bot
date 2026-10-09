@@ -7,6 +7,7 @@
  *  parse modes. */
 import { fmtPips, fmtPrice, isDerivPair } from "./config";
 import type { Alert, Direction, EngineEvent, KeyLevel } from "./types";
+import { observationOnlyReason } from "./shadow";
 import type { DirectionalBiasDiagnostics } from "./shadow";
 import type { EngineDisciplineTotals } from "./diagnostics";
 import type { AlertRowish, NotifyEnv, OutcomeLike, PerformanceRecapStats } from "./notify_types";
@@ -600,6 +601,21 @@ export function formatAlert(a: Alert): string {
   }
   if (a.directionalBias) {
     const db = a.directionalBias;
+    // OBSERVATION_ONLY collapses several different conditions into one label.
+    // Name the actual one, so a subscriber can tell "context is against this"
+    // apart from "we could not assess it" — and so a mis-grading is visible on
+    // its face instead of being inferred after the fact.
+    if (a.shadowClassification === "OBSERVATION_ONLY") {
+      const why = observationOnlyReason({
+        direction: a.direction,
+        weekly: db.weekly,
+        daily: db.daily,
+        h4: db.h4,
+        h1: db.h1,
+        entryQuality: db.entryQuality,
+      });
+      lines.push(`   ↳ Because : ${why ?? "unclassified"}`);
+    }
     const sweepSide = db.weekly.weeklyHighSwept
       ? "Prior High Swept"
       : db.weekly.weeklyLowSwept
