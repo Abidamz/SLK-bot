@@ -11,7 +11,9 @@
     "deploy:worker": "wrangler deploy",
     "dev": "wrangler dev",
     "db:init": "wrangler d1 execute slk-alert-db --file=migrations/0001_init.sql",
-    "db:init:local": "wrangler d1 execute slk-alert-db --local --file=migrations/0001_init.sql"
+    "db:init:local": "wrangler d1 execute slk-alert-db --local --file=migrations/0001_init.sql",
+    "audit:coverage": "node --experimental-strip-types scripts/audit_coverage.ts",
+    "audit:suppression": "node --experimental-strip-types scripts/audit_suppression.ts"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
