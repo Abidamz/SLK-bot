@@ -106,14 +106,11 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main'
-    # TEMPORARY: non-blocking while diagnosing. The first run failed and the
-    # agent cannot read CI logs from its environment, so leaving this blocking
-    # would turn every push red with an unreadable cause. Leading hypothesis is
-    # that CLOUDFLARE_API_TOKEN has Workers and Pages permissions but not
-    # "D1:Edit" -- the deploy works, so the token is valid, just possibly
-    # under-scoped for migrations specifically. Remove continue-on-error once
-    # confirmed working.
-    continue-on-error: true
+    # Blocking by design. This was temporarily continue-on-error while
+    # diagnosing a failure that turned out to be CLOUDFLARE_API_TOKEN lacking
+    # D1:Edit -- the "Edit Cloudflare Workers" token template does not include
+    # it. Confirmed working 2026-10-09 once D1:Edit was added. A migration
+    # failure should now fail the build rather than pass silently.
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
