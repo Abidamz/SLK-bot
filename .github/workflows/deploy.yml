@@ -128,25 +128,15 @@ jobs:
       - name: Install Dependencies
         run: npm ci --prefix worker
 
-      - name: Report pending migrations
-        run: |
-          echo "### Pending before apply"
-          npx wrangler d1 migrations list slk-alert-db --remote 2>&1 || echo "LIST_FAILED (see above)"
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
+      # Use the same action the deploy steps use rather than raw
+      # `npx wrangler`. The action is proven to authenticate in this repo —
+      # the deploy succeeds with it — so this removes the CLI invocation as a
+      # variable. If this also fails, the cause is the token's permissions
+      # (D1:Edit) rather than how wrangler was invoked.
       - name: Apply pending D1 migrations
-        run: |
-          echo "### Applying"
-          npx wrangler d1 migrations apply slk-alert-db --remote 2>&1 || {
-            echo "APPLY_FAILED"
-            echo "If this mentions authorization, permissions or 403, the"
-            echo "CLOUDFLARE_API_TOKEN is missing the D1:Edit scope."
-            exit 1
-          }
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'worker'
+          command: d1 migrations apply slk-alert-db --remote
