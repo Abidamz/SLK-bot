@@ -67,8 +67,8 @@ To protect capital and maximize high-RR trend days, follow our 3-step exit model
 ──────────────────────────────────────────────
 Unlike retail signal channels that hide losses, every single alert, stop loss, and target hit is permanently logged in real time on our public ledger:
 
-🌐 Live Audited Performance Journal: https://tayo-radar.pages.dev
-📜 Terms of Service & Disclaimer: https://tayo-radar.pages.dev/terms
+🌐 Live Audited Performance Journal: https://slk-radar.pages.dev
+📜 Terms of Service & Disclaimer: https://slk-radar.pages.dev/terms
 👑 Manage Subscription via Whop: https://whop.com/hub
 
 Turn on notifications for this channel and PIN this chat to the top of your Telegram.

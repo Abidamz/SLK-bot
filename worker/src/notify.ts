@@ -727,8 +727,8 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
     ``,
     `VIP members received this live alert with exact entry, stop floor, and targets.`,
     ``,
-    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
-    `👉 Live Verified Journal: https://tayo-radar.pages.dev`,
+    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    `👉 Live Verified Journal: https://slk-radar.pages.dev`,
   ].join("\n");
 }
 
@@ -909,7 +909,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
       ``,
       `────────────────────────`,
       `👑 VIP receives any separate engine-confirmed entry alert. This is not one.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     );
   }
   return lines.join("\n");
@@ -976,7 +976,7 @@ export function formatBiasCard(
       ``,
       `────────────────────────`,
       `👑 VIP members receive exact entry alerts, stop loss, and 1:2.5R–4.0R target execution.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
     );
   }
 
@@ -1206,7 +1206,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   }
 
   const allTimeWinRateStr = stats.allTimeWinRate !== null ? `${stats.allTimeWinRate.toFixed(1)}%` : "N/A";
-  const ledgerUrl = isInst ? "https://tayo-radar.pages.dev" : "https://tayo-radar.pages.dev?segment=synthetics";
+  const ledgerUrl = isInst ? "https://slk-radar.pages.dev" : "https://slk-radar.pages.dev?segment=synthetics";
 
   return [
     title,
@@ -1221,7 +1221,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     `${sign(stats.allTimeNetR)} · ${allTimeWinRateStr} decided win rate (${stats.allTimeTp} TP · ${stats.allTimeSl} SL)`,
     `🔗 Verified on the public ledger: ${ledgerUrl}`,
     "",
-    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/tayo-radar/tayo-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
     "TAYO Model (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",

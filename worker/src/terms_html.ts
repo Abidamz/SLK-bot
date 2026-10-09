@@ -153,7 +153,7 @@ export const TERMS_HTML = `<!doctype html>
       </div>
     </div>
     <div class="header-actions">
-      <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+      <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access</span>
       </a>
@@ -228,7 +228,7 @@ export const TERMS_HTML = `<!doctype html>
 
       <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
         <span style="color: var(--muted); font-size: 12px;">Questions or inquiries? Contact support via Whop.</span>
-        <a href="https://whop.com/tayo-radar/tayo-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn">
           <span>Manage VIP Subscription on Whop</span>
         </a>
       </div>

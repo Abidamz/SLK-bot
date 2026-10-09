@@ -476,7 +476,7 @@ function renderHealth(h) {
       <div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>
       <div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong></div>
       <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h')}</strong></div>
-      <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://tayo-bot.vercel.app')} · Connected</strong></div>
+      <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://slk-bot.vercel.app')} · Connected</strong></div>
       <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
       <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
       <div class="health-item"><span>Execution Mode</span><strong>Paper Pipeline · Rule-Checked (Simulation Only)</strong></div>

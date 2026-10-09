@@ -5,8 +5,8 @@
 **This session's branch:** `arena/0e17c27a-tayo-bot`
 **Production lineage:** `arena/08df9077-tayo-bot`
 **Production Worker:** `https://tayo-alert-worker.abidogundamilola.workers.dev`
-**Production dashboard:** `https://tayo-radar.pages.dev`
-**Deriv relay:** `https://tayo-bot.vercel.app`
+**Production dashboard:** `https://slk-radar.pages.dev`
+**Deriv relay:** `https://slk-bot.vercel.app`
 
 This is the source of truth for future sessions. The current owner-provided brief and this file override stale descriptions elsewhere in the repository.
 
@@ -26,7 +26,7 @@ The product is the **TAYO Model (Structure · Liquidity · Key Levels)**. It is 
 ### Runtime path
 
 1. `worker/src/index.ts` runs the cron scan, applies round-robin pair batching, resolves open outcomes, and dispatches notifications.
-2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://tayo-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
+2. `worker/src/provider.ts` uses Twelve Data for general FX/metals routing, the configured OANDA map for covered instruments, Dukascopy as the supported index fallback, and Deriv for synthetics. Provider overrides are restricted to `twelvedata`, `oanda`, `dukascopy`, and `deriv`; unrecognized values use canonical routing. The added Forex instruments resolve as `USDCAD → USD_CAD`, `NZDUSD → NZD_USD`, and `EURJPY → EUR_JPY`. Deriv candles come through `https://slk-bot.vercel.app`; the relay exposes `/candles`, `/health`, and `/probe`.
 3. `worker/src/features.ts` and `worker/src/storyline.ts` build the point-in-time structure, key-level, liquidity, and imbalance context. `worker/src/engine.ts` evaluates the confirmation sequence. Risk, target, freshness, and delivery gates are applied before an alert is delivered.
 4. Cloudflare D1 stores alerts, events, scan diagnostics, channel-level notification audit results, the isolated shadow ledger, and a separate shadow-experiment ledger. SQL migrations are in `worker/migrations/` (`0001`–`0008`). The owner already applied `0006_shadow_ledger.sql` in production; the experiment code safely no-ops until `0007_shadow_experiments.sql` is applied and retries the missing-table check every five minutes. Migration `0008_diagnostics_tags.sql` adds the nullable diagnostics columns (H4 confluence grade/tags + UTC+1 session bucket); until it is applied the Worker still writes alerts and ledger rows unchanged and simply omits the annotation, re-probing every five minutes.
 5. Telegram delivery is tier-separated. VIP channels receive confirmed entries and final outcomes only. Free channels may receive teaser cards, weekly recaps, and the Engine Discipline digest. Pre-entry watch cards (`WATCH_NOTIFY`) and bias-context cards (`BIAS_NOTIFY`) are separate opt-ins and are currently disabled to prevent noisy, misleading posts. Synthetic content is never sent to the Forex free channel.
@@ -252,10 +252,10 @@ The product is the **TAYO Model (Structure · Liquidity · Key Levels)**. It is 
 
 The `tayo-radar` Pages project is **git-integrated**, and Cloudflare classifies an upload as a production deploy **only when the branch label on the upload equals the project's Production branch setting**. CI uploads with `--branch=main`, so the project's **Production branch setting must stay `main`**. Those two values are one setting expressed in two places; change either one alone and the custom domain silently keeps serving an old build with no error surfaced anywhere.
 
-- This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-tayo-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `tayo-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
-- **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `tayo-radar.pages.dev` shows old data, and `main.tayo-radar.pages.dev` serves a **newer** build than the production hostname.
+- This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-tayo-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `slk-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
+- **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `slk-radar.pages.dev` shows old data, and `main.slk-radar.pages.dev` serves a **newer** build than the production hostname.
 - Pages serves static assets with a browser cache window of roughly four hours that `_headers` cannot override. The `Stamp Dashboard Asset Versions` step rewrites `app.js?v=…` and `styles.css?v=…` in `dashboard/index.html` to the commit SHA before upload, so every release gets a fresh cache key. Keep that step, and keep the `?v=` query strings in the HTML.
-- **After each push, check:** the Live Desk tape on `https://tayo-radar.pages.dev/` shows today's UTC timestamps, and `https://tayo-radar.pages.dev/app.js` contains the string `tail=1`.
+- **After each push, check:** the Live Desk tape on `https://slk-radar.pages.dev/` shows today's UTC timestamps, and `https://slk-radar.pages.dev/app.js` contains the string `tail=1`.
 
 ### Full local validation suite
 
@@ -288,7 +288,7 @@ Post-release proof recorded for `a1c91f0` (confirmation funnel): `/health` → `
 Dashboard proof (Pages production host, also use a fresh query parameter):
 
 ```bash
-curl -fsS "https://tayo-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
+curl -fsS "https://slk-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
 ```
 
 Expect a non-zero count. A zero means the upload landed as a preview — re-read the Pages deploy-path section above.
@@ -321,7 +321,7 @@ These are effective production values as of 2026-10-06, following the notificati
 | `TRAILING_BE_TRIGGER_R` | `1.5` (code default; not overridden in Wrangler) | Favorable excursion that arms breakeven handling. | **Keep exactly `1.50R`.** |
 | `PROVIDER_MAP` | OANDA for `EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,USDCAD,NZDUSD,EURJPY,XAUUSD,US30,GER40,JAPAN225,NAS100` | Explicit routing for configured institutional instruments. | Only use source-supported mappings. New Forex symbols must resolve to real instruments in `worker/src/provider.ts`; do not add an unapproved provider. |
 | `SYMBOL_MAP` | unset (`{}` in code) | Optional provider-specific symbol overrides; current production routes use canonical instrument mappings. | Leave unset unless a selected supported provider requires a tested canonical mapping. |
-| `DERIV_PROXY_URL` | `https://tayo-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
+| `DERIV_PROXY_URL` | `https://slk-bot.vercel.app` | Candle relay for Deriv synthetic symbols. | Keep on the production HTTPS relay unless a replacement has passed relay and candle-validation tests. |
 | `DERIV_APP_ID` | `1089` (code default) | Deriv application identifier when no override is present. | Keep the verified configured ID. |
 | `MT5_ENABLED` | unset/false in paper deployment | Hard gate for the optional MT5 bridge. | Keep unset or `false`; paper mode must never dispatch live orders. |
 
@@ -459,5 +459,5 @@ git push origin arena/0e17c27a-tayo-bot
 - Shadow aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
 - Shadow-experiment aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
 - Scan/error/funnel/delivery audit (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
-- Deriv relay: `https://tayo-bot.vercel.app/health` and `/candles`
-- Public dashboard/journal: `https://tayo-radar.pages.dev`
+- Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
+- Public dashboard/journal: `https://slk-radar.pages.dev`

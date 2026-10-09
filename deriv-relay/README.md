@@ -15,7 +15,7 @@ This micro-service runs outside Cloudflare (on Render, Railway, or Fly.io) to pr
    - **Start Command**: `npm start`
    - **Instance Type**: **Free ($0/month)**
 5. Click **Deploy Web Service**
-6. Copy your public service URL (e.g., `https://tayo-deriv-relay.onrender.com`).
+6. Copy your public service URL (e.g., `https://slk-deriv-relay.onrender.com`).
 
 ---
 
@@ -25,11 +25,11 @@ Once your Render relay is live:
 1. Open your Cloudflare Worker Dashboard → **tayo-alert-worker** → **Settings** → **Variables and Secrets**.
 2. Add an environment variable:
    - **Variable name**: `DERIV_PROXY_URL`
-   - **Value**: `https://tayo-deriv-relay.onrender.com` (your Render URL)
+   - **Value**: `https://slk-deriv-relay.onrender.com` (your Render URL)
 3. Save and Deploy!
 
 Alternatively, you can save it via your interactive Admin Dashboard:
-- Visit `https://tayo-alert-worker.abidogundamilola.workers.dev/admin/settings?deriv_proxy_url=https://tayo-deriv-relay.onrender.com`
+- Visit `https://tayo-alert-worker.abidogundamilola.workers.dev/admin/settings?deriv_proxy_url=https://slk-deriv-relay.onrender.com`
 
 ---
 

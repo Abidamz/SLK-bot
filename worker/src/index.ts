@@ -1662,7 +1662,7 @@ export default {
         commit: "v2.5.5",
         buildTime: "2026-10-07 00:00 UTC",
         feedStatus: "VIP Clean Feed Active (Entries Only)",
-        relayUrl: env.DERIV_PROXY_URL ?? "https://tayo-bot.vercel.app",
+        relayUrl: env.DERIV_PROXY_URL ?? "https://slk-bot.vercel.app",
         pairs: cfg.pairs, entryTfs: Object.keys(cfg.entryTfs), synthEntryTfs: cfg.synthEntryTfs,
         // Effective FVG retest-depth gate: 100 = legacy origin-zone boundary
         // check, 1–99 = literal penetration into the direction-matched FVG.
@@ -3227,7 +3227,7 @@ export default {
     if ((url.pathname === "/admin/set-deriv-proxy" || url.pathname === "/api/set-deriv-proxy") && (request.method === "GET" || request.method === "POST")) {
       const proxyParam = url.searchParams.get("url") || url.searchParams.get("proxy_url");
       if (!proxyParam) {
-        return json({ ok: false, error: "Missing ?url=<proxy_url> query parameter (e.g. ?url=https://tayo-deriv-relay.onrender.com)" }, 400);
+        return json({ ok: false, error: "Missing ?url=<proxy_url> query parameter (e.g. ?url=https://slk-deriv-relay.onrender.com)" }, 400);
       }
       const store = makeStore(env.DB);
       const cleanUrl = proxyParam.trim().replace(/\/+$/, "");

@@ -63,7 +63,7 @@
     // (~23 min -> ~12 min). Scheduling only - no gate, threshold, pair list,
     // timeframe, or delivery change.
     "PAIR_BATCH_SIZE": "2",
-    "DERIV_PROXY_URL": "https://tayo-bot.vercel.app",
+    "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
     // Cooldown keying. "pair_direction_tf" scopes the 240m cooldown to the
     // setup's own entry timeframe, so a delivered 30m signal no longer silences

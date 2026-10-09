@@ -34,8 +34,8 @@ describe("free-channel TP1 teaser", () => {
       "",
       "VIP members received this live alert with exact entry, stop floor, and targets.",
       "",
-      "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/tayo-radar/tayo-radar-vip-signals",
-      "👉 Live Verified Journal: https://tayo-radar.pages.dev",
+      "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+      "👉 Live Verified Journal: https://slk-radar.pages.dev",
     ].join("\n"));
   });
 
