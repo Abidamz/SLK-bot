@@ -147,6 +147,37 @@ async function main(): Promise<void> {
     );
   }
 
+  // The two rejection reasons are different questions. TARGET_FLOOR asks
+  // whether the 2.5R floor is too strict. NO_RETEST asks something else
+  // entirely: these are BOS-close entries the retest rule refused, and their
+  // outcomes measure whether waiting for the retest is actually earning its
+  // keep. Reported separately because mixing them hides both answers.
+  console.log("\n=== BY REJECTION REASON ===");
+  console.log("  " + "reason".padEnd(14) + "rows".padStart(6) + "resolved".padStart(9) +
+    "win%".padStart(7) + "netR".padStart(9) + "avgR".padStart(8) + "avgRoffered".padStart(12));
+  for (const reason of ["TARGET_FLOOR", "NO_RETEST"]) {
+    const rs = rows.filter((r) => r.rejectReason === reason);
+    const done = rs.filter((r) => r.status && r.status !== "OPEN" && Number.isFinite(r.rMultiple as number));
+    const wins = done.filter((r) => (r.rMultiple as number) > 0).length;
+    const netR = done.reduce((s2, r) => s2 + (r.rMultiple as number), 0);
+    const offered = rs.filter((r) => Number.isFinite(r.hypotheticalRr as number));
+    console.log(
+      "  " + reason.padEnd(14) +
+        String(rs.length).padStart(6) +
+        String(done.length).padStart(9) +
+        (done.length ? `${((100 * wins) / done.length).toFixed(0)}%` : "-").padStart(7) +
+        (done.length ? netR.toFixed(2) : "-").padStart(9) +
+        (done.length ? (netR / done.length).toFixed(2) : "-").padStart(8) +
+        (offered.length
+          ? (offered.reduce((s2, r) => s2 + (r.hypotheticalRr as number), 0) / offered.length).toFixed(2)
+          : "-").padStart(12),
+    );
+  }
+  console.log(
+    "  NO_RETEST measures whether waiting for the retest earns its keep.\n" +
+      "  Treat it as a question to watch, not an answer: n is small.",
+  );
+
   console.log(
     "\nCaveat: shadow rows are hypothetical trades, not fills. They carry the same\n" +
       "pending-limit fill caveat as live alerts: a winner that ran without ever\n" +
