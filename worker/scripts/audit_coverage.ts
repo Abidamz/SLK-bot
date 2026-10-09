@@ -43,8 +43,8 @@ interface FunnelRow {
   replay: {
     MAP?: number; TOUCH?: number; SWEEP?: number; SHIFT?: number; RETEST?: number;
     INVALID?: number; EXPIRED?: number;
-    retestCandidates?: number; riskRejects?: number; targetRejects?: number;
-    confirmedAlerts?: number;
+    retestCandidates?: number; retestNoFvg?: number; retestWithFvg?: number;
+    riskRejects?: number; targetRejects?: number; confirmedAlerts?: number;
   };
 }
 
@@ -122,11 +122,13 @@ async function main(): Promise<void> {
   const byPair = new Map<string, {
     scanRows: number; timeframes: Set<string>;
     MAP: number; TOUCH: number; SWEEP: number; SHIFT: number; RETEST: number;
+    retestCandidates: number; retestNoFvg: number; retestWithFvg: number;
     riskRejects: number; targetRejects: number; confirmedAlerts: number;
   }>();
   const blank = () => ({
     scanRows: 0, timeframes: new Set<string>(),
     MAP: 0, TOUCH: 0, SWEEP: 0, SHIFT: 0, RETEST: 0,
+    retestCandidates: 0, retestNoFvg: 0, retestWithFvg: 0,
     riskRejects: 0, targetRejects: 0, confirmedAlerts: 0,
   });
   for (const row of funnel) {
@@ -139,6 +141,9 @@ async function main(): Promise<void> {
     e.SWEEP += r.SWEEP ?? 0;
     e.SHIFT += r.SHIFT ?? 0;
     e.RETEST += r.RETEST ?? 0;
+    e.retestCandidates += r.retestCandidates ?? 0;
+    e.retestNoFvg += r.retestNoFvg ?? 0;
+    e.retestWithFvg += r.retestWithFvg ?? 0;
     e.riskRejects += r.riskRejects ?? 0;
     e.targetRejects += r.targetRejects ?? 0;
     e.confirmedAlerts += r.confirmedAlerts ?? 0;
@@ -161,7 +166,9 @@ async function main(): Promise<void> {
     "\n  " + "pair".padEnd(10) + "verdict".padEnd(24) +
     "scans".padStart(7) + "tfs".padStart(6) +
     "MAP".padStart(7) + "TOUCH".padStart(7) + "SWEEP".padStart(7) + "SHIFT".padStart(7) +
-    "RETST".padStart(7) + "conf".padStart(6) + "risk".padStart(6) + "stored".padStart(8),
+    "RETST".padStart(7) + "conf".padStart(6) + "cand".padStart(6) +
+    "noFvg".padStart(7) + "fvg".padStart(6) + "risk".padStart(6) +
+    "tgt".padStart(6) + "stored".padStart(8),
   );
 
   const counts: Record<Verdict, number> = {
@@ -199,7 +206,11 @@ async function main(): Promise<void> {
       String(e?.SHIFT ?? 0).padStart(7) +
       String(e?.RETEST ?? 0).padStart(7) +
       String(e?.confirmedAlerts ?? 0).padStart(6) +
+      String(e?.retestCandidates ?? 0).padStart(6) +
+      String(e?.retestNoFvg ?? 0).padStart(7) +
+      String(e?.retestWithFvg ?? 0).padStart(6) +
       String(e?.riskRejects ?? 0).padStart(6) +
+      String(e?.targetRejects ?? 0).padStart(6) +
       String(stored).padStart(8),
     );
   }
