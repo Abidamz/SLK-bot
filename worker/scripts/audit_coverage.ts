@@ -57,6 +57,10 @@ interface ScanAudit {
     firstScanUtc?: string | null;
     lastScanUtc?: string | null;
     byPairTimeframe?: FunnelRow[];
+    recordedConfirmedAlerts?: number;
+    staleConfirmationSkips?: number;
+    duplicateConfirmationSkips?: number;
+    gateMetricsRows?: number;
     storedAlertsByDay?: { pair?: string; count?: number }[];
   };
 }
@@ -117,6 +121,28 @@ async function main(): Promise<void> {
     );
   }
   console.log(`Funnel rows: ${funnel.length}   Stored alerts (all time): ${alerts.length}`);
+
+  // How many confirmations reached the ledger versus how many were dropped
+  // before it. Staleness is the interesting one: a confirmation discovered
+  // after its freshness window is never recorded and never delivered, so it
+  // costs setups without appearing anywhere in the alert data.
+  // These counters only exist on rows written by the current build, so a
+  // gateMetricsRows well below scanRows means partial coverage, not zero skips.
+  const confirmed = scan.recordedConfirmedAlerts ?? 0;
+  const stale = scan.staleConfirmationSkips ?? 0;
+  const dupes = scan.duplicateConfirmationSkips ?? 0;
+  const gated = scan.gateMetricsRows ?? 0;
+  console.log(
+    `Confirmations: ${confirmed} recorded, ${stale} skipped stale, ${dupes} skipped duplicate` +
+      `   (gate counters present on ${gated} of ${scan.scanRows ?? 0} scan rows)`,
+  );
+  if (gated > 0 && stale > 0) {
+    const lost = (100 * stale) / (confirmed + stale);
+    console.log(
+      `  -> ${lost.toFixed(1)}% of confirmations that reached this stage were dropped as stale` +
+        ` (never recorded, never delivered)`,
+    );
+  }
 
   // Aggregate the per-pair/timeframe funnel into per-pair totals.
   const byPair = new Map<string, {
