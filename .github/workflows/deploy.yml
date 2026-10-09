@@ -70,9 +70,16 @@ jobs:
           sed -i "s/app\.js?v=[A-Za-z0-9]*/app.js?v=${SHORT_SHA}/" dashboard/index.html
           sed -i "s/styles\.css?v=[A-Za-z0-9]*/styles.css?v=${SHORT_SHA}/" dashboard/index.html
 
-      - name: Deploy Cloudflare Pages (tayo-radar)
+      # Pages projects are NOT auto-created the way Workers are: `pages deploy
+      # --project-name=X` fails outright if X does not exist yet. The dashboard
+      # is already fully TAYO-branded (text, copy, links), but the Cloudflare
+      # Pages project itself is still called `slk-radar`, and renaming it is an
+      # owner action in the dashboard. Keeping the deploy pointed at the
+      # existing project keeps releases flowing; flip this to `tayo-radar` once
+      # the project exists there.
+      - name: Deploy Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dashboard --project-name=tayo-radar --branch=main
+          command: pages deploy dashboard --project-name=slk-radar --branch=main
