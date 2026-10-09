@@ -2,7 +2,7 @@
   "name": "tayo-alert-worker",
   "version": "1.0.0",
   "private": true,
-  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
+  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner \u2014 Cloudflare Worker",
   "type": "module",
   "scripts": {
     "test": "vitest run",
@@ -13,7 +13,8 @@
     "db:init": "wrangler d1 execute slk-alert-db --file=migrations/0001_init.sql",
     "db:init:local": "wrangler d1 execute slk-alert-db --local --file=migrations/0001_init.sql",
     "audit:coverage": "node --experimental-strip-types scripts/audit_coverage.ts",
-    "audit:suppression": "node --experimental-strip-types scripts/audit_suppression.ts"
+    "audit:suppression": "node --experimental-strip-types scripts/audit_suppression.ts",
+    "audit:shadow": "node --experimental-strip-types scripts/audit_shadow.ts"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
