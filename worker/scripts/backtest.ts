@@ -15,7 +15,7 @@
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
-import { defaultStrategy, pipSize, TF_SECONDS } from "../src/config";
+import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS } from "../src/config";
 import { resampleCandles, dropIncomplete, resampleCalendar } from "../src/features";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
@@ -415,6 +415,7 @@ async function replay(
           minBreakBodyPct: CONT_MIN_BODY_PCT,
           minBreakAtrMult: CONT_MIN_BREAK_ATR,
           requireLiquidity: CONT_REQUIRE_LIQ,
+          minStop: minStopDistance(pair, strategy.minStopPips ?? 10),
         }, contDiag)) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);

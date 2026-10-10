@@ -377,6 +377,22 @@ describe("findContinuationSetups", () => {
     expect(DEFAULT_CONTINUATION_PARAMS.requireLiquidity).toBe(true);
   });
 
+  it("widens any stop below the floor instead of leaving a near-zero risk", () => {
+    const cs = continuationPattern();
+    const base = params({ maxRetraceDepth: 10, minTouches: 0 });
+    const floored = params({ maxRetraceDepth: 10, minTouches: 0, minStop: 0.01 });
+    for (const x of findContinuationSetups(cs, cfg, "LONG", floored)) {
+      // Widened, not dropped: the risk is exactly the floor and the target
+      // still sits at the configured multiple on the correct side.
+      expect(x.entry - x.stop).toBeCloseTo(0.01, 10);
+      expect(x.tp - x.entry).toBeCloseTo(0.01 * base.rr, 10);
+      expect(x.tp).toBeGreaterThan(x.entry);
+    }
+    // The floor must not manufacture setups that the other rules rejected.
+    expect(findContinuationSetups(cs, cfg, "LONG", floored).length)
+      .toBeLessThanOrEqual(findContinuationSetups(cs, cfg, "LONG", base).length);
+  });
+
   it("drops the pattern when a prior touch is required and there was none", () => {
     expect(findContinuationSetups(continuationPattern(), cfg, "LONG",
       params({ maxRetraceDepth: 10, minTouches: 1 }))).toEqual([]);
@@ -439,6 +455,24 @@ describe("findContinuationSetups", () => {
     const tight = findContinuationSetups(cs, cfg, "LONG", params({ maxRetraceDepth: 0.05 }));
     expect(tight.length).toBeLessThanOrEqual(loose.length);
     for (const s of tight) expect(s.depth).toBeLessThanOrEqual(0.05 + 1e-9);
+  });
+
+  it("gives the same setup the same id as the series grows", () => {
+    // The replay re-detects on every tick. If the id depended on the series
+    // length, dedupe would never collapse anything and the setup count would
+    // measure ticks rather than setups.
+    const full = continuationPattern();
+    const a = findContinuationSetups(full, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    const grown = [...full, { t: full[full.length - 1].t + 3_600_000, o: 1.1020, h: 1.1040, l: 1.1018, c: 1.1038 }];
+    const b = findContinuationSetups(grown, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    expect(a.length).toBeGreaterThan(0);
+    const idsA = new Set(a.map((x) => x.setupId));
+    for (const x of b) if (idsA.has(x.setupId)) expect(x.entry).toBeCloseTo(
+      a.find((y) => y.setupId === x.setupId)!.entry, 10);
+    // Every original setup is still recognisable after the series grows.
+    expect(idsA.size).toBe(a.length);
   });
 
   it("gives every setup a stable id that changes with the break", () => {

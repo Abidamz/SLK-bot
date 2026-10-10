@@ -70,6 +70,17 @@ export interface ContinuationParams {
   /** Candles searched before the break for the swing the move launched from. */
   impulseLookback: number;
   /**
+   * Minimum stop distance, in price units. 0 disables the floor.
+   *
+   * Callers must set it — this module has no pair and the floor is
+   * per-instrument. Without one, a pullback that stops a fraction of a point
+   * short of the entry yields a near-zero risk and every R multiple divides by
+   * it. That is what produced a net of -7e12R and a negative profit factor on
+   * the first honest run. Mirrors the engine, which widens the stop to
+   * minStopDistance rather than dropping the setup.
+   */
+  minStop: number;
+  /**
    * Minimum body-to-range ratio for the break candle. 0 = not required.
    * See breakStrength.
    */
@@ -92,6 +103,7 @@ export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
   fvgLookback: 60,
   legOrigin: "swing",
   impulseLookback: 10,
+  minStop: 0,
   // Both off. These are the "impulsive" test, and the mentorship calls the
   // impulsive move "the secret, the blueprint" without ever putting a number
   // on it in fourteen sources. Shipping a guess here would make the first
@@ -450,8 +462,15 @@ export function findContinuationSetups(
     // purpose: Math.abs here would happily report a long whose stop sits above
     // its entry, which is not a trade.
     const buf = Math.abs(entry - h.pullback) * params.stopBufferPct;
-    const stop = bias === "LONG" ? h.pullback - buf : h.pullback + buf;
-    const risk = bias === "LONG" ? entry - stop : stop - entry;
+    let stop = bias === "LONG" ? h.pullback - buf : h.pullback + buf;
+    let risk = bias === "LONG" ? entry - stop : stop - entry;
+    // Widen to the floor rather than drop the setup, matching the engine. A
+    // stop tighter than the spread is not a trade, and leaving it in place
+    // makes every R multiple on that trade meaningless.
+    if (params.minStop > 0 && risk < params.minStop) {
+      stop = bias === "LONG" ? entry - params.minStop : entry + params.minStop;
+      risk = params.minStop;
+    }
     if (!(risk > 0)) { bump("risk"); continue; }
 
     const tp = bias === "LONG" ? entry + risk * params.rr : entry - risk * params.rr;
@@ -471,14 +490,15 @@ export function findContinuationSetups(
       bodyAtr: strength.bodyAtr,
       rr,
       time: candles[candles.length - 1].t,
-      setupId: [
-        "CONT",
-        level.kind,
-        bias,
-        level.originTime,
-        h.breakIndex,
-        candles.length,
-      ].join("|"),
+      // Identity of the SETUP, not of the tick that found it. candles.length
+      // used to be in here, which was harmless while the detector scanned a
+      // fixed series and catastrophic once it scanned the series truncated to
+      // each tick: the same level re-detected on the next tick got a fresh id,
+      // dedupe never collapsed anything, and one pair reported ~2,000 setups
+      // where the distinct count is a couple of dozen. The level's origin time
+      // and break index are both stable as the series grows, because it always
+      // starts at the same warmup bar.
+      setupId: ["CONT", level.kind, bias, level.originTime, h.breakIndex].join("|"),
     });
   }
   return out;
