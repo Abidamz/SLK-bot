@@ -383,7 +383,7 @@ async function main() {
     }
     const t = stats(all, spreadAdj);
     const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
-      f(t.winrate, 1), f(t.avgR), f(t.pf), f(t.maxDD), String(t.lossStreak)];
+      f(t.winrate, 1), f(t.finalR, 1), f(t.avgR), f(t.pf), f(t.maxDD), String(t.lossStreak)];
     console.log(tot.map((c) => c.padStart(9)).join(""));
     block.push(`| **${tot.join(" | ")}** |`);
     const riskNote = `max drawdown **${f(t.maxDD)}R** (${t.ddFrom} → ${t.ddTo} UTC) · ` +
