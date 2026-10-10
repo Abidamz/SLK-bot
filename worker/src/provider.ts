@@ -180,13 +180,39 @@ export async function fetchOandaRange(
     ?? (symbolMap[pair] && /^[A-Z0-9]{2,}_[A-Z]{3}$/.test(symbolMap[pair]) ? symbolMap[pair] : undefined)
     ?? (pair.length === 6 ? `${pair.slice(0, 3)}_${pair.slice(3)}` : pair);
 
+  // A practice token is rejected by the live host and vice versa, so try
+  // both in turn rather than assuming; fetchOanda does the same.
   const endpoints = environment === "live"
     ? ["https://api-fxtrade.oanda.com", "https://api-fxpractice.oanda.com"]
     : environment === "practice"
       ? ["https://api-fxpractice.oanda.com"]
       : ["https://api-fxpractice.oanda.com", "https://api-fxtrade.oanda.com"];
-  const base = endpoints[0];
 
+  let lastError: Error | null = null;
+  for (const base of endpoints) {
+    try {
+      const rows = await pageOandaRange(base, apiToken, instrument, gran, fromMs, toMs, fetchFn, maxPerRequest);
+      return rows;
+    } catch (e) {
+      lastError = e as Error;
+      const status = Number(String((e as Error).message).match(/HTTP (\d+)/)?.[1] ?? 0);
+      if (status === 401 && endpoints.length > 1) continue;   // wrong account type, try the other
+      throw e;
+    }
+  }
+  throw lastError ?? new Error(`OANDA range error for ${instrument} ${gran}`);
+}
+
+async function pageOandaRange(
+  base: string,
+  apiToken: string,
+  instrument: string,
+  gran: string,
+  fromMs: number,
+  toMs: number,
+  fetchFn: FetchLike,
+  maxPerRequest: number,
+): Promise<Candle[]> {
   const out: Candle[] = [];
   let cursor = fromMs;
   let guard = 0;
