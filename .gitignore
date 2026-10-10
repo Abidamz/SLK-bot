@@ -21,3 +21,6 @@ backtest-report-*.md
 
 # OCR fallback venv (scripts/ocr_screens.py) — created on demand, never committed
 .ocrvenv/
+
+# backtest candle cache
+.backtest-cache/

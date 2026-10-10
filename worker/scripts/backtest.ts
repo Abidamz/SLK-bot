@@ -12,7 +12,8 @@
  *
  *  Report also lands in backtest-report-<date>.md (gitignored).
  */
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
 import { defaultStrategy, TF_SECONDS } from "../src/config";
 import { resampleCandles, dropIncomplete } from "../src/features";
@@ -136,18 +137,56 @@ const OANDA_TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? 
 const OANDA_ENV = (process.env.OANDA_ENV ?? "auto") as "practice" | "live" | "auto";
 
 /** OANDA serves M1 directly, so no resampling guesswork is needed. */
+/**
+ * Candle cache.
+ *
+ * A 180-day sweep across thirteen pairs fetches ~2.5M minute bars, which
+ * takes about twenty minutes — and a parameter sweep is five of those back
+ * to back over identical data. The candles do not change between runs, so
+ * they are written to disk once and reused. Delete .backtest-cache/ to
+ * force a refetch.
+ */
+const CACHE_DIR = join(process.cwd(), ".backtest-cache");
+
+function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const file = join(CACHE_DIR, `${key}.json`);
+  try {
+    return Promise.resolve(JSON.parse(readFileSync(file, "utf8")) as T);
+  } catch {
+    return load().then((rows) => {
+      try {
+        mkdirSync(CACHE_DIR, { recursive: true });
+        writeFileSync(file, JSON.stringify(rows));
+      } catch {
+        // A cache that cannot be written costs time, not correctness.
+      }
+      return rows;
+    });
+  }
+}
+
 async function loadMinuteHistoryOanda(pair: string, from: Date, to: Date): Promise<Candle[]> {
-  const rows = await fetchOandaRange(OANDA_TOKEN, pair, "1m", from.getTime(), to.getTime(), {
-    environment: OANDA_ENV,
+  const key = [pair, "1m", from.getTime(), to.getTime()].join("-");
+  let hit = true;
+  const rows = await cached<Candle[]>(key, async () => {
+    hit = false;
+    return fetchOandaRange(OANDA_TOKEN, pair, "1m", from.getTime(), to.getTime(), {
+      environment: OANDA_ENV,
+    });
   });
-  console.log(`   ${rows.length.toLocaleString()} m1 bars via OANDA${rows.length ? ` (${new Date(rows[0].t).toISOString().slice(0, 10)} → ${new Date(rows[rows.length - 1].t).toISOString().slice(0, 10)})` : ""}`);
+  const span = rows.length
+    ? ` (${new Date(rows[0].t).toISOString().slice(0, 10)} → ${new Date(rows[rows.length - 1].t).toISOString().slice(0, 10)})`
+    : "";
+  console.log(`   ${rows.length.toLocaleString()} m1 bars ${hit ? "from cache" : "via OANDA"}${span}`);
   return rows;
 }
 
 /** Two years of daily bars is enough for the M/W/D bias context. */
 async function loadDailyContextOanda(pair: string, to: Date): Promise<Candle[]> {
   const fromMs = to.getTime() - 730 * 86400_000;
-  return fetchOandaRange(OANDA_TOKEN, pair, "1d", fromMs, to.getTime(), { environment: OANDA_ENV });
+  const key = [pair, "1d", fromMs, to.getTime()].join("-");
+  return cached<Candle[]>(key, () =>
+    fetchOandaRange(OANDA_TOKEN, pair, "1d", fromMs, to.getTime(), { environment: OANDA_ENV }));
 }
 
 /**
