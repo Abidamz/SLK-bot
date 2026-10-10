@@ -76,6 +76,7 @@ const OANDA_INSTRUMENTS: Record<string, string> = {
 };
 
 const OANDA_GRANULARITIES: Record<string, string> = {
+  "1m": "M1",
   "5m": "M5", "15m": "M15", "30m": "M30", "45m": "M45", "1h": "H1", "2h": "H2", "4h": "H4", "1d": "D",
 };
 
@@ -143,6 +144,92 @@ export async function fetchOanda(
     return out;
   }
   throw lastError ?? new Error(`OANDA error for ${instrument} ${gran}`);
+}
+
+/**
+ * Historical window from OANDA, paging forward until the range is covered.
+ *
+ * fetchOanda only asks for the most recent N candles, which caps a replay at
+ * 5000 bars (~3.5 days at M1). OANDA's own candles endpoint accepts an
+ * explicit from/to, so history is available — it just returns at most 5000
+ * bars per call, hence the page loop.
+ *
+ * Shared helpers (instrument mapping, endpoint fallback, response shaping)
+ * are duplicated from fetchOanda rather than refactored, to keep the
+ * production path untouched.
+ */
+export async function fetchOandaRange(
+  apiToken: string,
+  pair: string,
+  tf: string,
+  fromMs: number,
+  toMs: number,
+  opts: {
+    symbolMap?: Record<string, string>;
+    fetchFn?: FetchLike;
+    environment?: "practice" | "live" | "auto";
+    maxPerRequest?: number;
+  } = {},
+): Promise<Candle[]> {
+  if (!apiToken) throw new Error("OANDA_API_TOKEN is not set");
+  const gran = OANDA_GRANULARITIES[tf];
+  if (!gran) throw new Error(`unsupported timeframe ${tf} for OANDA`);
+  const { symbolMap = {}, fetchFn = fetch, environment = "auto", maxPerRequest = 5000 } = opts;
+  const instrument =
+    OANDA_INSTRUMENTS[pair.toUpperCase()]
+    ?? (symbolMap[pair] && /^[A-Z0-9]{2,}_[A-Z]{3}$/.test(symbolMap[pair]) ? symbolMap[pair] : undefined)
+    ?? (pair.length === 6 ? `${pair.slice(0, 3)}_${pair.slice(3)}` : pair);
+
+  const endpoints = environment === "live"
+    ? ["https://api-fxtrade.oanda.com", "https://api-fxpractice.oanda.com"]
+    : environment === "practice"
+      ? ["https://api-fxpractice.oanda.com"]
+      : ["https://api-fxpractice.oanda.com", "https://api-fxtrade.oanda.com"];
+  const base = endpoints[0];
+
+  const out: Candle[] = [];
+  let cursor = fromMs;
+  let guard = 0;
+
+  while (cursor < toMs && guard++ < 500) {
+    const params = new URLSearchParams({
+      from: new Date(cursor).toISOString(),
+      to: new Date(toMs).toISOString(),
+      granularity: gran,
+      price: "M",
+      count: String(Math.min(maxPerRequest, 5000)),
+    });
+    const url = `${base}/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
+    const resp = await fetchFn(url, {
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        "accept-datetime-format": "RFC3339",
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+    const data = (await resp.json().catch(() => ({}))) as {
+      errorMessage?: string;
+      candles?: { time: string; mid?: { o: string; h: string; l: string; c: string } }[];
+    };
+    if (!resp.ok || !data.candles) {
+      throw new Error(`OANDA range error for ${instrument} ${gran}: HTTP ${resp.status} ${data.errorMessage ?? ""}`.trim());
+    }
+    let lastT = -1;
+    for (const cd of data.candles) {
+      if (!cd.mid) continue;
+      const t = Date.parse(cd.time.slice(0, 23) + "Z");
+      if (!Number.isFinite(t)) continue;
+      out.push({ t, o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c) });
+      if (t > lastT) lastT = t;
+    }
+    // Fewer than a full page means the window is exhausted. A full page with
+    // no forward progress would spin forever, so treat it as done too.
+    if (data.candles.length < Math.min(maxPerRequest, 5000) || lastT <= cursor) break;
+    cursor = lastT + 1;
+  }
+
+  out.sort((a, b) => a.t - b.t);
+  return out.filter((c, i) => i === 0 || c.t > out[i - 1].t);
 }
 
 // ------------------------------------------------------------------ Dukascopy

@@ -13,7 +13,7 @@
  *  Report also lands in backtest-report-<date>.md (gitignored).
  */
 import { writeFileSync } from "node:fs";
-import { decodeJetta } from "../src/provider";
+import { decodeJetta, fetchOandaRange } from "../src/provider";
 import { defaultStrategy, TF_SECONDS } from "../src/config";
 import { resampleCandles, dropIncomplete } from "../src/features";
 import { storylineSeries } from "../src/storyline";
@@ -131,17 +131,44 @@ interface Trade {
   limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
 }
 
+const OANDA_TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? "";
+const OANDA_ENV = (process.env.OANDA_ENV ?? "auto") as "practice" | "live" | "auto";
+
+/** OANDA serves M1 directly, so no resampling guesswork is needed. */
+async function loadMinuteHistoryOanda(pair: string, from: Date, to: Date): Promise<Candle[]> {
+  const rows = await fetchOandaRange(OANDA_TOKEN, pair, "1m", from.getTime(), to.getTime(), {
+    environment: OANDA_ENV,
+  });
+  console.log(`   ${rows.length.toLocaleString()} m1 bars via OANDA${rows.length ? ` (${new Date(rows[0].t).toISOString().slice(0, 10)} → ${new Date(rows[rows.length - 1].t).toISOString().slice(0, 10)})` : ""}`);
+  return rows;
+}
+
+/** Two years of daily bars is enough for the M/W/D bias context. */
+async function loadDailyContextOanda(pair: string, to: Date): Promise<Candle[]> {
+  const fromMs = to.getTime() - 730 * 86400_000;
+  return fetchOandaRange(OANDA_TOKEN, pair, "1d", fromMs, to.getTime(), { environment: OANDA_ENV });
+}
+
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
-  const code = CODES[pair];
-  if (!code) throw new Error(`no Duka code for ${pair}`);
+  const useOanda = SOURCE === "oanda";
+  const code = CODES[pair] ?? pair;
+  if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
   const now = new Date();
   const scanStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days);
   const warmupStart = scanStart - 10 * 86400_000;
 
-  console.log(`\n=== ${pair} (${code}) — fetching ${days}d + warmup…`);
-  const m1 = await loadMinuteHistory(code, new Date(warmupStart), now);
-  const d1 = await loadDailyContext(code, now.getUTCFullYear());
-  console.log(`   ${m1.length.toLocaleString()} m1 bars, ${d1.length} d1 bars`);
+  console.log(`\n=== ${pair} (${useOanda ? "OANDA" : code}) — fetching ${days}d + warmup…`);
+  const m1 = useOanda
+    ? await loadMinuteHistoryOanda(pair, new Date(warmupStart), now)
+    : await loadMinuteHistory(code, new Date(warmupStart), now);
+  const d1 = useOanda
+    ? await loadDailyContextOanda(pair, now)
+    : await loadDailyContext(code, now.getUTCFullYear());
+  if (!useOanda) console.log(`   ${m1.length.toLocaleString()} m1 bars, ${d1.length} d1 bars`);
+  if (!m1.length) {
+    console.log(`   !! no bars returned — skipping ${pair}`);
+    return [];
+  }
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
   const h1 = resampleCandles(m1, TF_SECONDS["1h"]);
@@ -172,7 +199,7 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     for (const [tf, candles, nowMs] of tfs) {
       const { alerts } = scanEntry({
         pair, entryTf: tf, tfSeconds: TF_SECONDS[tf], candles, snaps,
-        cfg: strategy, mode: "paper", provider: "dukascopy",
+        cfg: strategy, mode: "paper", provider: SOURCE === "oanda" ? "oanda" : "dukascopy",
       });
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
@@ -266,12 +293,24 @@ function limitShadowRows(rows: Trade[]): Trade[] {
   }));
 }
 
+const SOURCE = (process.env.BACKTEST_SOURCE ?? (OANDA_TOKEN ? "oanda" : "dukascopy")).toLowerCase();
+
 async function main() {
   const args = process.argv.slice(2);
   let days = 60;
   let pairs = DEFAULT_PAIRS;
   if (args.length && /^[A-Z]/.test(args[0])) { pairs = args[0].split(","); args.shift(); }
   if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
+
+  if (SOURCE === "oanda" && !OANDA_TOKEN) {
+    console.error("BACKTEST_SOURCE=oanda needs OANDA_API_TOKEN (or OANDA_API_KEY) in the environment.");
+    process.exit(1);
+  }
+  if (SOURCE !== "oanda" && SOURCE !== "dukascopy") {
+    console.error(`BACKTEST_SOURCE must be 'oanda' or 'dukascopy' (got '${SOURCE}')`);
+    process.exit(1);
+  }
+  console.log(`source: ${SOURCE}`);
 
   const requestedMinTpR = Number(process.env.BACKTEST_MIN_TP_R ?? "");
   const strategy = Number.isFinite(requestedMinTpR) && requestedMinTpR > 0
