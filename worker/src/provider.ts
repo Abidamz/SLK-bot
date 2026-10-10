@@ -218,12 +218,13 @@ async function pageOandaRange(
   let guard = 0;
 
   while (cursor < toMs && guard++ < 500) {
+    // OANDA rejects 'count' when both 'from' and 'to' are present, and caps
+    // the response at 5000 candles regardless. Paging uses 'from' alone.
     const params = new URLSearchParams({
       from: new Date(cursor).toISOString(),
       to: new Date(toMs).toISOString(),
       granularity: gran,
       price: "M",
-      count: String(Math.min(maxPerRequest, 5000)),
     });
     const url = `${base}/v3/instruments/${encodeURIComponent(instrument)}/candles?${params}`;
     const resp = await fetchFn(url, {
