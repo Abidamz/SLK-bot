@@ -444,8 +444,27 @@ async function replay(
           // as the origin model's limit execution does.
           const fillIndex = after.slice(0, LIMIT_WINDOW_CANDLES)
             .findIndex((c) => cs.direction === "LONG" ? c.l <= cs.entry : c.h >= cs.entry);
-          if (fillIndex < 0) { contUnfilled++; continue; }
-          const oc = evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after.slice(fillIndex), 120);
+          if (fillIndex < 0) contUnfilled++;
+          const oc = fillIndex >= 0
+            ? evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after.slice(fillIndex), 120)
+            : null;
+          // Second execution model: market at the first 30-minute open after
+          // the detection candle closes. At detection price is already at the
+          // level, so this is the trade you could actually have taken without
+          // waiting for a re-touch. Worth measuring because the origin model
+          // shows the gap between the two is decisive on the same alerts —
+          // -1.43R as a limit against +5.43R always filled.
+          const mktCandle = after[0];
+          const mktEntry = mktCandle?.o ?? NaN;
+          const mktRisk = Number.isFinite(mktEntry)
+            ? (cs.direction === "LONG" ? mktEntry - cs.stop : cs.stop - mktEntry)
+            : NaN;
+          const mktTp = Number.isFinite(mktRisk) && mktRisk > 0
+            ? (cs.direction === "LONG" ? mktEntry + mktRisk * CONT_RR : mktEntry - mktRisk * CONT_RR)
+            : NaN;
+          const mktOc = Number.isFinite(mktTp)
+            ? evaluateSignal(cs.direction, mktEntry, cs.stop, mktTp, after, 120)
+            : null;
           contTrades.push({
             pair, tf, setupId: cs.setupId,
             entryTime: new Date(cs.time).toISOString().slice(0, 16).replace("T", " "),
@@ -454,8 +473,12 @@ async function replay(
             exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
             exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
             r: oc?.rMultiple ?? NaN,
-            limitStatus: "OPEN", limitEntry: cs.entry, limitExitTime: "-", limitR: NaN,
-            marketStatus: "OPEN", marketEntry: cs.entry, marketExitTime: "-", marketR: NaN,
+            limitStatus: oc?.status ?? "OPEN", limitEntry: cs.entry,
+            limitExitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+            limitR: oc?.rMultiple ?? NaN,
+            marketStatus: mktOc?.status ?? "OPEN", marketEntry: mktEntry,
+            marketExitTime: mktOc ? new Date(mktOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+            marketR: mktOc?.rMultiple ?? NaN,
             bodyPct: cs.bodyPct, bodyAtr: cs.bodyAtr,
           });
         }
@@ -777,6 +800,10 @@ async function main() {
     const cHead = `adj  net ${f(cs.finalR)}R · PF ${f(cs.pf)} · win ${f(cs.winrate, 1)}% · ` +
       `maxDD ${f(cs.maxDD)}R · closed ${cs.tp + cs.sl}/${contAll.length}`;
     console.log(contAll.length ? `   ${cHead}` : "   no setups — relax a parameter, do not assume the model is dead");
+    // Same setups, entered at market instead of waiting for the limit to fill.
+    const cm = stats(marketShadowRows(contAll), true);
+    console.log(`   market @ next 30m open : net ${f(cm.finalR)}R · PF ${f(cm.pf)} · ` +
+      `win ${f(cm.winrate, 1)}% · closed ${cm.tp + cm.sl}/${contAll.length}`);
     const byPair = new Map<string, Trade[]>();
     for (const t of contAll) byPair.set(t.pair, [...(byPair.get(t.pair) ?? []), t]);
     const pairLines: string[] = [];
