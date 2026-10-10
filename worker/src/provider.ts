@@ -75,6 +75,16 @@ const OANDA_INSTRUMENTS: Record<string, string> = {
   USDCAD: "USD_CAD", NZDUSD: "NZD_USD", EURJPY: "EUR_JPY",
 };
 
+/** Bar width per OANDA granularity, used to bound a page by time. */
+const OANDA_GRANULARITY_MS: Record<string, number> = {
+  S5: 5_000, S10: 10_000, S15: 15_000, S30: 30_000,
+  M1: 60_000, M2: 120_000, M4: 240_000, M5: 300_000,
+  M10: 600_000, M15: 900_000, M30: 1_800_000,
+  H1: 3_600_000, H2: 7_200_000, H3: 10_800_000, H4: 14_400_000,
+  H6: 21_600_000, H8: 28_800_000, H12: 43_200_000,
+  D: 86_400_000, W: 604_800_000, M: 2_592_000_000,
+};
+
 const OANDA_GRANULARITIES: Record<string, string> = {
   "1m": "M1",
   "5m": "M5", "15m": "M15", "30m": "M30", "45m": "M45", "1h": "H1", "2h": "H2", "4h": "H4", "1d": "D",
@@ -216,13 +226,17 @@ async function pageOandaRange(
   const out: Candle[] = [];
   let cursor = fromMs;
   let guard = 0;
+  const barMs = OANDA_GRANULARITY_MS[gran] ?? 60_000;
+  // OANDA rejects 'count' alongside 'from'/'to', and still caps a response at
+  // 5000 candles — asking for a wider window is a 400, not a truncated page.
+  // So bound each request to at most 5000 bars worth of time and walk it.
+  const pageMs = barMs * Math.min(maxPerRequest, 5000);
 
-  while (cursor < toMs && guard++ < 500) {
-    // OANDA rejects 'count' when both 'from' and 'to' are present, and caps
-    // the response at 5000 candles regardless. Paging uses 'from' alone.
+  while (cursor < toMs && guard++ < 5000) {
+    const pageTo = Math.min(toMs, cursor + pageMs);
     const params = new URLSearchParams({
       from: new Date(cursor).toISOString(),
-      to: new Date(toMs).toISOString(),
+      to: new Date(pageTo).toISOString(),
       granularity: gran,
       price: "M",
     });
@@ -249,10 +263,10 @@ async function pageOandaRange(
       out.push({ t, o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c) });
       if (t > lastT) lastT = t;
     }
-    // Fewer than a full page means the window is exhausted. A full page with
-    // no forward progress would spin forever, so treat it as done too.
-    if (data.candles.length < Math.min(maxPerRequest, 5000) || lastT <= cursor) break;
-    cursor = lastT + 1;
+    // Advance past the last bar seen. Sessions gaps return few or no candles,
+    // so fall through to the page boundary when a page yields nothing —
+    // otherwise a closed market would stall the walk.
+    cursor = lastT > cursor ? lastT + barMs : pageTo + 1;
   }
 
   out.sort((a, b) => a.t - b.t);
