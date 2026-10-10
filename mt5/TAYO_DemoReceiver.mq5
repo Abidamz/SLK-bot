@@ -5,7 +5,7 @@
 #property strict
 #property version "0.1"
 
-input string InpSignalEndpoint = "https://tayo-alert-worker.abidogundamilola.workers.dev/signals/confirmed";
+input string InpSignalEndpoint = "https://slk-alert-worker.abidogundamilola.workers.dev/signals/confirmed";
 input string InpSignalApiKey = "";
 input int    InpPollSeconds = 30;
 input bool   InpRequireConfirmed = true;

@@ -4,7 +4,7 @@
 **Repository:** `Abidamz/TAYO-bot`
 **This session's branch:** `arena/0e17c27a-tayo-bot`
 **Production lineage:** `arena/08df9077-tayo-bot`
-**Production Worker:** `https://tayo-alert-worker.abidogundamilola.workers.dev`
+**Production Worker:** `https://slk-alert-worker.abidogundamilola.workers.dev`
 **Production dashboard:** `https://slk-radar.pages.dev`
 **Deriv relay:** `https://slk-bot.vercel.app`
 
@@ -278,7 +278,7 @@ The same test, typecheck, and dashboard syntax gates run in GitHub Actions. The 
 ### Post-push proof
 
 ```bash
-curl -fsS "https://tayo-alert-worker.abidogundamilola.workers.dev/health?v=$(date +%s)"
+curl -fsS "https://slk-alert-worker.abidogundamilola.workers.dev/health?v=$(date +%s)"
 ```
 
 Always use a fresh query parameter. Never use a 401 from an unknown API route as deploy proof.
@@ -453,11 +453,11 @@ git push origin arena/0e17c27a-tayo-bot
 (cd worker && npx wrangler d1 migrations apply slk-alert-db --remote)
 ```
 
-- Fresh health check: `https://tayo-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
-- Public engine pulse: `https://tayo-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
-- Live-edge event tape bootstrap: `https://tayo-alert-worker.abidogundamilola.workers.dev/api/recent-events?tail=1&limit=5&cb=<random>`
-- Shadow aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
-- Shadow-experiment aggregates (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
-- Scan/error/funnel/delivery audit (owner key required): `https://tayo-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
+- Fresh health check: `https://slk-alert-worker.abidogundamilola.workers.dev/health?v=<random>`
+- Public engine pulse: `https://slk-alert-worker.abidogundamilola.workers.dev/api/engine-pulse`
+- Live-edge event tape bootstrap: `https://slk-alert-worker.abidogundamilola.workers.dev/api/recent-events?tail=1&limit=5&cb=<random>`
+- Shadow aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-ledger`
+- Shadow-experiment aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
+- Scan/error/funnel/delivery audit (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
 - Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
 - Public dashboard/journal: `https://slk-radar.pages.dev`

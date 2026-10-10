@@ -1,6 +1,6 @@
 const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
   ? window.location.origin
-  : 'https://tayo-alert-worker.abidogundamilola.workers.dev';
+  : 'https://slk-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
   url: DEFAULT_URL,
@@ -447,7 +447,7 @@ function setStatus(text, kind) {
 function renderHealth(h) {
   if (!h) return;
   if ($('mode')) $('mode').textContent = 'PAPER PIPELINE · RULE-CHECKED';
-  if ($('workerName')) $('workerName').textContent = 'tayo-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
@@ -471,7 +471,7 @@ function renderHealth(h) {
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML = `
-      <div class="health-item"><span>Cloud Service</span><strong>tayo-alert-worker</strong></div>
+      <div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>
       <div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">${esc(h.version || 'v2.5.3')} (Production)</strong></div>
       <div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>
       <div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong></div>

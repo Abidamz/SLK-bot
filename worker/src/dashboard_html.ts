@@ -505,7 +505,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <span id="healthPill" class="pill green">Worker Online</span>
           </div>
           <dl>
-            <div><dt>Cloud Engine</dt><dd id="workerName">tayo-alert-worker v2.5.3</dd></div>
+            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
             <div><dt>Active Markets (23)</dt><dd id="pairs">EURUSD · GBPUSD · USDJPY · AUDJPY · GBPJPY · XAUUSD · NAS100 · US30 · GER40 · JAPAN225 · V75 · V100 · V50 · V25 · V10 · V75(1s) · V100(1s) · V50(1s) · V25(1s) · V10(1s) · USDCAD · NZDUSD · EURJPY</dd></div>
             <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">13 Institutional · 10 Synthetics (24/7)</dd></div>
@@ -984,7 +984,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <script>
 const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
   ? window.location.origin
-  : 'https://tayo-alert-worker.abidogundamilola.workers.dev';
+  : 'https://slk-alert-worker.abidogundamilola.workers.dev';
 
 const state = {
   url: DEFAULT_URL,
@@ -1354,7 +1354,7 @@ function renderHealth(h) {
   if (!h) return;
   const isPaper = String(h.mode || 'PAPER').toUpperCase().includes('PAPER');
   if ($('mode')) $('mode').textContent = isPaper ? 'PAPER PIPELINE · RULE-CHECKED' : String(h.mode).toUpperCase();
-  if ($('workerName')) $('workerName').textContent = 'tayo-alert-worker';
+  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
   if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${isPaper ? 'PAPER PIPELINE' : esc(String(h.mode || 'PAPER').toUpperCase())})\`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
@@ -1378,7 +1378,7 @@ function renderHealth(h) {
   }
   if ($('healthDetails')) {
     $('healthDetails').innerHTML =
-      '<div class="health-item"><span>Cloud Service</span><strong>tayo-alert-worker</strong></div>' +
+      '<div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>' +
       '<div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">' + esc(h.version || 'v2.5.3') + ' (Production)</strong></div>' +
       '<div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>' +
       '<div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">' + esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)') + '</strong></div>' +

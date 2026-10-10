@@ -2,7 +2,7 @@
 
 **Document Version:** 1.0.0  
 **Date:** September 2026  
-**System:** TAYO Radar Quantitative Execution Desk (`tayo-alert-worker` v2.5.3)  
+**System:** TAYO Radar Quantitative Execution Desk (`slk-alert-worker` v2.5.3)  
 **Branch:** `arena/01a0b153-tayo-bot`  
 **Classification:** Product Design, Technical Documentation & Commercial Strategy  
 
@@ -105,7 +105,7 @@ Directly embedded into the dashboard:
 
 ### 3.4 Separate Public & Operator Footers
 - **Public Marketing Footer:** Includes clear Terms & Conditions link, 24/7 Synthetics VIP link, Free Synthetics channel, Free Forex channel, and VIP signup CTA with discount code `FOUNDING20`.
-- **Operator Console Footer:** Displays engine build version (`tayo-alert-worker v2.5.3`), runtime environment (`Cloudflare Workers Edge`), market data feed provenance (`Swiss Bank Dukascopy BID feed` + `Deriv WebSocket Relay`), and simulated tick pipeline safety disclaimer.
+- **Operator Console Footer:** Displays engine build version (`slk-alert-worker v2.5.3`), runtime environment (`Cloudflare Workers Edge`), market data feed provenance (`Swiss Bank Dukascopy BID feed` + `Deriv WebSocket Relay`), and simulated tick pipeline safety disclaimer.
 
 ### 3.5 Graceful Synthetic Empty State Handling
 - When synthetics metrics are zero or cleared, the ledger displays:

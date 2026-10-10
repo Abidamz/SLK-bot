@@ -396,7 +396,7 @@ export async function fetchDukascopy(
       let resp: Response;
       try {
         resp = await fetchFn(b.url, {
-          headers: { "user-agent": "Mozilla/5.0 (compatible; tayo-alert-worker/1.0)" },
+          headers: { "user-agent": "Mozilla/5.0 (compatible; slk-alert-worker/1.0)" },
           signal: AbortSignal.timeout(20_000),
         });
       } catch (e) {

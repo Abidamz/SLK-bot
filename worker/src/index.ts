@@ -1656,7 +1656,7 @@ export default {
       const oandaConfigured = Boolean(env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOanda);
       return json({
         ok: true,
-        service: "tayo-alert-worker · Workers Paid & Real-Time Intrabar Outcome Resolution",
+        service: "slk-alert-worker · Workers Paid & Real-Time Intrabar Outcome Resolution",
         mode: cfg.mode,
         version: "v2.5.5",
         commit: "v2.5.5",
@@ -3173,7 +3173,7 @@ export default {
       const cfg = loadConfig(env);
       return json({
         ok: true,
-        service: "tayo-alert-worker",
+        service: "slk-alert-worker",
         timestamp: new Date().toISOString(),
         // Workers Paid ($5/mo). These are the plan's documented ceilings, not
         // measured headroom: 30s CPU per invocation (cron triggers under a 1h

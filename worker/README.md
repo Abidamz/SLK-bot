@@ -180,7 +180,7 @@ gate, provider-outage safe failure).
 
 Production instance — deployed 2026-09-05:
 
-- **Worker:** https://tayo-alert-worker.abidogundamilola.workers.dev
+- **Worker:** https://slk-alert-worker.abidogundamilola.workers.dev
 - **D1:** `slk-alert-db` (`48ad2f08-d27d-4491-ad6c-13ad741b9ae3`, WEUR)
 - **Cron:** `*/1 * * * *` (UTC) · **Channels:** Telegram → "Trade jounal" channel
   (Discord activates when `DISCORD_WEBHOOK_URL` is set via `wrangler secret put`)
@@ -189,22 +189,22 @@ Routine:
 
 ```bash
 # liveness (open)
-curl https://tayo-alert-worker.abidogundamilola.workers.dev/health
+curl https://slk-alert-worker.abidogundamilola.workers.dev/health
 
 # alert history / paper stats (Bearer ADMIN_KEY)
-curl -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/alerts
-curl -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/stats
+curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/alerts
+curl -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/stats
 
 # live logs and a manual channel test
 npx wrangler tail
-curl -X POST -H "Authorization: Bearer $ADMIN_KEY" https://tayo-alert-worker.abidogundamilola.workers.dev/test-notify
+curl -X POST -H "Authorization: Bearer $ADMIN_KEY" https://slk-alert-worker.abidogundamilola.workers.dev/test-notify
 ```
 
 Changes:
 
 - **Rotate any credential:** `npx wrangler secret put <NAME>` (needs the env vars
   `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`, or `wrangler login`).
-  Dashboard alternative: Workers & Pages → tayo-alert-worker → Settings →
+  Dashboard alternative: Workers & Pages → slk-alert-worker → Settings →
   Variables and Secrets.
 - **Pause scanning:** set `"crons": []` in `wrangler.jsonc` and
   `npx wrangler deploy`; re-add to resume.

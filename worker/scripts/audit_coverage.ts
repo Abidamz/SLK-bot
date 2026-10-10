@@ -28,11 +28,11 @@
 
 import { readFileSync } from "node:fs";
 
-// The worker GitHub Actions deploys: wrangler.jsonc names it tayo-alert-worker,
-// so its URL is https://tayo-alert-worker.<subdomain>.workers.dev. If your
+// The worker GitHub Actions deploys: wrangler.jsonc names it slk-alert-worker,
+// so its URL is https://slk-alert-worker.<subdomain>.workers.dev. If your
 // alerts live on the pre-rename worker instead, override with
 // TAYO_BASE_URL=https://slk-alert-worker.<subdomain>.workers.dev
-const BASE = process.env.TAYO_BASE_URL ?? "https://tayo-alert-worker.abidogundamilola.workers.dev";
+const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
 const KEY = process.env.TAYO_ADMIN_KEY ?? "";
 const DAYS = process.env.TAYO_AUDIT_DAYS ?? "31";
 
