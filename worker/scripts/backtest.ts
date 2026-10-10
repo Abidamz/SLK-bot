@@ -146,6 +146,44 @@ interface Trade {
   bodyPct?: number; bodyAtr?: number;
 }
 
+/**
+ * Read KEY=VALUE pairs from a .env file, for keys not already in the
+ * environment.
+ *
+ * It exists for one reason: a Codespace restart drops exported variables, and
+ * re-exporting a token by hand every time is how a truncated paste ends up
+ * looking like a revoked credential. Values already in process.env win, so an
+ * explicit export still overrides the file.
+ *
+ * Deliberately tiny and dependency-free — a real dotenv package is not worth
+ * pulling in for this. The file itself is gitignored (bare `.env` in
+ * .gitignore matches at any depth), so the token never enters the repo.
+ */
+function loadDotEnv(): void {
+  for (const path of [join(process.cwd(), ".env"), join(process.cwd(), "..", ".env")]) {
+    let text: string;
+    try {
+      text = readFileSync(path, "utf8");
+    } catch {
+      continue; // no file here — not an error
+    }
+    for (const line of text.split("\n")) {
+      if (line.trimStart().startsWith("#")) continue;
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+      if (!m) continue;
+      const [, key, raw] = m;
+      if (process.env[key]) continue;
+      const quoted = /^(".*"|.*)$/s.exec(raw)?.[1] ?? raw;
+      process.env[key] =
+        (quoted.startsWith('"') && quoted.endsWith('"')) ||
+        (quoted.startsWith("'") && quoted.endsWith("'"))
+          ? quoted.slice(1, -1)
+          : quoted;
+    }
+  }
+}
+loadDotEnv();
+
 const OANDA_TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? "";
 const OANDA_ENV = (process.env.OANDA_ENV ?? "auto") as "practice" | "live" | "auto";
 
