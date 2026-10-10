@@ -149,15 +149,23 @@ async function loadDailyContextOanda(pair: string, to: Date): Promise<Candle[]> 
   return fetchOandaRange(OANDA_TOKEN, pair, "1d", fromMs, to.getTime(), { environment: OANDA_ENV });
 }
 
+/**
+ * Days to shift the end of the scan window back from today. Lets the same
+ * window length be replayed over two disjoint periods, so a pair that looks
+ * weak can be checked against a second sample before anything is dropped.
+ */
+const END_OFFSET_DAYS = Math.max(0, Number(process.env.BACKTEST_END_OFFSET_DAYS ?? "0") || 0);
+
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
   const useOanda = SOURCE === "oanda";
   const code = CODES[pair] ?? pair;
   if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
-  const now = new Date();
+  const now = new Date(Date.now() - END_OFFSET_DAYS * 86400_000);
   const scanStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days);
   const warmupStart = scanStart - 10 * 86400_000;
 
-  console.log(`\n=== ${pair} (${useOanda ? "OANDA" : code}) — fetching ${days}d + warmup…`);
+  const span = `${new Date(scanStart).toISOString().slice(0, 10)} → ${now.toISOString().slice(0, 10)}`;
+  console.log(`\n=== ${pair} (${useOanda ? "OANDA" : code}) — ${days}d [${span}]`);
   const m1 = useOanda
     ? await loadMinuteHistoryOanda(pair, new Date(warmupStart), now)
     : await loadMinuteHistory(code, new Date(warmupStart), now);
@@ -358,18 +366,18 @@ async function main() {
     console.info = originalInfo;
   }
 
-  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "avgR", "PF", "maxDD-R", "loseStrk"];
+  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "netR", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
   let lines = `# TAYO walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
   const emit = (spreadAdj: boolean) => {
     const block: string[] = [];
-    block.push(`| pair | alerts | TP | SL | EXPIRED | open | win% | avgR | PF | maxDD (R) | lose streak |`);
-    block.push(`|---|---|---|---|---|---|---|---|---|---|---|`);
+    block.push(`| pair | alerts | TP | SL | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`);
+    block.push(`|---|---|---|---|---|---|---|---|---|---|---|---|`);
     for (const pair of pairs) {
       const rows = all.filter((t) => t.pair === pair);
       const s = stats(rows, spreadAdj);
       const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
-        f(s.winrate, 1), f(s.avgR), f(s.pf), f(s.maxDD), String(s.lossStreak)];
+        f(s.winrate, 1), f(s.finalR, 1), f(s.avgR), f(s.pf), f(s.maxDD), String(s.lossStreak)];
       console.log(line.map((c) => c.padStart(9)).join(""));
       block.push(`| ${line.join(" | ")} |`);
     }
