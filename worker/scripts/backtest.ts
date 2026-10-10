@@ -405,7 +405,15 @@ async function replay(
         // The full series is used below, and only to resolve outcomes forward
         // from the detection time — the same split the origin model uses.
         const tfCandles = tf === "1h" ? h1 : m30;
-        for (const cs of findContinuationSetups(candles, strategy, gateCache.dir, {
+        // Detect on the 4 HOURS, not the entry timeframe. The continuation
+        // setup is a higher-timeframe construct — the key level, the impulsive
+        // break and the imbalance all live on the 4H, which is why the 4H is
+        // the vantage point when the weekly and daily are unclear. Running the
+        // same rules over 30-minute bars multiplies the bar count by eight and
+        // produced ~28,000 "setups" over 180 days against a stated rate of one
+        // or two a week. Outcomes are still resolved on the finer series below,
+        // so stop and target hits are not blurred to 4-hour granularity.
+        for (const cs of findContinuationSetups(h4, strategy, gateCache.dir, {
           ...CONT_PARAMS,
           minTouches: CONT_MIN_TOUCHES,
           maxRetraceDepth: CONT_MAX_DEPTH,
@@ -419,7 +427,7 @@ async function replay(
         }, contDiag)) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
-          const after = tfCandles.filter((c) => c.t >= cs.time);
+          const after = m30.filter((c) => c.t >= cs.time);
           const oc = evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after, 120);
           contTrades.push({
             pair, tf, setupId: cs.setupId,
