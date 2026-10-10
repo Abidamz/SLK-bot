@@ -2,7 +2,7 @@
   "name": "tayo-alert-worker",
   "version": "1.0.0",
   "private": true,
-  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner \u2014 Cloudflare Worker",
+  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
   "type": "module",
   "scripts": {
     "test": "vitest run",
@@ -17,6 +17,7 @@
     "audit:shadow": "node --experimental-strip-types scripts/audit_shadow.ts"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9",
     "wrangler": ">=3.80.0"

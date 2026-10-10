@@ -5,7 +5,7 @@
  *  you produce real ones yourself.)
  *
  *  Usage (Codespaces terminal):
- *    cd /workspaces/TAYO-bot/worker
+ *    cd /workspaces/SLK-bot/worker
  *    npm i -D tsx                      # one-time
  *    npx tsx scripts/backtest.ts                 # all 7 pairs, 60 days
  *    npx tsx scripts/backtest.ts US30 30         # one pair, 30 days
@@ -27,15 +27,25 @@ const ROOT = "https://jetta.dukascopy.com/v1/candles";
 const CODES: Record<string, string> = {
   US30: "USA30.IDX-USD", GER40: "DEU.IDX-EUR", DE40: "DEU.IDX-EUR",
   JAPAN225: "JPN.IDX-JPY", JP225: "JPN.IDX-JPY",
+  NAS100: "USATECH.IDX-USD", US100: "USATECH.IDX-USD",
   EURUSD: "EUR-USD", GBPUSD: "GBP-USD", USDZAR: "USD-ZAR",
+  USDJPY: "USD-JPY", AUDJPY: "AUD-JPY", GBPJPY: "GBP-JPY", EURJPY: "EUR-JPY",
+  USDCAD: "USD-CAD", NZDUSD: "NZD-USD",
   XAUUSD: "XAU-USD",
 };
-const DEFAULT_PAIRS = ["EURUSD", "GBPUSD", "XAUUSD", "USDZAR", "US30", "GER40", "JAPAN225"];
+// Every live pair Dukascopy carries. The ten Deriv synthetics (V*) are not
+// available on this feed, so they cannot be replayed here at all.
+const DEFAULT_PAIRS = [
+  "AUDJPY", "EURJPY", "GBPJPY", "USDJPY", "USDCAD", "JAPAN225", "NAS100",
+  "EURUSD", "GBPUSD", "NZDUSD", "XAUUSD", "US30", "GER40",
+];
 
 /** ESTIMATE of typical spread, in price units. Conservative averages, NOT measured. */
 const SPREAD_EST: Record<string, number> = {
   EURUSD: 0.00002, GBPUSD: 0.00004, XAUUSD: 0.40, USDZAR: 0.0025,
-  US30: 4.0, GER40: 1.2, JAPAN225: 8.0,
+  US30: 4.0, GER40: 1.2, JAPAN225: 8.0, NAS100: 1.5,
+  USDJPY: 0.015, AUDJPY: 0.02, GBPJPY: 0.03, EURJPY: 0.02,
+  USDCAD: 0.00002, NZDUSD: 0.00003,
 };
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };
@@ -288,6 +298,14 @@ async function main() {
     console.log(`\n${riskNote.replace(/\*\*/g, "")}`);
     return { block: block.join("\n"), riskNote };
   };
+
+  const missing = pairs.filter((p2) => SPREAD_EST[p2] === undefined);
+  if (missing.length) {
+    console.log(
+      `\n!! No spread estimate for: ${missing.join(", ")}.` +
+        ` Their "spread-adjusted" figures equal raw (cost treated as 0), so those rows understate real cost.`,
+    );
+  }
 
   const raw = emit(false);
   const adj = emit(true);
