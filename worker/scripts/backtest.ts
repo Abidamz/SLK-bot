@@ -129,6 +129,7 @@ interface Trade {
   entryTime: string; entry: number; stop: number; tp: number;
   status: string; exit: number; exitTime: string; r: number;
   limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
+  marketStatus: string; marketEntry: number; marketExitTime: string; marketR: number;
 }
 
 const OANDA_TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? "";
@@ -155,6 +156,9 @@ async function loadDailyContextOanda(pair: string, to: Date): Promise<Candle[]> 
  * weak can be checked against a second sample before anything is dropped.
  */
 const END_OFFSET_DAYS = Math.max(0, Number(process.env.BACKTEST_END_OFFSET_DAYS ?? "0") || 0);
+
+/** How many entry-TF candles a pending limit at the retest close stays live. */
+const LIMIT_WINDOW_CANDLES = 2;
 
 async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
   const useOanda = SOURCE === "oanda";
@@ -234,16 +238,26 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
         const tfCandles = tf === "1h" ? h1 : m30;
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
         const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120);
-        // Shadow-only pending limit: origin-zone midpoint, valid for the next
-        // two entry-TF candles. Production alerts remain close-entry alerts.
-        const limitEntry = (a.keyLevelBounds[0] + a.keyLevelBounds[1]) / 2;
-        const limitSideValid = a.direction === "LONG" ? limitEntry <= a.entry : limitEntry >= a.entry;
-        const fillIndex = limitSideValid
-          ? after.slice(0, 2).findIndex((c) => a.direction === "LONG" ? c.l <= limitEntry : c.h >= limitEntry)
-          : -1;
-        const fill = fillIndex >= 0 ? after[fillIndex] : undefined;
-        const limitOc = fill
+        // Two execution models, both off the price production actually quotes.
+        //
+        // notify.ts instructs a pending limit AT THE RETEST CLOSE (a.entry), not
+        // at the key level. An earlier revision used the key-level zone midpoint;
+        // that sits on top of the stop, so every fill was entered at its own stop
+        // and returned exactly -1R. The limit belongs at a.entry.
+        //
+        // A limit fills only if price trades back through a.entry within the
+        // window; if price runs away the order never fills and there is no
+        // trade. A market order always fills, at the next candle's open.
+        const limitEntry = a.entry;
+        const fillIndex = after.slice(0, LIMIT_WINDOW_CANDLES)
+          .findIndex((c) => a.direction === "LONG" ? c.l <= limitEntry : c.h >= limitEntry);
+        const limitOc = fillIndex >= 0
           ? evaluateSignal(a.direction, limitEntry, a.stopLoss, a.tpInternal, after.slice(fillIndex), 120)
+          : null;
+        const mktCandle = after[0];
+        const marketEntry = mktCandle?.o ?? a.entry;
+        const marketOc = mktCandle
+          ? evaluateSignal(a.direction, marketEntry, a.stopLoss, a.tpInternal, after, 120)
           : null;
         trades.push({
           pair, tf, setupId: a.setupId,
@@ -253,10 +267,14 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
           exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
           exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
           r: oc?.rMultiple ?? NaN,
-          limitStatus: limitOc?.status ?? (fill ? "OPEN" : "EXPIRED"),
+          limitStatus: limitOc?.status ?? (fillIndex >= 0 ? "OPEN" : "NO_FILL"),
           limitEntry,
           limitExitTime: limitOc ? new Date(limitOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
           limitR: limitOc?.rMultiple ?? NaN,
+          marketStatus: marketOc?.status ?? "OPEN",
+          marketEntry,
+          marketExitTime: marketOc ? new Date(marketOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+          marketR: marketOc?.rMultiple ?? NaN,
         });
       }
     }
@@ -325,6 +343,16 @@ function limitShadowRows(rows: Trade[]): Trade[] {
     status: t.limitStatus,
     exitTime: t.limitExitTime,
     r: t.limitR,
+  }));
+}
+
+function marketShadowRows(rows: Trade[]): Trade[] {
+  return rows.map((t) => ({
+    ...t,
+    entry: t.marketEntry,
+    status: t.marketStatus,
+    exitTime: t.marketExitTime,
+    r: t.marketR,
   }));
 }
 
@@ -406,16 +434,42 @@ async function main() {
   lines += `### Raw fills (mid touch)\n\n${raw.block}\n\n`;
   lines += `### Spread-adjusted (est. per-pair spread cost, 2× round trip)\n\n${adj.block}\n\n`;
 
-  const limitRaw = stats(limitShadowRows(all), false);
-  const limitAdj = stats(limitShadowRows(all), true);
-  const limitNote = (s: ReturnType<typeof stats>) =>
-    `alerts ${s.alerts} · filled ${s.tp + s.sl + (s.open)} · unfilled ${s.expired} · ` +
-    `avg ${f(s.avgR)}R · PF ${f(s.pf)} · maxDD ${f(s.maxDD)}R · net ${f(s.finalR)}R`;
-  console.log(`\nPENDING-LIMIT SHADOW (origin midpoint, 2 candles) raw: ${limitNote(limitRaw)}`);
-  console.log(`PENDING-LIMIT SHADOW (origin midpoint, 2 candles) adj: ${limitNote(limitAdj)}`);
-  lines += `### Pending-limit shadow (origin-zone midpoint, valid for 2 entry-TF candles)\n\n`;
-  lines += `This is a comparison only; production alerts still use retest-close entries.\n\n`;
-  lines += `- raw: ${limitNote(limitRaw)}\n- adj: ${limitNote(limitAdj)}\n\n`;
+  // Three execution models off the SAME alerts, so the only thing that varies
+  // is how the trade is entered.
+  //   1. pending limit at the retest close — what notify.ts instructs. Fills
+  //      only if price trades back through that price; runners are missed.
+  //   2. market at the next candle's open — always filled, pays the gap.
+  //   3. entry at the retest close, assumed always filled — the main table
+  //      above. Included so the other two can be read against it.
+  const execNote = (rows: Trade[], spreadAdj: boolean, filled: number) => {
+    const s = stats(rows, spreadAdj);
+    const pct = all.length ? ((filled / all.length) * 100).toFixed(1) : "-";
+    return `filled ${filled}/${all.length} (${pct}%) · avg ${f(s.avgR)}R · PF ${f(s.pf)} · ` +
+      `maxDD ${f(s.maxDD)}R · net ${f(s.finalR)}R`;
+  };
+  const limitUnfilled = all.filter((t) => t.limitStatus === "NO_FILL").length;
+  const limitFilled = all.length - limitUnfilled;
+
+  console.log(`\nEXECUTION COMPARISON — same ${all.length} alerts, three ways to get in:`);
+  const execLines: string[] = [];
+  for (const [label, adj] of [["raw ", false], ["adj ", true]] as const) {
+    const models: [string, string][] = [
+      [`1. pending limit @ retest close (${LIMIT_WINDOW_CANDLES} candles)`,
+        execNote(limitShadowRows(all), adj, limitFilled)],
+      ["2. market @ next open                    ", execNote(marketShadowRows(all), adj, all.length)],
+      ["3. entry @ retest close, always filled   ", execNote(all, adj, all.length)],
+    ];
+    if (adj) console.log("");
+    for (const [name, note] of models) console.log(`   ${label} ${name} : ${note}`);
+    for (const [name, note] of models) execLines.push(`- ${label.trim()} ${name.trim()} : ${note}`);
+  }
+  if (limitUnfilled > 0)
+    console.log(`\n   ${limitUnfilled} alerts never filled the limit — price ran away. No trade, no loss.`);
+
+  lines += `\n## Execution comparison — same ${all.length} alerts, three entry models\n\n`;
+  lines += `Model 1 is what production instructs (notify.ts: pending limit at the retest\n` +
+    `close). Model 2 is the alternative. Model 3 is the main table above, included\n` +
+    `as the reference.\n\n${execLines.join("\n")}\n\n`;
   lines += `\n## Risk over time (raw / spread-adjusted)\n\n- raw: ${raw.riskNote}\n- adj: ${adj.riskNote}\n\n`;
   lines += `\n## Trades (pair, tf, entry time UTC, entry → exit, status, R)\n\n`;
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
