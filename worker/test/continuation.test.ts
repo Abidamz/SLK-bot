@@ -106,15 +106,80 @@ describe("levelHistory", () => {
   });
 });
 
+describe("levelHistory — which break counts", () => {
+  // Both fixtures keep the consolidation tight and the breaks wide, so the
+  // flip margin (0.5 * ATR) stays small next to the distance a break travels.
+  // A fixture sized the other way round never breaks at all and tests nothing.
+
+  it("uses the MOST RECENT break, not the first", () => {
+    // The level forms at the top of a rise, is rejected down through the zone
+    // (first break, SHORT), then closes back above it (most recent, LONG).
+    // Trading off the first break would call this a short.
+    const cs = candles([
+      [100.0, 100.3, 99.8, 100.2],
+      [100.2, 100.6, 100.0, 100.5],
+      [100.5, 100.9, 100.3, 100.8],
+      [100.8, 100.9, 100.4, 100.6],
+      [100.6, 100.7, 97.4, 97.5], // closes below the zone → first break, SHORT
+      [97.5, 97.8, 97.3, 97.7],
+      [97.7, 100.7, 97.6, 100.6], // back inside the zone
+      [100.6, 100.8, 100.3, 100.5],
+      [100.5, 103.2, 100.4, 103.1], // closes above → most recent break, LONG
+    ]);
+    const h = levelHistory(cs, levelAt(2, 100, 101), cfg);
+    expect(h.breaks).toBe(2);
+    expect(h.breakDir).toBe("LONG");
+    expect(h.breakIndex).toBe(8);
+  });
+
+  it("counts only the touches since the previous break", () => {
+    const cs = candles([
+      [100.0, 100.3, 99.8, 100.2],
+      [100.2, 100.6, 100.0, 100.5],
+      [100.5, 100.9, 100.3, 100.8],
+      [100.8, 100.9, 100.4, 100.6],
+      [100.6, 100.7, 97.4, 97.5], // first break down
+      [97.5, 100.7, 97.4, 100.6], // back inside → touch 1
+      [100.6, 100.8, 100.2, 100.4], // touch 2
+      [100.4, 103.2, 100.3, 103.1], // most recent break up
+    ]);
+    const h = levelHistory(cs, levelAt(2, 100, 101), cfg);
+    expect(h.breaks).toBe(2);
+    expect(h.breakDir).toBe("LONG");
+    expect(h.breakIndex).toBe(7);
+    // Touches 1 and 2 only. The touches before the FIRST break belong to that
+    // break's story, not this one.
+    expect(h.touchesBefore).toBe(2);
+  });
+
+  it("treats consecutive closes beyond the zone as one break, not several", () => {
+    // An impulsive move closes past the zone on several candles running. Each
+    // one is not its own break — the last of them would report zero touches
+    // before it and destroy the "tested that held" evidence.
+    const cs = candles([
+      [100.0, 100.4, 99.8, 100.2],
+      [100.2, 100.6, 100.0, 100.5],
+      [100.5, 100.8, 100.2, 100.6],
+      [100.6, 102.9, 100.4, 102.8], // first close beyond
+      [102.8, 103.4, 102.6, 103.2], // still beyond — same break
+      [103.2, 103.9, 103.0, 103.7], // still beyond — same break
+    ]);
+    const h = levelHistory(cs, levelAt(0, 100, 101), cfg);
+    expect(h.breaks).toBe(1);
+    expect(h.breakIndex).toBe(3);
+    expect(h.touchesBefore).toBe(2);
+  });
+});
+
 describe("retraceDepth", () => {
   it("is near zero when price never comes back", () => {
-    const h = { touchesBefore: 1, breakIndex: 1, breakDir: "LONG" as const, extreme: 110, pullback: 109.9 };
-    expect(retraceDepth(h, levelAt(0, 100, 101))).toBeLessThan(0.05);
+    const h = { touchesBefore: 1, breakIndex: 1, breakDir: "LONG" as const, breaks: 1, breakPrice: 100, extreme: 110, pullback: 109.9 };
+    expect(retraceDepth(h, levelAt(0, 100, 101), "break")).toBeLessThan(0.05);
   });
 
   it("is about one when the whole impulsive leg is retraced", () => {
-    const h = { touchesBefore: 1, breakIndex: 1, breakDir: "LONG" as const, extreme: 110, pullback: 100.5 };
-    expect(retraceDepth(h, levelAt(0, 100, 101))).toBeGreaterThan(0.9);
+    const h = { touchesBefore: 1, breakIndex: 1, breakDir: "LONG" as const, breaks: 1, breakPrice: 100, extreme: 110, pullback: 100.5 };
+    expect(retraceDepth(h, levelAt(0, 100, 101), "break")).toBeGreaterThan(0.9);
   });
 });
 
@@ -149,7 +214,78 @@ describe("multiTfGate", () => {
   });
 });
 
+/**
+ * A hand-built continuation pattern, evaluated as of the tick where the
+ * rebalance is happening — which is how the replay sees it.
+ *
+ * Rise into a level, hold it, break it on a wickless candle that leaves an FVG
+ * straddling the level, come back through the level, and stop there.
+ */
+function continuationPattern(): Candle[] {
+  const LVL = 1.1002;
+  const rows: [number, number, number, number][] = []; // o, c, l, h
+  let p = 1.0960;
+  for (let i = 0; i < 26; i++) {
+    const o = p; const c = o + 0.0002; p = c;
+    rows.push([o, c, o - 0.0001, c + 0.0001]);
+  }
+  rows.push([1.0992, 1.0996, 1.0991, 1.0997]);
+  rows.push([1.0996, 1.0999, 1.0995, 1.1000]);
+  rows.push([1.0999, LVL, 1.0998, LVL + 0.0001]);      // unique local max on closes
+  rows.push([LVL, 1.0993, 1.0992, LVL]);
+  rows.push([1.0993, 1.0986, 1.0985, 1.0994]);
+  rows.push([1.0986, 1.0982, 1.0981, 1.0987]);
+  rows.push([1.0982, 1.0990, 1.0981, LVL + 0.00005]);
+  rows.push([1.0990, 1.0984, 1.0983, 1.0991]);
+  rows.push([1.0984, 1.0991, 1.0983, LVL + 0.00005]);
+  rows.push([1.0991, 1.0987, 1.0986, 1.0992]);
+  rows.push([1.0987, 1.0990, 1.0986, LVL - 0.0002]);   // high below the level
+  rows.push([1.0990, 1.1018, 1.0989, 1.1019]);          // impulsive, wickless
+  rows.push([1.1018, 1.1028, LVL + 0.0005, 1.1029]);    // gap straddles the level
+  rows.push([1.1028, 1.1040, 1.1027, 1.1041]);
+  rows.push([1.1040, 1.1022, 1.1021, 1.1041]);
+  rows.push([1.1022, 1.1010, 1.1009, 1.1023]);
+  const rebalIdx = rows.length;
+  rows.push([1.1010, 1.1000, 1.09960, 1.1011]);         // trades through the level
+  rows.push([1.1000, 1.1024, 1.0999, 1.1025]);          // resumes
+  rows.push([1.1024, 1.1044, 1.1023, 1.1045]);
+  return rows.slice(0, rebalIdx + 1).map(([o, c, l, h], i) => ({
+    t: Date.UTC(2026, 0, 1) + i * 3_600_000, o, c, h, l,
+  }));
+}
+
 describe("findContinuationSetups", () => {
+  it("emits a well-formed setup from the full pattern", () => {
+    // minTouches 0: the level that qualifies here is the impulsive candle's own
+    // DECISION zone, which by construction has no touches before its break.
+    // The touch requirement is asserted separately below.
+    const s = findContinuationSetups(continuationPattern(), cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    expect(s.length).toBeGreaterThanOrEqual(1);
+    for (const x of s) {
+      expect(x.level.fvgOverlap).toBe(true);
+      // A long must have its stop below the entry and its target above it.
+      expect(x.stop).toBeLessThan(x.entry);
+      expect(x.tp).toBeGreaterThan(x.entry);
+      expect(x.entry - x.stop).toBeGreaterThan(0);
+      expect(x.rr).toBeCloseTo(3, 6);
+    }
+  });
+
+  it("drops the pattern when a prior touch is required and there was none", () => {
+    expect(findContinuationSetups(continuationPattern(), cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 1 }))).toEqual([]);
+  });
+
+  it("rejects the pattern when the pullback never reaches the entry price", () => {
+    // The rebalance is the trade. A level that broke and kept running has not
+    // been retested, so there is no limit to fill and nothing to enter.
+    const all = continuationPattern();
+    const beforeRebalance = all.slice(0, all.length - 1);
+    expect(findContinuationSetups(beforeRebalance, cfg, "LONG",
+      params({ maxRetraceDepth: 10 }))).toEqual([]);
+  });
+
   it("returns nothing without a bias, whatever the price does", () => {
     const cs = candles([
       [100, 100.4, 99.6, 100.1], [100.1, 102.0, 100.0, 101.8],

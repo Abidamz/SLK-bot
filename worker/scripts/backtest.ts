@@ -16,9 +16,15 @@ import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
 import { defaultStrategy, TF_SECONDS } from "../src/config";
-import { resampleCandles, dropIncomplete } from "../src/features";
+import { resampleCandles, dropIncomplete, resampleCalendar } from "../src/features";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
+import {
+  DEFAULT_CONTINUATION_PARAMS as CONT_PARAMS,
+  findContinuationSetups,
+  multiTfGate,
+  type ContinuationSetup,
+} from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
 import type { Alert, Candle } from "../src/types";
 
@@ -199,7 +205,27 @@ const END_OFFSET_DAYS = Math.max(0, Number(process.env.BACKTEST_END_OFFSET_DAYS 
 /** How many entry-TF candles a pending limit at the retest close stays live. */
 const LIMIT_WINDOW_CANDLES = 2;
 
-async function replay(pair: string, days: number, strategy = defaultStrategy()): Promise<Trade[]> {
+/**
+ * Which timeframes must agree for a continuation setup to count. Weekly/daily/
+ * 4H is the chain the mentorship gives for a storyline started on the weekly:
+ * "you need the daily and the four hours". The entry timeframe is where the
+ * setup is looked for, not part of the bias gate.
+ */
+const CONT_GATE = (process.env.BACKTEST_CONT_GATE ?? "w1,d1,h4")
+  .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+const CONT_MIN_TOUCHES = Number(process.env.BACKTEST_CONT_MIN_TOUCHES ?? CONT_PARAMS.minTouches);
+const CONT_MAX_DEPTH = Number(process.env.BACKTEST_CONT_MAX_DEPTH ?? CONT_PARAMS.maxRetraceDepth);
+const CONT_RR = Number(process.env.BACKTEST_CONT_RR ?? CONT_PARAMS.rr);
+/**
+ * Where the impulsive leg is measured from for the shallow-retracement test.
+ * He never says; the two readings disagree, so the sweep decides.
+ */
+const CONT_LEG_ORIGIN = (process.env.BACKTEST_CONT_LEG_ORIGIN ?? CONT_PARAMS.legOrigin) as "break" | "level";
+const CONT_ENABLED = CONT_GATE.length > 0;
+
+async function replay(
+  pair: string, days: number, strategy = defaultStrategy(),
+): Promise<{ origin: Trade[]; continuation: Trade[] }> {
   const useOanda = SOURCE === "oanda";
   const code = CODES[pair] ?? pair;
   if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
@@ -223,6 +249,7 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
   const h1 = resampleCandles(m1, TF_SECONDS["1h"]);
+  const w1 = resampleCalendar(d1, "W");
 
   const seen = new Set<string>();
   const trades: Trade[] = [];
@@ -234,6 +261,12 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
   // audit reports them. Without these a replay that finds nothing is
   // indistinguishable from a replay that never ran the funnel.
   const fun: Record<string, number> = {};
+  // Continuation shadow state, kept apart from the origin trades so the two
+  // models never contaminate each other's numbers.
+  const contSeen = new Set<string>();
+  const contTrades: Trade[] = [];
+  const contGateSeen: Record<string, number> = {};
+  let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
   const bump = (k: string, n?: number) => { fun[k] = (fun[k] ?? 0) + (n ?? 0); };
   // every 30m candle close in the scan window is a production tick
   for (let i = 0; i < m30.length; i++) {
@@ -251,6 +284,19 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     const d1t = d1.filter((c) => c.t + 86400_000 <= close).slice(-400);       // prod: candlesLimit
     if (d1t.length < 25) { skip.d1++; continue; }
     const snaps = storylineSeries(d1t, h4, strategy);
+
+    // Continuation bias gate. Weekly/daily/4H only change when one of their
+    // own candles closes, so the result is cached on those close times —
+    // otherwise every tick would recompute three swing scans for nothing.
+    if (CONT_ENABLED) {
+      const gateKey = [w1.at(-1)?.t ?? 0, d1t.at(-1)?.t ?? 0, h4.at(-1)?.t ?? 0].join("|");
+      if (gateKey !== gateCache.key) {
+        const byName: Record<string, Candle[]> = { w1, d1: d1t, h4 };
+        const chosen = CONT_GATE.map((k) => byName[k]).filter((c): c is Candle[] => Boolean(c) && c.length > 0);
+        gateCache = { key: gateKey, dir: multiTfGate(chosen) };
+      }
+      contGateSeen[gateCache.dir ?? "none"] = (contGateSeen[gateCache.dir ?? "none"] ?? 0) + 1;
+    }
 
     const tfs: [string, Candle[], number][] = [["30m", base, close]];
     if (close % 3_600_000 === 0) {                                            // 1h boundary
@@ -271,6 +317,32 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
       bump("risk", d.riskRejects ?? 0);
       bump("tgt", d.targetRejects ?? 0);
       bump("conf", d.confirmedAlerts ?? 0);
+      if (CONT_ENABLED && gateCache.dir) {
+        const tfCandles = tf === "1h" ? h1 : m30;
+        for (const cs of findContinuationSetups(tfCandles, strategy, gateCache.dir, {
+          ...CONT_PARAMS,
+          minTouches: CONT_MIN_TOUCHES,
+          maxRetraceDepth: CONT_MAX_DEPTH,
+          rr: CONT_RR,
+          legOrigin: CONT_LEG_ORIGIN,
+        })) {
+          if (contSeen.has(cs.setupId)) continue;
+          contSeen.add(cs.setupId);
+          const after = tfCandles.filter((c) => c.t >= cs.time);
+          const oc = evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after, 120);
+          contTrades.push({
+            pair, tf, setupId: cs.setupId,
+            entryTime: new Date(cs.time).toISOString().slice(0, 16).replace("T", " "),
+            entry: cs.entry, stop: cs.stop, tp: cs.tp,
+            status: oc?.status ?? "OPEN",
+            exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
+            exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+            r: oc?.rMultiple ?? NaN,
+            limitStatus: "OPEN", limitEntry: cs.entry, limitExitTime: "-", limitR: NaN,
+            marketStatus: "OPEN", marketEntry: cs.entry, marketExitTime: "-", marketR: NaN,
+          });
+        }
+      }
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
         seen.add(a.setupId);
@@ -326,7 +398,9 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     const keys = ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST", "cand", "noFvg", "fvg", "risk", "tgt", "conf"];
     console.log("   funnel: " + keys.map((k) => `${k} ${fun[k] ?? 0}`).join("  "));
   }
-  return trades;
+  const gateSummary = Object.entries(contGateSeen).map(([k, v]) => `${k} ${v}`).join("  ");
+  if (CONT_ENABLED) console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length}`);
+  return { origin: trades, continuation: contTrades };
 }
 
 function stats(rows: Trade[], spreadAdj: boolean) {
@@ -443,8 +517,13 @@ async function main() {
   const originalInfo = console.info;
   if (process.env.BACKTEST_VERBOSE !== "1") console.info = () => {};
   const all: Trade[] = [];
+  const contAll: Trade[] = [];
   try {
-    for (const pair of pairs) all.push(...await replay(pair, days, strategy));
+    for (const pair of pairs) {
+      const r = await replay(pair, days, strategy);
+      all.push(...r.origin);
+      contAll.push(...r.continuation);
+    }
   } finally {
     console.info = originalInfo;
   }
@@ -530,6 +609,39 @@ async function main() {
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of all) {
     lines += `| ${r.pair} | ${r.tf} | ${r.entryTime} | ${r.entry} | ${r.stop} | ${r.tp} | ${r.status} | ${Number.isFinite(r.exit) ? r.exit : "-"} | ${r.exitTime} | ${Number.isFinite(r.r) ? r.r.toFixed(2) : "-"} |\n`;
+  }
+
+  // ── Continuation shadow ──────────────────────────────────────────────
+  // The second model from the mentorship, measured beside the origin model
+  // rather than in place of it. Reported even when it finds nothing: a zero
+  // is the answer that tells us which parameter to relax.
+  if (CONT_ENABLED) {
+    const cs = stats(contAll, true);
+    const gateStr = CONT_GATE.join("→");
+    console.log(`\nCONTINUATION SHADOW — ${contAll.length} setups ` +
+      `(gate ${gateStr}, minTouches ${CONT_MIN_TOUCHES}, maxDepth ${CONT_MAX_DEPTH}, ` +
+      `legOrigin ${CONT_LEG_ORIGIN}, rr ${CONT_RR}R)`);
+    const cHead = `adj  net ${f(cs.finalR)}R · PF ${f(cs.pf)} · win ${f(cs.winrate, 1)}% · ` +
+      `maxDD ${f(cs.maxDD)}R · closed ${cs.tp + cs.sl}/${contAll.length}`;
+    console.log(contAll.length ? `   ${cHead}` : "   no setups — relax a parameter, do not assume the model is dead");
+    const byPair = new Map<string, Trade[]>();
+    for (const t of contAll) byPair.set(t.pair, [...(byPair.get(t.pair) ?? []), t]);
+    const pairLines: string[] = [];
+    for (const [pair, rows] of [...byPair].sort((a, b) => b[1].length - a[1].length)) {
+      const ps = stats(rows, true);
+      const line = `${pair.padEnd(8)} setups ${String(rows.length).padStart(4)} · net ${f(ps.finalR)}R · PF ${f(ps.pf)}`;
+      console.log(`   ${line}`);
+      pairLines.push(`- ${line}`);
+    }
+
+    lines += `\n## Continuation shadow — the second model\n\n` +
+      `The origin model above is sweep → shift → retest. This is the other model: a key\n` +
+      `level that held, was then disrespected with an impulsive move, and now overlaps an\n` +
+      `imbalance. It is a shadow — no live alert uses it.\n\n` +
+      `Gate: ${gateStr} must all agree on the most recent break of structure\n` +
+      `(close-to-close, the line-chart body-to-body test). minTouches ${CONT_MIN_TOUCHES},\n` +
+      `maxRetraceDepth ${CONT_MAX_DEPTH}, legOrigin ${CONT_LEG_ORIGIN}, target ${CONT_RR}R.\n\n` +
+      `- setups found: ${contAll.length}\n- ${cHead}\n${pairLines.join("\n")}\n\n`;
   }
 
   const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;

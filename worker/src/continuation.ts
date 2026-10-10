@@ -22,6 +22,10 @@
  *      "low probability".
  *   5. Shallow retracement. "we didn't do a deep retracement". He never
  *      quantifies it, so it is a parameter here and must be swept.
+ *   6. The rebalance must have happened. "you want to see price take out
+ *      liquidity, rebalance imbalance at this specific pricing level". A level
+ *      that broke and is still running away has not been retested, so there is
+ *      nothing to enter.
  *
  * Where a rule has no stated number, it is exposed as a parameter rather than
  * guessed. A wrong guess baked into an entry filter is worse than no filter.
@@ -30,6 +34,16 @@
 import type { Candle, Direction, Imbalance, KeyLevel } from "./types";
 import type { StrategyConfig } from "./config";
 import { atr, bosEvent, fvgZones, keyLevels, markFvgOverlap } from "./features";
+
+/**
+ * Where the impulsive leg is measured from, for the shallow-retracement test.
+ *
+ * He never says, and the two readings disagree: measured from the break, a
+ * pullback that returns to the level can read as deeper than 1; measured from
+ * the level's origin, it reads as exactly 1. This is left to the sweep rather
+ * than decided here.
+ */
+export type LegOrigin = "break" | "level";
 
 export interface ContinuationParams {
   /** Minimum times the level was tested and held before it broke. */
@@ -42,6 +56,8 @@ export interface ContinuationParams {
   stopBufferPct: number;
   /** Candles of FVG history considered for the overlap test. */
   fvgLookback: number;
+  /** Where the impulsive leg is measured from. See LegOrigin. */
+  legOrigin: LegOrigin;
 }
 
 export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
@@ -50,16 +66,25 @@ export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
   rr: 3,
   stopBufferPct: 0.1,
   fvgLookback: 60,
+  legOrigin: "break",
 };
 
 /** What a level did after it formed: how it was tested, and how it broke. */
 export interface LevelHistory {
-  /** Touches recorded BEFORE the level broke — the "tested and held" count. */
+  /**
+   * Touches recorded between the previous break and the break in question —
+   * the "tested that held" count. Touches from before an earlier break belong
+   * to that earlier break's story, not this one.
+   */
   touchesBefore: number;
   /** Index of the candle that broke the level, or -1 if it never broke. */
   breakIndex: number;
   /** Direction of the break, or null if it never broke. */
   breakDir: Direction | null;
+  /** How many times the level has been broken in total. */
+  breaks: number;
+  /** Close of the break candle — where the impulsive leg is measured from. */
+  breakPrice: number;
   /** Furthest price reached in the break direction after the break. */
   extreme: number;
   /** Furthest price travelled back against the break after `extreme`. */
@@ -67,13 +92,17 @@ export interface LevelHistory {
 }
 
 /**
- * Replay a level's life: how many times it held, whether it broke, and how far
- * price ran before coming back.
+ * Replay a level's life: how many times it held, how many times it broke, and
+ * how far price ran before coming back.
  *
- * `flipped` on KeyLevel is a single boolean and loses both the direction of the
- * break and the ordering of touches against it. Ordering is the point — a level
- * that held twice and then broke is the setup; a level that broke immediately
- * and was touched afterwards is not.
+ * `flipped` on KeyLevel is a single boolean and loses the direction, the count
+ * and the ordering — all three of which the setup turns on.
+ *
+ * The MOST RECENT break is the one that counts, not the first. The level that
+ * forms an A-shape is created by the rejection that breaks it downward; the
+ * trade is the later break in the other direction. Taking the first break
+ * would report every one of those levels as a short. It also matches the rule
+ * the whole method rests on: "follow the most recent breakout."
  */
 export function levelHistory(
   candles: Candle[],
@@ -82,20 +111,46 @@ export function levelHistory(
 ): LevelHistory {
   const atrVal = atr(candles, cfg.atrPeriod);
   const margin = cfg.flipMarginAtr * atrVal;
-  let touchesBefore = 0;
-  let breakIndex = -1;
-  let breakDir: Direction | null = null;
+
+  const breaks: { index: number; dir: Direction }[] = [];
+  // Touches accumulated since the last break, snapshotted at each break.
+  const touchesAtBreak: number[] = [];
+  let run = 0;
+
+  // A break is an EDGE, not a state. An impulsive move closes beyond the zone
+  // on several consecutive candles; counting each one as its own break would
+  // report the last of them as the break and leave it with no touches before
+  // it, which is not the setup. Only the transition counts.
+  type Side = "inside" | "above" | "below";
+  let side: Side = "inside";
 
   for (let j = level.originIndex + 1; j < candles.length; j++) {
     const c = candles[j];
-    if (c.c > level.zoneHi + margin) { breakIndex = j; breakDir = "LONG"; break; }
-    if (c.c < level.zoneLo - margin) { breakIndex = j; breakDir = "SHORT"; break; }
-    if (c.h >= level.zoneLo && c.l <= level.zoneHi) touchesBefore += 1;
+    const next: Side =
+      c.c > level.zoneHi + margin ? "above"
+      : c.c < level.zoneLo - margin ? "below"
+      : "inside";
+    if (next !== "inside" && next !== side) {
+      breaks.push({ index: j, dir: next === "above" ? "LONG" : "SHORT" });
+      touchesAtBreak.push(run);
+      run = 0;
+    } else if (next === "inside" && c.h >= level.zoneLo && c.l <= level.zoneHi) {
+      run += 1;
+    }
+    side = next;
   }
 
-  if (breakIndex < 0 || !breakDir) {
-    return { touchesBefore, breakIndex: -1, breakDir: null, extreme: NaN, pullback: NaN };
+  if (!breaks.length) {
+    return {
+      touchesBefore: run, breakIndex: -1, breakDir: null, breaks: 0,
+      breakPrice: NaN, extreme: NaN, pullback: NaN,
+    };
   }
+
+  const last = breaks.length - 1;
+  const breakIndex = breaks[last].index;
+  const breakDir = breaks[last].dir;
+  const touchesBefore = touchesAtBreak[last];
 
   // Track the run and the retrace in one pass, in candle order. The extreme
   // always precedes the pullback that measures against it.
@@ -118,19 +173,33 @@ export function levelHistory(
     if (breakDir === "LONG" ? price < pullback : price > pullback) pullback = price;
   }
 
-  return { touchesBefore, breakIndex, breakDir, extreme, pullback };
+  return {
+    touchesBefore, breakIndex, breakDir, breaks: breaks.length,
+    breakPrice: candles[breakIndex].c, extreme, pullback,
+  };
 }
 
 /**
  * Fraction of the impulsive leg given back by the pullback.
  *
  * 0 means price never came back at all; 1 means the whole leg was retraced.
- * He calls the setup shallow without ever saying how shallow, so this is the
- * number to sweep rather than to guess.
+ *
+ * The leg is measured from the BREAK candle, not from the level's origin.
+ * "The secret is in the impulsive move that led to the break" — so the
+ * impulsive move begins at the break, and a pullback that returns to the level
+ * itself is a shallow retrace of that move, not a full one. Measured from the
+ * origin instead, every rebalance-at-the-level would read as depth 1.0 and the
+ * shallow-retracement filter would reject exactly the setups it is meant to
+ * keep.
+ *
+ * He calls the setup shallow without ever saying how shallow, so the threshold
+ * is a parameter to sweep rather than a number to guess.
  */
-export function retraceDepth(h: LevelHistory, level: KeyLevel): number {
+export function retraceDepth(h: LevelHistory, level: KeyLevel, legOrigin: LegOrigin): number {
   if (!h.breakDir || !Number.isFinite(h.extreme)) return NaN;
-  const leg = Math.abs(h.extreme - level.originPrice);
+  const from = legOrigin === "break" ? h.breakPrice : level.originPrice;
+  if (!Number.isFinite(from)) return NaN;
+  const leg = Math.abs(h.extreme - from);
   if (leg <= 0) return NaN;
   return Math.abs(h.extreme - h.pullback) / leg;
 }
@@ -190,6 +259,12 @@ export interface ContinuationSetup {
   tp: number;
   /** Touches before the break — rule 2. */
   touchesBefore: number;
+  /**
+   * How many times the level has been broken in total. The mentorship trades a
+   * level differently the second time it is disrespected, so this is carried
+   * for the sweep even though it does not gate anything yet.
+   */
+  breaks: number;
   /** Fraction of the impulsive leg retraced — rule 5. */
   depth: number;
   /** Reward-to-risk actually achieved after stop placement. */
@@ -232,18 +307,25 @@ export function findContinuationSetups(
     if (h.touchesBefore < params.minTouches) continue;
 
     // Rule 5: shallow. Parameterised because he never quantifies it.
-    const depth = retraceDepth(h, level);
+    const depth = retraceDepth(h, level, params.legOrigin);
     if (Number.isFinite(depth) && depth > params.maxRetraceDepth) continue;
 
     const entry = (level.zoneLo + level.zoneHi) / 2;
-    const riskRaw = Math.abs(entry - h.pullback);
-    // The stop sits beyond the extreme the pullback reached, so a re-test of
-    // that swing does not take the trade out before the move resumes.
-    const stop =
-      bias === "LONG"
-        ? h.pullback - riskRaw * params.stopBufferPct
-        : h.pullback + riskRaw * params.stopBufferPct;
-    const risk = Math.abs(entry - stop);
+
+    // Rule 6: the rebalance has to have actually happened, at the price we
+    // would enter. Not merely somewhere in the zone — the entry is a pending
+    // limit at this price, so if price never traded through it there is no
+    // fill and no trade. This also guarantees the risk is positive by
+    // construction: a limit below the entry cannot have its stop above it.
+    if (bias === "LONG" ? h.pullback > entry : h.pullback < entry) continue;
+
+    // Stop beyond the swing the pullback made, so re-testing it does not stop
+    // the trade out before the move resumes. The risk is kept signed on
+    // purpose: Math.abs here would happily report a long whose stop sits above
+    // its entry, which is not a trade.
+    const buf = Math.abs(entry - h.pullback) * params.stopBufferPct;
+    const stop = bias === "LONG" ? h.pullback - buf : h.pullback + buf;
+    const risk = bias === "LONG" ? entry - stop : stop - entry;
     if (!(risk > 0)) continue;
 
     const tp = bias === "LONG" ? entry + risk * params.rr : entry - risk * params.rr;
@@ -256,6 +338,7 @@ export function findContinuationSetups(
       stop,
       tp,
       touchesBefore: h.touchesBefore,
+      breaks: h.breaks,
       depth,
       rr,
       time: candles[candles.length - 1].t,
