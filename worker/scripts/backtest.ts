@@ -231,6 +231,8 @@ const CONT_LEG_ORIGIN = (process.env.BACKTEST_CONT_LEG_ORIGIN ?? CONT_PARAMS.leg
  */
 const CONT_MIN_BODY_PCT = Number(process.env.BACKTEST_CONT_MIN_BODY_PCT ?? CONT_PARAMS.minBreakBodyPct);
 const CONT_MIN_BREAK_ATR = Number(process.env.BACKTEST_CONT_MIN_BREAK_ATR ?? CONT_PARAMS.minBreakAtrMult);
+/** Require liquidity resting on the far side of the level. Part of the definition. */
+const CONT_REQUIRE_LIQ = (process.env.BACKTEST_CONT_REQUIRE_LIQ ?? String(CONT_PARAMS.requireLiquidity)) !== "false";
 const CONT_ENABLED = CONT_GATE.length > 0;
 
 async function replay(
@@ -341,6 +343,7 @@ async function replay(
           legOrigin: CONT_LEG_ORIGIN,
           minBreakBodyPct: CONT_MIN_BODY_PCT,
           minBreakAtrMult: CONT_MIN_BREAK_ATR,
+          requireLiquidity: CONT_REQUIRE_LIQ,
         })) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
@@ -638,7 +641,7 @@ async function main() {
     console.log(`\nCONTINUATION SHADOW — ${contAll.length} setups ` +
       `(gate ${gateStr}, minTouches ${CONT_MIN_TOUCHES}, maxDepth ${CONT_MAX_DEPTH}, ` +
       `legOrigin ${CONT_LEG_ORIGIN}, minBodyPct ${CONT_MIN_BODY_PCT}, ` +
-      `minBreakAtr ${CONT_MIN_BREAK_ATR}, rr ${CONT_RR}R)`);
+      `minBreakAtr ${CONT_MIN_BREAK_ATR}, requireLiquidity ${CONT_REQUIRE_LIQ}, rr ${CONT_RR}R)`);
     const cHead = `adj  net ${f(cs.finalR)}R · PF ${f(cs.pf)} · win ${f(cs.winrate, 1)}% · ` +
       `maxDD ${f(cs.maxDD)}R · closed ${cs.tp + cs.sl}/${contAll.length}`;
     console.log(contAll.length ? `   ${cHead}` : "   no setups — relax a parameter, do not assume the model is dead");

@@ -22,7 +22,10 @@
  *      "low probability".
  *   5. Shallow retracement. "we didn't do a deep retracement". He never
  *      quantifies it, so it is a parameter here and must be swept.
- *   6. The rebalance must have happened. "you want to see price take out
+ *   6. Liquidity resting on the far side. "that same key level that sponsor
+ *      the sale must be overlapping in term of an imbalance and there must be
+ *      liquidity resting above it." Price has somewhere to go.
+ *   7. The rebalance must have happened. "you want to see price take out
  *      liquidity, rebalance imbalance at this specific pricing level". A level
  *      that broke and is still running away has not been retested, so there is
  *      nothing to enter.
@@ -33,7 +36,7 @@
 
 import type { Candle, Direction, Imbalance, KeyLevel } from "./types";
 import type { StrategyConfig } from "./config";
-import { atr, bosEvent, fvgZones, keyLevels, markFvgOverlap } from "./features";
+import { atr, bosEvent, fvgZones, internalPools, keyLevels, markFvgOverlap } from "./features";
 
 /**
  * Where the impulsive leg is measured from, for the shallow-retracement test.
@@ -65,6 +68,12 @@ export interface ContinuationParams {
   minBreakBodyPct: number;
   /** Minimum break-candle body as a multiple of ATR. 0 = not required. */
   minBreakAtrMult: number;
+  /**
+   * Require liquidity resting on the far side of the level. Stated as part of
+   * the definition rather than as a filter, so it is on by default; exposed so
+   * the sweep can measure what it contributes.
+   */
+  requireLiquidity: boolean;
 }
 
 export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
@@ -81,6 +90,7 @@ export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
   // their marginal contribution is measured rather than assumed.
   minBreakBodyPct: 0,
   minBreakAtrMult: 0,
+  requireLiquidity: true,
 };
 
 /** How hard the break candle actually moved. */
@@ -340,6 +350,7 @@ export function findContinuationSetups(
   const imbalances: Imbalance[] = fvgZones(candles, params.fvgLookback);
   markFvgOverlap(levels, imbalances);
   const atrVal = atr(candles, cfg.atrPeriod);
+  const pools = internalPools(candles, atrVal, cfg.decisionAtrMult);
 
   const out: ContinuationSetup[] = [];
   for (const level of levels) {
@@ -357,6 +368,16 @@ export function findContinuationSetups(
     // Rule 5: shallow. Parameterised because he never quantifies it.
     const depth = retraceDepth(h, level, params.legOrigin);
     if (Number.isFinite(depth) && depth > params.maxRetraceDepth) continue;
+
+    // Rule 6: liquidity resting on the far side, so the move has somewhere to
+    // go. A buyside pool above the level for a long, sellside below for a short.
+    if (params.requireLiquidity) {
+      const want = bias === "LONG" ? "buyside" : "sellside";
+      const beyond = pools.some(
+        (p) => p.side === want && (bias === "LONG" ? p.price > level.zoneHi : p.price < level.zoneLo),
+      );
+      if (!beyond) continue;
+    }
 
     // Rule 3: the break must have been IMPULSIVE, not merely a close that
     // happened to land past the zone. Off by default; see the params.

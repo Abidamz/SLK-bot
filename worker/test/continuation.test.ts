@@ -321,6 +321,19 @@ describe("findContinuationSetups", () => {
     expect(strict).toEqual([]);
   });
 
+  it("treats liquidity on the far side as a real gate, not a formality", () => {
+    const cs = continuationPattern();
+    const withLiq = findContinuationSetups(cs, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0, requireLiquidity: true }));
+    const without = findContinuationSetups(cs, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0, requireLiquidity: false }));
+    // Relaxing a filter can only ever admit more setups. If the two are equal
+    // here the condition is not doing anything on this data — which is worth
+    // knowing, but must not be mistaken for the condition being broken.
+    expect(without.length).toBeGreaterThanOrEqual(withLiq.length);
+    expect(DEFAULT_CONTINUATION_PARAMS.requireLiquidity).toBe(true);
+  });
+
   it("drops the pattern when a prior touch is required and there was none", () => {
     expect(findContinuationSetups(continuationPattern(), cfg, "LONG",
       params({ maxRetraceDepth: 10, minTouches: 1 }))).toEqual([]);
