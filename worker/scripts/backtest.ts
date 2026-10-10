@@ -15,10 +15,15 @@
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
-import { defaultStrategy, TF_SECONDS } from "../src/config";
+import { defaultStrategy, pipSize, TF_SECONDS } from "../src/config";
 import { resampleCandles, dropIncomplete, resampleCalendar } from "../src/features";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
+import {
+  DEFAULT_CONFIRMATION_PARAMS as CONF_PARAMS,
+  findConfirmationEntries,
+  thirdCandleOutcome,
+} from "../src/confirmation";
 import {
   DEFAULT_CONTINUATION_PARAMS as CONT_PARAMS,
   findContinuationSetups,
@@ -234,10 +239,15 @@ const CONT_MIN_BREAK_ATR = Number(process.env.BACKTEST_CONT_MIN_BREAK_ATR ?? CON
 /** Require liquidity resting on the far side of the level. Part of the definition. */
 const CONT_REQUIRE_LIQ = (process.env.BACKTEST_CONT_REQUIRE_LIQ ?? String(CONT_PARAMS.requireLiquidity)) !== "false";
 const CONT_ENABLED = CONT_GATE.length > 0;
+/** Confirmation entry — the second model, traded when the first was missed. */
+const CONF_RR = Number(process.env.BACKTEST_CONF_RR ?? CONF_PARAMS.rr);
+const CONF_STOP_PIPS = Number(process.env.BACKTEST_CONF_STOP_PIPS ?? "1");
+const CONF_LOOKBACK = Number(process.env.BACKTEST_CONF_LOOKBACK ?? CONF_PARAMS.setupLookback);
+const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "true") !== "false";
 
 async function replay(
   pair: string, days: number, strategy = defaultStrategy(),
-): Promise<{ origin: Trade[]; continuation: Trade[] }> {
+): Promise<{ origin: Trade[]; continuation: Trade[]; confirmation: Trade[] }> {
   const useOanda = SOURCE === "oanda";
   const code = CODES[pair] ?? pair;
   if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
@@ -259,7 +269,7 @@ async function replay(
     // Must match the normal return shape. Returning a bare [] here makes
     // `r.origin` undefined in the caller, and spreading undefined throws —
     // so one pair with no bars would abort the entire replay.
-    return { origin: [], continuation: [] };
+    return { origin: [], continuation: [], confirmation: [] };
   }
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
@@ -282,6 +292,10 @@ async function replay(
   const contTrades: Trade[] = [];
   const contGateSeen: Record<string, number> = {};
   let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
+  const confSeen = new Set<string>();
+  const confTrades: Trade[] = [];
+  /** Third-candle tallies, so the 80-90% claim gets counted rather than trusted. */
+  const confThird: Record<string, number> = {};
   const bump = (k: string, n?: number) => { fun[k] = (fun[k] ?? 0) + (n ?? 0); };
   // every 30m candle close in the scan window is a production tick
   for (let i = 0; i < m30.length; i++) {
@@ -363,6 +377,32 @@ async function replay(
           });
         }
       }
+      if (CONF_ENABLED && gateCache.dir) {
+        const tfCandles = tf === "1h" ? h1 : m30;
+        for (const ce of findConfirmationEntries(tfCandles, gateCache.dir, {
+          ...CONF_PARAMS, rr: CONF_RR, setupLookback: CONF_LOOKBACK,
+          stopBuffer: CONF_STOP_PIPS * pipSize(pair),
+        })) {
+          if (confSeen.has(ce.setupId)) continue;
+          confSeen.add(ce.setupId);
+          const after = tfCandles.filter((c) => c.t >= ce.time);
+          const oc = evaluateSignal(ce.direction, ce.entry, ce.stop, ce.tp, after, 120);
+          const third = thirdCandleOutcome(tfCandles, ce);
+          confThird[third] = (confThird[third] ?? 0) + 1;
+          confTrades.push({
+            pair, tf, setupId: ce.setupId,
+            entryTime: new Date(ce.time).toISOString().slice(0, 16).replace("T", " "),
+            entry: ce.entry, stop: ce.stop, tp: ce.tp,
+            status: oc?.status ?? "OPEN",
+            exit: oc?.exitPrice ?? after[after.length - 1]?.c ?? NaN,
+            exitTime: oc ? new Date(oc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
+            r: oc?.rMultiple ?? NaN,
+            limitStatus: "OPEN", limitEntry: ce.entry, limitExitTime: "-", limitR: NaN,
+            marketStatus: "OPEN", marketEntry: ce.entry, marketExitTime: "-", marketR: NaN,
+            bodyPct: third === "played_out" ? 1 : third === "internal_liquidity" ? 0 : NaN,
+          });
+        }
+      }
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
         seen.add(a.setupId);
@@ -420,7 +460,9 @@ async function replay(
   }
   const gateSummary = Object.entries(contGateSeen).map(([k, v]) => `${k} ${v}`).join("  ");
   if (CONT_ENABLED) console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length}`);
-  return { origin: trades, continuation: contTrades };
+  const thirdSummary = Object.entries(confThird).map(([k, v]) => `${k} ${v}`).join("  ");
+  if (CONF_ENABLED) console.log(`   conf entries ${confTrades.length} · third candle: ${thirdSummary || "n/a"}`);
+  return { origin: trades, continuation: contTrades, confirmation: confTrades };
 }
 
 function stats(rows: Trade[], spreadAdj: boolean) {
@@ -538,11 +580,13 @@ async function main() {
   if (process.env.BACKTEST_VERBOSE !== "1") console.info = () => {};
   const all: Trade[] = [];
   const contAll: Trade[] = [];
+  const confAll: Trade[] = [];
   try {
     for (const pair of pairs) {
       const r = await replay(pair, days, strategy);
       all.push(...r.origin);
       contAll.push(...r.continuation);
+      confAll.push(...r.confirmation);
     }
   } finally {
     console.info = originalInfo;
@@ -685,6 +729,34 @@ async function main() {
       `can be chosen from what the market actually did rather than guessed:\n\n` +
       `    ${distStr.replace(/\n/g, "\n    ")}\n\n` +
       `- setups found: ${contAll.length}\n- ${cHead}\n${pairLines.join("\n")}\n\n`;
+  }
+
+  // ── Confirmation entry shadow ────────────────────────────────────────
+  if (CONF_ENABLED) {
+    const cf = stats(confAll, true);
+    console.log(`\nCONFIRMATION SHADOW — ${confAll.length} entries ` +
+      `(rr ${CONF_RR}, stop ${CONF_STOP_PIPS} pip, lookback ${CONF_LOOKBACK})`);
+    console.log(confAll.length
+      ? `   adj  net ${f(cf.finalR)}R · PF ${f(cf.pf)} · win ${f(cf.winrate, 1)}% · ` +
+        `maxDD ${f(cf.maxDD)}R · closed ${cf.tp + cf.sl}/${confAll.length}`
+      : "   no entries — the bias gate or the lookback is the constraint");
+    // The 80-90% figure is a claim about the third candle. Counted here.
+    const played = confAll.filter((t) => t.bodyPct === 1).length;
+    const internal = confAll.filter((t) => t.bodyPct === 0).length;
+    const resolved = played + internal;
+    const thirdStr = resolved
+      ? `played out ${played}/${resolved} (${((played / resolved) * 100).toFixed(1)}%) · ` +
+        `internal liquidity ${internal}/${resolved} — he claims 80-90%`
+      : "third candle unresolved for every entry";
+    console.log(`   ${thirdStr}`);
+
+    lines += `\n## Confirmation entry shadow — the second model\n\n` +
+      `Traded when the continuation setup already moved. On the entry timeframe: a setup\n` +
+      `candle whose extreme is swept, the sweep closing back inside, the opposite extreme\n` +
+      `still standing. Stop ${CONF_STOP_PIPS} pip beyond the swept extreme, target ${CONF_RR}R.\n\n` +
+      `- entries: ${confAll.length}\n` +
+      `- adj net ${f(cf.finalR)}R · PF ${f(cf.pf)} · win ${f(cf.winrate, 1)}% · maxDD ${f(cf.maxDD)}R\n` +
+      `- ${thirdStr}\n\n`;
   }
 
   const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;
