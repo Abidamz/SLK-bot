@@ -339,6 +339,7 @@ async function replay(
   const contSeen = new Set<string>();
   const contDiag: Record<string, number> = {};
   const contTrades: Trade[] = [];
+  let contUnfilled = 0;
   const contGateSeen: Record<string, number> = {};
   let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
   const confSeen = new Set<string>();
@@ -427,8 +428,24 @@ async function replay(
         }, contDiag)) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
-          const after = m30.filter((c) => c.t >= cs.time);
-          const oc = evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after, 120);
+          // cs.time is the OPEN of the last complete 4-hour candle. Resolving
+          // from there places the limit inside a candle whose contents were
+          // just used to detect the setup — the look-ahead this script already
+          // had once, one timeframe down. Start at its close.
+          const after = m30.filter((c) => c.t >= cs.time + TF_SECONDS["4h"] * 1000);
+          // evaluateSignal resolves TP/SL from the first candle in the window
+          // whether or not the limit ever filled; fillConfirmed is recorded but
+          // never gates anything. A continuation setup is detected precisely
+          // because price has already pulled back through the level, so the
+          // setups that go on to reach the target are exactly the ones where
+          // price left and never came back to fill the order. Ungated, those
+          // non-trades are booked as wins — which is what produced a 54.8%
+          // strike rate at a 3R target. Require the fill and resolve from it,
+          // as the origin model's limit execution does.
+          const fillIndex = after.slice(0, LIMIT_WINDOW_CANDLES)
+            .findIndex((c) => cs.direction === "LONG" ? c.l <= cs.entry : c.h >= cs.entry);
+          if (fillIndex < 0) { contUnfilled++; continue; }
+          const oc = evaluateSignal(cs.direction, cs.entry, cs.stop, cs.tp, after.slice(fillIndex), 120);
           contTrades.push({
             pair, tf, setupId: cs.setupId,
             entryTime: new Date(cs.time).toISOString().slice(0, 16).replace("T", " "),
@@ -526,7 +543,7 @@ async function replay(
   }
   const gateSummary = Object.entries(contGateSeen).map(([k, v]) => `${k} ${v}`).join("  ");
   if (CONT_ENABLED) {
-    console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length}`);
+    console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length} · limit never filled ${contUnfilled}`);
     // Which rule rejected what. Without this, "0 setups" cannot be acted on.
     const order = ["levels", "noFvg", "wrongDir", "touches", "depth", "bodyPct", "bodyAtr", "liquidity", "rebalance", "risk", "emitted"];
     console.log("   cont rejects: " + order.map((k) => `${k} ${contDiag[k] ?? 0}`).join("  "));
