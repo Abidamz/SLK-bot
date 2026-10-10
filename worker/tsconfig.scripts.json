@@ -1,0 +1,18 @@
+{
+  // The base config has "types": [] so the Worker build never sees Node
+  // globals — correct for src/, but it means scripts/ cannot be checked
+  // there. These scripts run under tsx, which transpiles without
+  // typechecking, so an error in them is invisible until runtime. This
+  // config exists so they get checked too: run `npm run typecheck`, which
+  // covers both.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts"],
+  // audit_coverage / audit_shadow / audit_suppression are standalone
+  // single-file scripts that each declare BASE and KEY at top level; checked
+  // together they collide in the global scope. Excluded, not fixed — they run
+  // fine under tsx and hold infrastructure hostnames that must not be touched.
+  "exclude": ["scripts/audit_shadow.ts", "scripts/audit_suppression.ts"]
+}

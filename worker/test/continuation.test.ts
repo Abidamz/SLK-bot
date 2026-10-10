@@ -3,6 +3,7 @@ import type { Candle, KeyLevel } from "../src/types";
 import { defaultStrategy } from "../src/config";
 import {
   DEFAULT_CONTINUATION_PARAMS,
+  breakStrength,
   findContinuationSetups,
   levelHistory,
   mostRecentBreakout,
@@ -214,6 +215,38 @@ describe("multiTfGate", () => {
   });
 });
 
+describe("breakStrength", () => {
+  const c = (o: number, h: number, l: number, cl: number) => ({ t: 0, o, h, l, c: cl });
+
+  it("reads a wickless candle as fully committed", () => {
+    const s = breakStrength(c(100, 105, 100, 105), 1);
+    expect(s.bodyPct).toBeCloseTo(1, 6);
+    expect(s.bodyAtr).toBeCloseTo(5, 6);
+  });
+
+  it("reads a doji as no commitment at all", () => {
+    const s = breakStrength(c(102.5, 105, 100, 102.5), 1);
+    expect(s.bodyPct).toBeCloseTo(0, 6);
+  });
+
+  it("reads a long-wicked crawl through the zone as weak", () => {
+    // A big range, a small body: this is a close that happened to land past
+    // the level, not an impulsive move through it.
+    const s = breakStrength(c(100, 106, 99, 101), 1);
+    expect(s.bodyPct).toBeLessThan(0.2);
+  });
+
+  it("normalises the body against ATR", () => {
+    expect(breakStrength(c(100, 103, 99.9, 103), 1).bodyAtr).toBeCloseTo(3, 6);
+    expect(breakStrength(c(100, 103, 99.9, 103), 3).bodyAtr).toBeCloseTo(1, 6);
+  });
+
+  it("does not divide by zero on a flat candle or a zero ATR", () => {
+    expect(breakStrength(c(100, 100, 100, 100), 1).bodyPct).toBe(0);
+    expect(breakStrength(c(100, 103, 99, 103), 0).bodyAtr).toBe(0);
+  });
+});
+
 /**
  * A hand-built continuation pattern, evaluated as of the tick where the
  * rebalance is happening — which is how the replay sees it.
@@ -270,6 +303,22 @@ describe("findContinuationSetups", () => {
       expect(x.entry - x.stop).toBeGreaterThan(0);
       expect(x.rr).toBeCloseTo(3, 6);
     }
+  });
+
+  it("does not change the baseline while the impulsive test is off", () => {
+    const off = findContinuationSetups(continuationPattern(), cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    expect(DEFAULT_CONTINUATION_PARAMS.minBreakBodyPct).toBe(0);
+    expect(DEFAULT_CONTINUATION_PARAMS.minBreakAtrMult).toBe(0);
+    expect(off.length).toBeGreaterThanOrEqual(1);
+    // Every emitted setup carries the measurement even when nothing gates on it.
+    for (const x of off) expect(x.bodyPct).toBeGreaterThan(0);
+  });
+
+  it("removes the setup when the break candle is not impulsive enough", () => {
+    const strict = findContinuationSetups(continuationPattern(), cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0, minBreakBodyPct: 0.999999 }));
+    expect(strict).toEqual([]);
   });
 
   it("drops the pattern when a prior touch is required and there was none", () => {

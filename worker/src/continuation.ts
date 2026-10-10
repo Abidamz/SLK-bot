@@ -58,6 +58,13 @@ export interface ContinuationParams {
   fvgLookback: number;
   /** Where the impulsive leg is measured from. See LegOrigin. */
   legOrigin: LegOrigin;
+  /**
+   * Minimum body-to-range ratio for the break candle. 0 = not required.
+   * See breakStrength.
+   */
+  minBreakBodyPct: number;
+  /** Minimum break-candle body as a multiple of ATR. 0 = not required. */
+  minBreakAtrMult: number;
 }
 
 export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
@@ -67,7 +74,44 @@ export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
   stopBufferPct: 0.1,
   fvgLookback: 60,
   legOrigin: "break",
+  // Both off. These are the "impulsive" test, and the mentorship calls the
+  // impulsive move "the secret, the blueprint" without ever putting a number
+  // on it in fourteen sources. Shipping a guess here would make the first
+  // replay return zero setups, which teaches nothing. They are swept in so
+  // their marginal contribution is measured rather than assumed.
+  minBreakBodyPct: 0,
+  minBreakAtrMult: 0,
 };
+
+/** How hard the break candle actually moved. */
+export interface BreakStrength {
+  /** Body as a fraction of the candle's total range. 1 = no wicks at all. */
+  bodyPct: number;
+  /** Body as a multiple of ATR. */
+  bodyAtr: number;
+}
+
+/**
+ * Measure the impulsive move that disrespected the level.
+ *
+ * "The secret, it's the blueprint, is in the impulsive move that led to the
+ * break." He never quantifies it, but he does say what a valid break looks
+ * like — a body-to-body break read off the line chart, which is closes with
+ * the wicks stripped out — and that he loves inefficient price action, which
+ * is a candle that travels without looking back.
+ *
+ * Both readings of that are here: bodyPct says the candle committed (little
+ * wick, no indecision), bodyAtr says it travelled a real distance. A candle
+ * crawling through the zone on a long wick scores badly on both.
+ */
+export function breakStrength(c: Candle, atrVal: number): BreakStrength {
+  const body = Math.abs(c.c - c.o);
+  const range = c.h - c.l;
+  return {
+    bodyPct: range > 0 ? body / range : 0,
+    bodyAtr: atrVal > 0 ? body / atrVal : 0,
+  };
+}
 
 /** What a level did after it formed: how it was tested, and how it broke. */
 export interface LevelHistory {
@@ -267,6 +311,9 @@ export interface ContinuationSetup {
   breaks: number;
   /** Fraction of the impulsive leg retraced — rule 5. */
   depth: number;
+  /** How hard the break candle moved — rule 3, whether or not it gates. */
+  bodyPct: number;
+  bodyAtr: number;
   /** Reward-to-risk actually achieved after stop placement. */
   rr: number;
   time: number;
@@ -292,6 +339,7 @@ export function findContinuationSetups(
   const levels = keyLevels(candles, cfg);
   const imbalances: Imbalance[] = fvgZones(candles, params.fvgLookback);
   markFvgOverlap(levels, imbalances);
+  const atrVal = atr(candles, cfg.atrPeriod);
 
   const out: ContinuationSetup[] = [];
   for (const level of levels) {
@@ -309,6 +357,13 @@ export function findContinuationSetups(
     // Rule 5: shallow. Parameterised because he never quantifies it.
     const depth = retraceDepth(h, level, params.legOrigin);
     if (Number.isFinite(depth) && depth > params.maxRetraceDepth) continue;
+
+    // Rule 3: the break must have been IMPULSIVE, not merely a close that
+    // happened to land past the zone. Off by default; see the params.
+    const brk = candles[h.breakIndex];
+    const strength = breakStrength(brk, atrVal);
+    if (strength.bodyPct < params.minBreakBodyPct) continue;
+    if (strength.bodyAtr < params.minBreakAtrMult) continue;
 
     const entry = (level.zoneLo + level.zoneHi) / 2;
 
@@ -340,6 +395,8 @@ export function findContinuationSetups(
       touchesBefore: h.touchesBefore,
       breaks: h.breaks,
       depth,
+      bodyPct: strength.bodyPct,
+      bodyAtr: strength.bodyAtr,
       rr,
       time: candles[candles.length - 1].t,
       setupId: [

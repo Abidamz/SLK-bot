@@ -2,11 +2,11 @@
   "name": "tayo-alert-worker",
   "version": "1.0.0",
   "private": true,
-  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner — Cloudflare Worker",
+  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner \u2014 Cloudflare Worker",
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "deploy": "wrangler deploy",
     "deploy:worker": "wrangler deploy",
     "dev": "wrangler dev",
@@ -17,6 +17,7 @@
     "audit:shadow": "node --experimental-strip-types scripts/audit_shadow.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9",

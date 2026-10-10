@@ -137,6 +137,8 @@ interface Trade {
   status: string; exit: number; exitTime: string; r: number;
   limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
   marketStatus: string; marketEntry: number; marketExitTime: string; marketR: number;
+  /** Continuation shadow only: how impulsive the break candle was. */
+  bodyPct?: number; bodyAtr?: number;
 }
 
 const OANDA_TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? "";
@@ -221,6 +223,14 @@ const CONT_RR = Number(process.env.BACKTEST_CONT_RR ?? CONT_PARAMS.rr);
  * He never says; the two readings disagree, so the sweep decides.
  */
 const CONT_LEG_ORIGIN = (process.env.BACKTEST_CONT_LEG_ORIGIN ?? CONT_PARAMS.legOrigin) as "break" | "level";
+/**
+ * The "impulsive move" test. Off by default on purpose — he calls it the
+ * blueprint and never numbers it, so the baseline run measures the setups
+ * without it and reports their distribution. Pick the threshold from that,
+ * not from a guess.
+ */
+const CONT_MIN_BODY_PCT = Number(process.env.BACKTEST_CONT_MIN_BODY_PCT ?? CONT_PARAMS.minBreakBodyPct);
+const CONT_MIN_BREAK_ATR = Number(process.env.BACKTEST_CONT_MIN_BREAK_ATR ?? CONT_PARAMS.minBreakAtrMult);
 const CONT_ENABLED = CONT_GATE.length > 0;
 
 async function replay(
@@ -244,7 +254,10 @@ async function replay(
   if (!useOanda) console.log(`   ${m1.length.toLocaleString()} m1 bars, ${d1.length} d1 bars`);
   if (!m1.length) {
     console.log(`   !! no bars returned — skipping ${pair}`);
-    return [];
+    // Must match the normal return shape. Returning a bare [] here makes
+    // `r.origin` undefined in the caller, and spreading undefined throws —
+    // so one pair with no bars would abort the entire replay.
+    return { origin: [], continuation: [] };
   }
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
@@ -310,7 +323,8 @@ async function replay(
       });
       const alerts = res.alerts;
       const d = res.diagnostics;
-      for (const k of ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]) bump(k, d[k] ?? 0);
+      const dRec = d as unknown as Record<string, number | undefined>;
+      for (const k of ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]) bump(k, dRec[k] ?? 0);
       bump("cand", d.retestCandidates ?? 0);
       bump("noFvg", d.retestNoFvg ?? 0);
       bump("fvg", d.retestWithFvg ?? 0);
@@ -325,6 +339,8 @@ async function replay(
           maxRetraceDepth: CONT_MAX_DEPTH,
           rr: CONT_RR,
           legOrigin: CONT_LEG_ORIGIN,
+          minBreakBodyPct: CONT_MIN_BODY_PCT,
+          minBreakAtrMult: CONT_MIN_BREAK_ATR,
         })) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
@@ -340,6 +356,7 @@ async function replay(
             r: oc?.rMultiple ?? NaN,
             limitStatus: "OPEN", limitEntry: cs.entry, limitExitTime: "-", limitR: NaN,
             marketStatus: "OPEN", marketEntry: cs.entry, marketExitTime: "-", marketR: NaN,
+            bodyPct: cs.bodyPct, bodyAtr: cs.bodyAtr,
           });
         }
       }
@@ -620,7 +637,8 @@ async function main() {
     const gateStr = CONT_GATE.join("→");
     console.log(`\nCONTINUATION SHADOW — ${contAll.length} setups ` +
       `(gate ${gateStr}, minTouches ${CONT_MIN_TOUCHES}, maxDepth ${CONT_MAX_DEPTH}, ` +
-      `legOrigin ${CONT_LEG_ORIGIN}, rr ${CONT_RR}R)`);
+      `legOrigin ${CONT_LEG_ORIGIN}, minBodyPct ${CONT_MIN_BODY_PCT}, ` +
+      `minBreakAtr ${CONT_MIN_BREAK_ATR}, rr ${CONT_RR}R)`);
     const cHead = `adj  net ${f(cs.finalR)}R · PF ${f(cs.pf)} · win ${f(cs.winrate, 1)}% · ` +
       `maxDD ${f(cs.maxDD)}R · closed ${cs.tp + cs.sl}/${contAll.length}`;
     console.log(contAll.length ? `   ${cHead}` : "   no setups — relax a parameter, do not assume the model is dead");
@@ -634,6 +652,24 @@ async function main() {
       pairLines.push(`- ${line}`);
     }
 
+    // How impulsive the breaks actually were. Without this the only way to
+    // choose a threshold is to guess one and re-run.
+    const pct = (xs: number[], q: number) => {
+      const v = xs.slice().sort((a, b) => a - b);
+      return v.length ? v[Math.min(v.length - 1, Math.floor(q * v.length))] : NaN;
+    };
+    // Number.isFinite does not narrow `number | undefined`, and these fields
+    // are absent on the origin-model rows.
+    const num = (v: number | undefined): v is number => typeof v === "number" && Number.isFinite(v);
+    const bp = contAll.map((t) => t.bodyPct).filter(num);
+    const ba = contAll.map((t) => t.bodyAtr).filter(num);
+    const distStr = bp.length
+      ? `break-candle body/range  p10 ${f(pct(bp, 0.10), 2)}  p50 ${f(pct(bp, 0.50), 2)}  p90 ${f(pct(bp, 0.90), 2)}\n` +
+        `   break-candle body/ATR    p10 ${f(pct(ba, 0.10), 2)}  p50 ${f(pct(ba, 0.50), 2)}  p90 ${f(pct(ba, 0.90), 2)}`
+      : "no setups to measure";
+    console.log(`   impulsive-move distribution:`);
+    console.log(`   ${distStr}`);
+
     lines += `\n## Continuation shadow — the second model\n\n` +
       `The origin model above is sweep → shift → retest. This is the other model: a key\n` +
       `level that held, was then disrespected with an impulsive move, and now overlaps an\n` +
@@ -641,6 +677,10 @@ async function main() {
       `Gate: ${gateStr} must all agree on the most recent break of structure\n` +
       `(close-to-close, the line-chart body-to-body test). minTouches ${CONT_MIN_TOUCHES},\n` +
       `maxRetraceDepth ${CONT_MAX_DEPTH}, legOrigin ${CONT_LEG_ORIGIN}, target ${CONT_RR}R.\n\n` +
+      `Impulsive-move filter: minBodyPct ${CONT_MIN_BODY_PCT}, minBreakAtr ${CONT_MIN_BREAK_ATR}.\n\n` +
+      `Distribution of the break candles that produced these setups, so a threshold\n` +
+      `can be chosen from what the market actually did rather than guessed:\n\n` +
+      `    ${distStr.replace(/\n/g, "\n    ")}\n\n` +
       `- setups found: ${contAll.length}\n- ${cHead}\n${pairLines.join("\n")}\n\n`;
   }
 
