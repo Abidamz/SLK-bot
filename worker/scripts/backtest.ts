@@ -175,20 +175,25 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
 
   const seen = new Set<string>();
   const trades: Trade[] = [];
+  // Why a replay produced nothing is invisible without these: a silent zero
+  // looks identical whether the window was empty or every tick was gated.
+  let ticks = 0;
+  const skip = { base: 0, h4: 0, d1: 0, window: 0 };
   // every 30m candle close in the scan window is a production tick
   for (let i = 0; i < m30.length; i++) {
     const close = m30[i].t + 1_800_000;
-    if (close < scanStart || close > now.getTime()) continue;
+    if (close < scanStart || close > now.getTime()) { skip.window++; continue; }
 
     // m30 is sorted and this loop is chronological; slicing avoids rescanning
     // the entire history for every production tick.
     const end = i + 1;
     const base = m30.slice(Math.max(0, end - 1010), end); // prod: baseCandlesLimit
-    if (base.length < 40) continue;                                          // prod: minCandles
+    ticks++;
+    if (base.length < 40) { skip.base++; continue; }                          // prod: minCandles
     const h4 = dropIncomplete(resampleCandles(base, TF_SECONDS["4h"]), TF_SECONDS["4h"], close);
-    if (h4.length < 30) continue;                                            // prod gate
-    const d1t = d1.filter((c) => c.t + 86400_000 <= close).slice(-400);      // prod: candlesLimit
-    if (d1t.length < 25) continue;
+    if (h4.length < 30) { skip.h4++; continue; }                              // prod gate
+    const d1t = d1.filter((c) => c.t + 86400_000 <= close).slice(-400);       // prod: candlesLimit
+    if (d1t.length < 25) { skip.d1++; continue; }
     const snaps = storylineSeries(d1t, h4, strategy);
 
     const tfs: [string, Candle[], number][] = [["30m", base, close]];
@@ -234,6 +239,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
       }
     }
   }
+  console.log(
+    `   ticks ${ticks} (skipped: outside window ${skip.window}, short base ${skip.base}, ` +
+      `short h4 ${skip.h4}, short d1 ${skip.d1}) → ${trades.length} alerts`,
+  );
   return trades;
 }
 
