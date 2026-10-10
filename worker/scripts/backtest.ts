@@ -221,7 +221,7 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     for (const [tf, candles, nowMs] of tfs) {
       const res = scanEntry({
         pair, entryTf: tf, tfSeconds: TF_SECONDS[tf], candles, snaps,
-        cfg: strategy, mode: "paper", provider: SOURCE === "oanda" ? "oanda" : "dukascopy",
+        cfg: strategy, mode: "paper", provider: "oanda",
       });
       const alerts = res.alerts;
       const d = res.diagnostics;
@@ -356,7 +356,17 @@ function marketShadowRows(rows: Trade[]): Trade[] {
   }));
 }
 
-const SOURCE = (process.env.BACKTEST_SOURCE ?? (OANDA_TOKEN ? "oanda" : "dukascopy")).toLowerCase();
+/**
+ * OANDA only.
+ *
+ * Dukascopy remains a real provider in the worker (providerForPair), but its
+ * feed returns no bars for every instrument. Left as the backtest's fallback
+ * it produced a complete report — per-pair tables, totals, an execution
+ * comparison — in which every figure was zero. That reads like a measured
+ * result rather than a broken fetch, which is the worst failure mode
+ * available. Require OANDA and stop if it is missing.
+ */
+const SOURCE = (process.env.BACKTEST_SOURCE ?? "oanda").toLowerCase();
 
 async function main() {
   const args = process.argv.slice(2);
@@ -365,12 +375,18 @@ async function main() {
   if (args.length && /^[A-Z]/.test(args[0])) { pairs = args[0].split(","); args.shift(); }
   if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
 
-  if (SOURCE === "oanda" && !OANDA_TOKEN) {
-    console.error("BACKTEST_SOURCE=oanda needs OANDA_API_TOKEN (or OANDA_API_KEY) in the environment.");
+  if (SOURCE !== "oanda") {
+    console.error(
+      `BACKTEST_SOURCE must be 'oanda' (got '${SOURCE}').\n` +
+      `The Dukascopy feed returns no bars for any instrument.`,
+    );
     process.exit(1);
   }
-  if (SOURCE !== "oanda" && SOURCE !== "dukascopy") {
-    console.error(`BACKTEST_SOURCE must be 'oanda' or 'dukascopy' (got '${SOURCE}')`);
+  if (!OANDA_TOKEN) {
+    console.error(
+      "OANDA_API_TOKEN (or OANDA_API_KEY) is not set, and there is no working fallback.\n" +
+      "  export OANDA_API_TOKEN=<token>",
+    );
     process.exit(1);
   }
   console.log(`source: ${SOURCE}`);
