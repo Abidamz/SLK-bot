@@ -343,8 +343,15 @@ export function findContinuationSetups(
   cfg: StrategyConfig,
   bias: Direction | null,
   params: ContinuationParams = DEFAULT_CONTINUATION_PARAMS,
+  /**
+   * Optional rejection counters. A run that finds nothing is uninterpretable
+   * without knowing which rule rejected what: "0 setups" is the same string
+   * whether one filter is too strict or five are all slightly too strict.
+   */
+  diag?: Record<string, number>,
 ): ContinuationSetup[] {
   if (!bias || candles.length < 40) return [];
+  const bump = (k: string) => { if (diag) diag[k] = (diag[k] ?? 0) + 1; };
 
   const levels = keyLevels(candles, cfg);
   const imbalances: Imbalance[] = fvgZones(candles, params.fvgLookback);
@@ -354,20 +361,21 @@ export function findContinuationSetups(
 
   const out: ContinuationSetup[] = [];
   for (const level of levels) {
+    bump("levels");
     // Rule 4: overlap. He calls the setup low probability without it.
-    if (!level.fvgOverlap) continue;
+    if (!level.fvgOverlap) { bump("noFvg"); continue; }
 
     const h = levelHistory(candles, level, cfg);
 
     // Rule 3 direction: the break must agree with the multi-timeframe bias.
-    if (h.breakDir !== bias) continue;
+    if (h.breakDir !== bias) { bump("wrongDir"); continue; }
 
     // Rule 2: tested and held before it broke.
-    if (h.touchesBefore < params.minTouches) continue;
+    if (h.touchesBefore < params.minTouches) { bump("touches"); continue; }
 
     // Rule 5: shallow. Parameterised because he never quantifies it.
     const depth = retraceDepth(h, level, params.legOrigin);
-    if (Number.isFinite(depth) && depth > params.maxRetraceDepth) continue;
+    if (Number.isFinite(depth) && depth > params.maxRetraceDepth) { bump("depth"); continue; }
 
     // Rule 6: liquidity resting on the far side, so the move has somewhere to
     // go. A buyside pool above the level for a long, sellside below for a short.
@@ -376,15 +384,15 @@ export function findContinuationSetups(
       const beyond = pools.some(
         (p) => p.side === want && (bias === "LONG" ? p.price > level.zoneHi : p.price < level.zoneLo),
       );
-      if (!beyond) continue;
+      if (!beyond) { bump("liquidity"); continue; }
     }
 
     // Rule 3: the break must have been IMPULSIVE, not merely a close that
     // happened to land past the zone. Off by default; see the params.
     const brk = candles[h.breakIndex];
     const strength = breakStrength(brk, atrVal);
-    if (strength.bodyPct < params.minBreakBodyPct) continue;
-    if (strength.bodyAtr < params.minBreakAtrMult) continue;
+    if (strength.bodyPct < params.minBreakBodyPct) { bump("bodyPct"); continue; }
+    if (strength.bodyAtr < params.minBreakAtrMult) { bump("bodyAtr"); continue; }
 
     const entry = (level.zoneLo + level.zoneHi) / 2;
 
@@ -393,7 +401,7 @@ export function findContinuationSetups(
     // limit at this price, so if price never traded through it there is no
     // fill and no trade. This also guarantees the risk is positive by
     // construction: a limit below the entry cannot have its stop above it.
-    if (bias === "LONG" ? h.pullback > entry : h.pullback < entry) continue;
+    if (bias === "LONG" ? h.pullback > entry : h.pullback < entry) { bump("rebalance"); continue; }
 
     // Stop beyond the swing the pullback made, so re-testing it does not stop
     // the trade out before the move resumes. The risk is kept signed on
@@ -402,11 +410,12 @@ export function findContinuationSetups(
     const buf = Math.abs(entry - h.pullback) * params.stopBufferPct;
     const stop = bias === "LONG" ? h.pullback - buf : h.pullback + buf;
     const risk = bias === "LONG" ? entry - stop : stop - entry;
-    if (!(risk > 0)) continue;
+    if (!(risk > 0)) { bump("risk"); continue; }
 
     const tp = bias === "LONG" ? entry + risk * params.rr : entry - risk * params.rr;
     const rr = Math.abs(tp - entry) / risk;
 
+    bump("emitted");
     out.push({
       level,
       direction: bias,

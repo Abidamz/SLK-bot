@@ -243,7 +243,16 @@ const CONT_ENABLED = CONT_GATE.length > 0;
 const CONF_RR = Number(process.env.BACKTEST_CONF_RR ?? CONF_PARAMS.rr);
 const CONF_STOP_PIPS = Number(process.env.BACKTEST_CONF_STOP_PIPS ?? "1");
 const CONF_LOOKBACK = Number(process.env.BACKTEST_CONF_LOOKBACK ?? CONF_PARAMS.setupLookback);
-const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "true") !== "false";
+/**
+ * Off by default until the model is right. The first 180d run produced 45,652
+ * entries across thirteen pairs. He describes taking one or two trades a week,
+ * which is on the order of fifty over the same window — so this is firing
+ * roughly nine hundred times too often and is not his model yet. What is
+ * missing is the condition that price is reacting from a higher-timeframe key
+ * level; without it the trigger reduces to "any close back above a recent low",
+ * which happens constantly. Left in place, gated off, so the gap is visible.
+ */
+const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "false") === "true";
 
 async function replay(
   pair: string, days: number, strategy = defaultStrategy(),
@@ -289,6 +298,7 @@ async function replay(
   // Continuation shadow state, kept apart from the origin trades so the two
   // models never contaminate each other's numbers.
   const contSeen = new Set<string>();
+  const contDiag: Record<string, number> = {};
   const contTrades: Trade[] = [];
   const contGateSeen: Record<string, number> = {};
   let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
@@ -358,7 +368,7 @@ async function replay(
           minBreakBodyPct: CONT_MIN_BODY_PCT,
           minBreakAtrMult: CONT_MIN_BREAK_ATR,
           requireLiquidity: CONT_REQUIRE_LIQ,
-        })) {
+        }, contDiag)) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
           const after = tfCandles.filter((c) => c.t >= cs.time);
@@ -459,7 +469,12 @@ async function replay(
     console.log("   funnel: " + keys.map((k) => `${k} ${fun[k] ?? 0}`).join("  "));
   }
   const gateSummary = Object.entries(contGateSeen).map(([k, v]) => `${k} ${v}`).join("  ");
-  if (CONT_ENABLED) console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length}`);
+  if (CONT_ENABLED) {
+    console.log(`   cont gate: ${gateSummary || "n/a"} · setups ${contTrades.length}`);
+    // Which rule rejected what. Without this, "0 setups" cannot be acted on.
+    const order = ["levels", "noFvg", "wrongDir", "touches", "depth", "bodyPct", "bodyAtr", "liquidity", "rebalance", "risk", "emitted"];
+    console.log("   cont rejects: " + order.map((k) => `${k} ${contDiag[k] ?? 0}`).join("  "));
+  }
   const thirdSummary = Object.entries(confThird).map(([k, v]) => `${k} ${v}`).join("  ");
   if (CONF_ENABLED) console.log(`   conf entries ${confTrades.length} · third candle: ${thirdSummary || "n/a"}`);
   return { origin: trades, continuation: contTrades, confirmation: confTrades };
