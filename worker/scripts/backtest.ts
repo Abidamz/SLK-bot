@@ -359,8 +359,15 @@ async function replay(
       bump("tgt", d.targetRejects ?? 0);
       bump("conf", d.confirmedAlerts ?? 0);
       if (CONT_ENABLED && gateCache.dir) {
+        // Detect on `candles` — the series truncated to this tick — never on the
+        // full m30/h1. Scanning the whole window at every tick is look-ahead: it
+        // detects setups from candles that have not happened yet, stamps them
+        // with the timestamp of the last bar in the dataset, and leaves nothing
+        // after them to evaluate. That is what left 31 of 33 setups stuck OPEN.
+        // The full series is used below, and only to resolve outcomes forward
+        // from the detection time — the same split the origin model uses.
         const tfCandles = tf === "1h" ? h1 : m30;
-        for (const cs of findContinuationSetups(tfCandles, strategy, gateCache.dir, {
+        for (const cs of findContinuationSetups(candles, strategy, gateCache.dir, {
           ...CONT_PARAMS,
           minTouches: CONT_MIN_TOUCHES,
           maxRetraceDepth: CONT_MAX_DEPTH,
@@ -391,7 +398,7 @@ async function replay(
       }
       if (CONF_ENABLED && gateCache.dir) {
         const tfCandles = tf === "1h" ? h1 : m30;
-        for (const ce of findConfirmationEntries(tfCandles, gateCache.dir, {
+        for (const ce of findConfirmationEntries(candles, gateCache.dir, {
           ...CONF_PARAMS, rr: CONF_RR, setupLookback: CONF_LOOKBACK,
           stopBuffer: CONF_STOP_PIPS * pipSize(pair),
         })) {
