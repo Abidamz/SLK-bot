@@ -179,6 +179,11 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
   // looks identical whether the window was empty or every tick was gated.
   let ticks = 0;
   const skip = { base: 0, h4: 0, d1: 0, window: 0 };
+  // The engine's own funnel counters, aggregated exactly as the coverage
+  // audit reports them. Without these a replay that finds nothing is
+  // indistinguishable from a replay that never ran the funnel.
+  const fun: Record<string, number> = {};
+  const bump = (k: string, n?: number) => { fun[k] = (fun[k] ?? 0) + (n ?? 0); };
   // every 30m candle close in the scan window is a production tick
   for (let i = 0; i < m30.length; i++) {
     const close = m30[i].t + 1_800_000;
@@ -202,10 +207,19 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
       tfs.push(["1h", h1s, close]);
     }
     for (const [tf, candles, nowMs] of tfs) {
-      const { alerts } = scanEntry({
+      const res = scanEntry({
         pair, entryTf: tf, tfSeconds: TF_SECONDS[tf], candles, snaps,
         cfg: strategy, mode: "paper", provider: SOURCE === "oanda" ? "oanda" : "dukascopy",
       });
+      const alerts = res.alerts;
+      const d = res.diagnostics;
+      for (const k of ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]) bump(k, d[k] ?? 0);
+      bump("cand", d.retestCandidates ?? 0);
+      bump("noFvg", d.retestNoFvg ?? 0);
+      bump("fvg", d.retestWithFvg ?? 0);
+      bump("risk", d.riskRejects ?? 0);
+      bump("tgt", d.targetRejects ?? 0);
+      bump("conf", d.confirmedAlerts ?? 0);
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
         seen.add(a.setupId);
@@ -243,6 +257,10 @@ async function replay(pair: string, days: number, strategy = defaultStrategy()):
     `   ticks ${ticks} (skipped: outside window ${skip.window}, short base ${skip.base}, ` +
       `short h4 ${skip.h4}, short d1 ${skip.d1}) → ${trades.length} alerts`,
   );
+  if (ticks) {
+    const keys = ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST", "cand", "noFvg", "fvg", "risk", "tgt", "conf"];
+    console.log("   funnel: " + keys.map((k) => `${k} ${fun[k] ?? 0}`).join("  "));
+  }
   return trades;
 }
 
