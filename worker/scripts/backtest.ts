@@ -50,13 +50,31 @@ const SPREAD_EST: Record<string, number> = {
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };
 
+let emptyDays = 0;
+let okDays = 0;
+
+/**
+ * The feed answers with an empty body for days with no trading (weekends,
+ * holidays) rather than a 404, and occasionally with an HTML error page under
+ * load. Both used to reach JSON.parse and abort the whole replay. Treat an
+ * empty or unparseable body as "no data for this day" and carry on.
+ */
 async function fetchJson(url: string): Promise<unknown | null> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const resp = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(30_000) });
-      if (resp.status === 404) return null;         // pre-history / no trading that day
+      if (resp.status === 404) { emptyDays++; return null; }   // pre-history / no trading that day
       if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
-      return await resp.json();
+      const text = (await resp.text()).trim();
+      if (!text) { emptyDays++; return null; }
+      try {
+        const parsed = JSON.parse(text);
+        okDays++;
+        return parsed;
+      } catch {
+        emptyDays++;
+        return null;                                            // HTML error page, not JSON
+      }
     } catch (e) {
       if (attempt === 2) throw e;
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
@@ -89,7 +107,9 @@ async function loadMinuteHistory(code: string, from: Date, to: Date): Promise<Ca
   }
   process.stdout.write("\n");
   all.sort((a, b) => a.t - b.t);
-  return all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
+  const out = all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
+  console.log(`   day files: ${okDays} with data, ${emptyDays} empty/unparseable (weekends and holidays are expected)`);
+  return out;
 }
 
 /** daily candles for the M/W/D bias context — whole-year files */
