@@ -195,6 +195,49 @@ describe("mostRecentBreakout", () => {
   });
 });
 
+describe("retraceDepth — which reference is coherent with entering at the level", () => {
+  // A long: the swing the move launched from is 99, the level sits at 100-101,
+  // the break closed at 101.5, price ran to 105 and came back to the level
+  // midpoint 100.5. Entering there is the setup. The question is which
+  // reference lets that read as a shallow retrace.
+  const h = {
+    touchesBefore: 2, breakIndex: 6, breakDir: "LONG" as const, breaks: 1,
+    breakPrice: 101.5, extreme: 105, pullback: 100.5,
+  };
+  const level = levelAt(3, 100, 101); // midpoint = originPrice = 100.5
+  const cs: Candle[] = [
+    { t: 0, o: 99.2, h: 99.4, l: 99.0, c: 99.3 }, // the swing low, within lookback
+    { t: 1, o: 99.3, h: 99.9, l: 99.2, c: 99.8 },
+    { t: 2, o: 99.8, h: 100.4, l: 99.7, c: 100.3 },
+    { t: 3, o: 100.3, h: 100.6, l: 100.0, c: 100.5 },
+    { t: 4, o: 100.5, h: 100.9, l: 100.2, c: 100.8 },
+    { t: 5, o: 100.8, h: 101.2, l: 100.6, c: 101.1 },
+    { t: 6, o: 101.1, h: 101.6, l: 101.0, c: 101.5 }, // the break
+    { t: 7, o: 101.5, h: 105.0, l: 101.4, c: 104.8 },
+    { t: 8, o: 104.8, h: 104.9, l: 100.5, c: 100.7 }, // back to the level
+  ];
+
+  it("reads a return to the level as deeper than the whole leg when measured from the break", () => {
+    // This is the contradiction the first 180d run exposed: depth > 1 while the
+    // rebalance condition demands the pullback be at the level. Unsatifiable.
+    expect(retraceDepth(h, level, "break")).toBeGreaterThan(1);
+  });
+
+  it("reads a return to the level as exactly 1.0 when measured from the level", () => {
+    expect(retraceDepth(h, level, "level")).toBeCloseTo(1, 6);
+  });
+
+  it("reads a return to the level as a partial retrace when measured from the swing", () => {
+    const d = retraceDepth(h, level, "swing", cs, 10);
+    expect(d).toBeGreaterThan(0);
+    expect(d).toBeLessThan(1); // coherent: reachable AND shallow
+  });
+
+  it("defaults to the coherent reference", () => {
+    expect(DEFAULT_CONTINUATION_PARAMS.legOrigin).toBe("swing");
+  });
+});
+
 describe("multiTfGate", () => {
   it("agrees when every timeframe breaks the same way", () => {
     expect(multiTfGate([BULL, BULL, BULL])).toBe("LONG");

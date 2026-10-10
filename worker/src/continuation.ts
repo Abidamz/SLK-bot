@@ -41,12 +41,18 @@ import { atr, bosEvent, fvgZones, internalPools, keyLevels, markFvgOverlap } fro
 /**
  * Where the impulsive leg is measured from, for the shallow-retracement test.
  *
- * He never says, and the two readings disagree: measured from the break, a
- * pullback that returns to the level can read as deeper than 1; measured from
- * the level's origin, it reads as exactly 1. This is left to the sweep rather
- * than decided here.
+ * Only "swing" is geometrically coherent with entering at the level, and the
+ * first 180d run proved it: with "break", depth <= 1 forces the pullback to
+ * stay above the break close, while entering at the level requires the pullback
+ * to come back below it. Every one of 152,411 candidates died on that
+ * contradiction. For a long the level sits BELOW the break, so a return to it
+ * is always more than a 100% retrace of a leg measured from the break — the leg
+ * has to start below the level, at the swing the impulsive move launched from.
+ *
+ * The other two are kept so the sweep can show the difference rather than have
+ * it asserted.
  */
-export type LegOrigin = "break" | "level";
+export type LegOrigin = "break" | "level" | "swing";
 
 export interface ContinuationParams {
   /** Minimum times the level was tested and held before it broke. */
@@ -61,6 +67,8 @@ export interface ContinuationParams {
   fvgLookback: number;
   /** Where the impulsive leg is measured from. See LegOrigin. */
   legOrigin: LegOrigin;
+  /** Candles searched before the break for the swing the move launched from. */
+  impulseLookback: number;
   /**
    * Minimum body-to-range ratio for the break candle. 0 = not required.
    * See breakStrength.
@@ -82,7 +90,8 @@ export const DEFAULT_CONTINUATION_PARAMS: ContinuationParams = {
   rr: 3,
   stopBufferPct: 0.1,
   fvgLookback: 60,
-  legOrigin: "break",
+  legOrigin: "swing",
+  impulseLookback: 10,
   // Both off. These are the "impulsive" test, and the mentorship calls the
   // impulsive move "the secret, the blueprint" without ever putting a number
   // on it in fourteen sources. Shipping a guess here would make the first
@@ -249,10 +258,35 @@ export function levelHistory(
  * He calls the setup shallow without ever saying how shallow, so the threshold
  * is a parameter to sweep rather than a number to guess.
  */
-export function retraceDepth(h: LevelHistory, level: KeyLevel, legOrigin: LegOrigin): number {
+export function retraceDepth(
+  h: LevelHistory,
+  level: KeyLevel,
+  legOrigin: LegOrigin,
+  candles?: Candle[],
+  impulseLookback = 10,
+): number {
   if (!h.breakDir || !Number.isFinite(h.extreme)) return NaN;
-  const from = legOrigin === "break" ? h.breakPrice : level.originPrice;
+
+  let from: number;
+  if (legOrigin === "break") {
+    from = h.breakPrice;
+  } else if (legOrigin === "level") {
+    from = level.originPrice;
+  } else {
+    // The swing the impulsive move launched from: the most adverse price in
+    // the run-up to the break. This is the only reference that puts the leg
+    // start below the level, so a return to the level reads as a partial
+    // retrace instead of an impossible >100% one.
+    if (!candles) return NaN;
+    const start = Math.max(0, h.breakIndex - impulseLookback);
+    from = h.breakDir === "LONG" ? Infinity : -Infinity;
+    for (let j = start; j <= h.breakIndex && j < candles.length; j++) {
+      const p = h.breakDir === "LONG" ? candles[j].l : candles[j].h;
+      if (h.breakDir === "LONG" ? p < from : p > from) from = p;
+    }
+  }
   if (!Number.isFinite(from)) return NaN;
+
   const leg = Math.abs(h.extreme - from);
   if (leg <= 0) return NaN;
   return Math.abs(h.extreme - h.pullback) / leg;
@@ -374,11 +408,19 @@ export function findContinuationSetups(
     if (h.touchesBefore < params.minTouches) { bump("touches"); continue; }
 
     // Rule 5: shallow. Parameterised because he never quantifies it.
-    const depth = retraceDepth(h, level, params.legOrigin);
+    const depth = retraceDepth(h, level, params.legOrigin, candles, params.impulseLookback);
     if (Number.isFinite(depth) && depth > params.maxRetraceDepth) { bump("depth"); continue; }
 
     // Rule 6: liquidity resting on the far side, so the move has somewhere to
     // go. A buyside pool above the level for a long, sellside below for a short.
+    //
+    // Measured as vacuous on the first 180d run: 0 rejections out of 152,411
+    // candidates that reached it. internalPools returns every structural swing
+    // and every wide-candle extreme, so there is essentially always one on the
+    // far side. Left in place because the condition is part of his definition,
+    // but it is not currently doing any work and should not be credited with
+    // any filtering until it is tightened — probably to the nearest pool
+    // rather than any pool.
     if (params.requireLiquidity) {
       const want = bias === "LONG" ? "buyside" : "sellside";
       const beyond = pools.some(

@@ -227,7 +227,8 @@ const CONT_RR = Number(process.env.BACKTEST_CONT_RR ?? CONT_PARAMS.rr);
  * Where the impulsive leg is measured from for the shallow-retracement test.
  * He never says; the two readings disagree, so the sweep decides.
  */
-const CONT_LEG_ORIGIN = (process.env.BACKTEST_CONT_LEG_ORIGIN ?? CONT_PARAMS.legOrigin) as "break" | "level";
+const CONT_LEG_ORIGIN = (process.env.BACKTEST_CONT_LEG_ORIGIN ?? CONT_PARAMS.legOrigin) as "break" | "level" | "swing";
+const CONT_IMPULSE_LOOKBACK = Number(process.env.BACKTEST_CONT_IMPULSE_LOOKBACK ?? CONT_PARAMS.impulseLookback);
 /**
  * The "impulsive move" test. Off by default on purpose — he calls it the
  * blueprint and never numbers it, so the baseline run measures the setups
@@ -365,6 +366,7 @@ async function replay(
           maxRetraceDepth: CONT_MAX_DEPTH,
           rr: CONT_RR,
           legOrigin: CONT_LEG_ORIGIN,
+          impulseLookback: CONT_IMPULSE_LOOKBACK,
           minBreakBodyPct: CONT_MIN_BODY_PCT,
           minBreakAtrMult: CONT_MIN_BREAK_ATR,
           requireLiquidity: CONT_REQUIRE_LIQ,
@@ -699,7 +701,7 @@ async function main() {
     const gateStr = CONT_GATE.join("→");
     console.log(`\nCONTINUATION SHADOW — ${contAll.length} setups ` +
       `(gate ${gateStr}, minTouches ${CONT_MIN_TOUCHES}, maxDepth ${CONT_MAX_DEPTH}, ` +
-      `legOrigin ${CONT_LEG_ORIGIN}, minBodyPct ${CONT_MIN_BODY_PCT}, ` +
+      `legOrigin ${CONT_LEG_ORIGIN}, impulseLookback ${CONT_IMPULSE_LOOKBACK}, minBodyPct ${CONT_MIN_BODY_PCT}, ` +
       `minBreakAtr ${CONT_MIN_BREAK_ATR}, requireLiquidity ${CONT_REQUIRE_LIQ}, rr ${CONT_RR}R)`);
     const cHead = `adj  net ${f(cs.finalR)}R · PF ${f(cs.pf)} · win ${f(cs.winrate, 1)}% · ` +
       `maxDD ${f(cs.maxDD)}R · closed ${cs.tp + cs.sl}/${contAll.length}`;
