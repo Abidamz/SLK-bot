@@ -267,6 +267,46 @@ This is the owner's decision, not a magnitude judgement to be made quietly. The
 pair was excluded once on exactly that basis and restored; it should not be
 dropped the same way.
 
+### Isolated: XAUUSD against the three-pair book
+
+`BACKTEST_ENTRY_TFS=30m,1h`, four pairs — the same arms as the three-pair
+baseline, so XAUUSD is the only difference. JAPAN225, NAS100 and EURUSD come
+back byte-identical to that run (15/12/6 alerts, +12.7/+12.8/+10.7R), which is
+what makes the comparison clean.
+
+| | 3 pairs | 4 pairs | delta |
+|---|---|---|---|
+| alerts | 33 | 45 | +12 |
+| net R | +36.2 | +36.3 | **+0.1** |
+| PF | 3.86 | 2.73 | −1.13 |
+| max DD | 3.18R | 5.43R | **+2.25R (×1.71)** |
+| longest losing streak | 4 | 7 | +3 |
+
+XAUUSD on its own, same arms: 12 alerts, 3 TP / 8 SL / 1 BE, 27.3% win,
+**+0.2R, PF 1.04, maxDD 5.62R.** Return against its own drawdown:
+
+| pair | net R | PF | maxDD | return / DD |
+|---|---|---|---|---|
+| EURUSD | +10.7 | 11.29 | 1.07R | **+10.00** |
+| JAPAN225 | +12.7 | 2.72 | 2.12R | +5.99 |
+| NAS100 | +12.8 | 4.02 | 2.14R | +5.98 |
+| **XAUUSD** | **+0.2** | **1.04** | **5.62R** | **+0.04** |
+
+A 150× gap to the weakest of the other three.
+
+**What this actually shows is that the selection criterion is wrong, not that
+XAUUSD is a loser.** "Positive in both windows" admits a pair at +0.2R over six
+months. The criterion has to be risk-adjusted — does the pair earn its own
+drawdown — and XAUUSD does not. Applied that way, US30 (+0.4R) fails on the
+same numbers, while EURJPY (+2.2R / +1.0R) is a genuine candidate.
+
+The counterweights still stand and are not being waved away: the methodology
+names gold as one of its two cleanest instruments, and 12 alerts with PF 1.04
+is barely distinguishable from break-even rather than proven bad. The pair was
+excluded once on an unstated magnitude judgement and restored. Dropping it now
+means naming the criterion and applying it in the open — or not dropping it.
+That is the owner's call.
+
 ### Continuation shadow flipped positive, and it is entirely XAUUSD
 
 Market entry now reads **+151.25R, PF 1.15** across 827 setups, against
