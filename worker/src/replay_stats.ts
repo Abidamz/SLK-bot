@@ -62,6 +62,95 @@ export function entryTfGroups(rows: Trade[], order: string[]): [string, Trade[]]
   return out;
 }
 
+/**
+ * Daily risk profile — the constraint subscribers are actually funded against.
+ *
+ * maxDD above is a whole-window, closed-trade figure. A prop firm enforces two
+ * different limits: a DAILY one, commonly 3%, and an overall one, commonly 5%.
+ * A book can sit comfortably inside the overall limit and still lose the
+ * account on a single bad session, so the window figure cannot size for
+ * either. This measures the daily one from the trades themselves.
+ *
+ * worstDayLoss is measured from each day's opening cumulative R, which is how
+ * most firms define the daily limit (loss against the balance at the start of
+ * the day). Firms that trail the limit from the day's high-water mark instead
+ * will see a larger number than this reports, so treat it as the optimistic
+ * reading of the two conventions.
+ *
+ * Rolling windows count days that had at least one close, not calendar days —
+ * on a sparse book a calendar-day window is almost always empty and says
+ * nothing about clustering.
+ */
+export interface DailyRisk {
+  days: number;
+  worstDayLoss: number;
+  worstDayLossDate: string;
+  worstDayClose: number;
+  worstDayCloseDate: string;
+  /** Worst net R across a rolling window of days that had trades. NaN when
+   *  the book has fewer such days than the window, so the report renders "-"
+   *  rather than a 0 that reads as "no loss". */
+  worst3Day: number;
+  worst5Day: number;
+}
+
+export function dailyRisk(rows: Trade[], spreadAdj: boolean): DailyRisk {
+  const closed = rows
+    .map((t) => applySpread(t, spreadAdj))
+    .filter((t) => t.status !== "OPEN" && Number.isFinite(t.r) && t.exitTime !== "-")
+    .sort((a, b) => (a.exitTime + a.setupId).localeCompare(b.exitTime + b.setupId));
+
+  let worstDayLoss = 0, worstDayLossDate = "-";
+  const byDay = new Map<string, number>();
+  let day = "", cum = 0, minCum = 0;
+  for (const t of closed) {
+    const d = t.exitTime.slice(0, 10);
+    if (d !== day) { day = d; cum = 0; minCum = 0; }
+    cum += t.r;
+    if (cum < minCum) minCum = cum;
+    if (-minCum > worstDayLoss) { worstDayLoss = -minCum; worstDayLossDate = d; }
+    byDay.set(d, (byDay.get(d) ?? 0) + t.r);
+  }
+
+  const days = [...byDay.keys()].sort();
+  const net = days.map((d) => byDay.get(d) as number);
+  // The lowest day close, positive or not. Seeding this at 0 - the natural
+  // thing to write - makes a book whose worst day was still profitable report
+  // 0, which is indistinguishable from "no data".
+  let worstDayClose = 0, worstDayCloseDate = "-";
+  if (net.length) {
+    worstDayClose = Math.min(...net);
+    worstDayCloseDate = days[net.indexOf(worstDayClose)];
+  }
+  // NaN, not 0, when there are fewer days than the window: "not enough history
+  // for this window" and "a window that broke even" are different facts, and
+  // f() already renders NaN as "-".
+  const roll = (k: number): number => {
+    if (net.length < k) return NaN;
+    let worst = Infinity;
+    for (let i = 0; i + k <= net.length; i++) {
+      const sum = net.slice(i, i + k).reduce((a, b) => a + b, 0);
+      if (sum < worst) worst = sum;
+    }
+    return worst;
+  };
+
+  return {
+    days: days.length, worstDayLoss, worstDayLossDate,
+    worstDayClose, worstDayCloseDate, worst3Day: roll(3), worst5Day: roll(5),
+  };
+}
+
+/**
+ * Largest risk-per-trade, as a percent of account, that keeps an observed
+ * worst-case loss inside a limit. Infinity means the worst case on this data
+ * was not a loss, so the limit does not bind — which on a short book is a
+ * warning about the sample, not a licence to size up.
+ */
+export function riskForLimit(worstR: number, limitPct: number): number {
+  return worstR >= 0 ? Infinity : limitPct / -worstR;
+}
+
 /** Closed-trade equity curve, ordered by exit time. */
 function rack(rows: Trade[]) {
   const closed = rows.filter((t) => t.status !== "OPEN" && Number.isFinite(t.r))
@@ -79,15 +168,22 @@ function rack(rows: Trade[]) {
   return { maxDD, ddFrom, ddTo, lossStreak: maxLoss, winStreak: maxWin, finalR: cum };
 }
 
+/**
+ * Charges a trade's round-trip spread against its R. Hoisted out of stats() so
+ * that every statistic - the book totals and the daily risk profile alike -
+ * costs trades the same way. Divergence here would make the daily limit look
+ * safer than the equity curve it is supposed to describe.
+ */
+function applySpread(t: Trade, spreadAdj: boolean): Trade {
+  if (!spreadAdj || t.status === "OPEN" || !Number.isFinite(t.r)) return t;
+  const riskDist = Math.abs(t.entry - t.stop);
+  const spread = SPREAD_EST[t.pair] ?? 0;
+  const costR = riskDist > 0 ? spread / riskDist : 0;
+  return { ...t, r: t.r - 2 * costR };
+}
+
 export function stats(rows: Trade[], spreadAdj: boolean) {
-  const adj = (t: Trade): Trade => {
-    if (!spreadAdj || t.status === "OPEN" || !Number.isFinite(t.r)) return t;
-    const riskDist = Math.abs(t.entry - t.stop);
-    const spread = SPREAD_EST[t.pair] ?? 0;
-    const costR = riskDist > 0 ? spread / riskDist : 0;
-    return { ...t, r: t.r - 2 * costR };
-  };
-  const rowsA = rows.map(adj);
+  const rowsA = rows.map((t) => applySpread(t, spreadAdj));
   const tp = rowsA.filter((r) => r.status === "TP_HIT");
   const sl = rowsA.filter((r) => r.status === "SL_HIT");
   const ex = rowsA.filter((r) => r.status === "EXPIRED");

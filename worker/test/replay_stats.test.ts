@@ -6,7 +6,7 @@
  * scratch was filed under `open` and reported as a position still running.
  */
 import { describe, expect, it } from "vitest";
-import { entryTfGroups, f, limitShadowRows, marketShadowRows, stats, type Trade } from "../src/replay_stats";
+import { dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows, riskForLimit, stats, type Trade } from "../src/replay_stats";
 
 function mk(o: Partial<Trade> & { status: string; r: number }): Trade {
   return {
@@ -156,5 +156,87 @@ describe("replay accounting — entry-timeframe breakdown", () => {
 
   it("returns nothing for an empty book", () => {
     expect(entryTfGroups([], ["30m", "1h", "2h"])).toEqual([]);
+  });
+});
+
+describe("daily risk — the prop-firm constraint", () => {
+  // A funded account is lost on the daily limit, not the whole-window one, so
+  // the distinction these tests pin is the one that decides whether a
+  // subscriber can run the sizing the headline numbers imply.
+  const at = (exitTime: string, r: number, status = "SL_HIT") =>
+    mk({ status, r, exitTime, entryTime: exitTime, exit: 1.1, entry: 1.1010, stop: 1.1000 });
+
+  it("measures the worst day from the start of the day, not its close", () => {
+    // Down 2R mid-session, then recovers to close +1R. The close looks fine;
+    // a 3% daily limit was breached on the way down.
+    const rows = [at("2026-05-01 09:00", -1), at("2026-05-01 11:00", -1), at("2026-05-01 15:00", 3, "TP_HIT")];
+    const d = dailyRisk(rows, false);
+    expect(d.worstDayLoss).toBe(2);
+    expect(d.worstDayLossDate).toBe("2026-05-01");
+    expect(d.worstDayClose).toBe(1);   // positive close, still a breached day
+  });
+
+  it("takes the worst day across the window, and counts days with a close", () => {
+    const rows = [
+      at("2026-05-01 09:00", -1), at("2026-05-02 09:00", -3),
+      at("2026-05-03 09:00", 2, "TP_HIT"),
+    ];
+    const d = dailyRisk(rows, false);
+    expect(d.days).toBe(3);
+    expect(d.worstDayLoss).toBe(3);
+    expect(d.worstDayLossDate).toBe("2026-05-02");
+    expect(d.worstDayClose).toBe(-3);
+    expect(d.worstDayCloseDate).toBe("2026-05-02");
+  });
+
+  it("finds loss clustering the single-day figure misses", () => {
+    const rows = [
+      at("2026-05-01 09:00", -1), at("2026-05-02 09:00", -1),
+      at("2026-05-03 09:00", -1), at("2026-05-04 09:00", 5, "TP_HIT"),
+    ];
+    const d = dailyRisk(rows, false);
+    expect(d.worstDayLoss).toBe(1);    // no single day looks bad
+    expect(d.worst3Day).toBe(-3);      // but three in a row is a 3R hole
+    expect(Number.isNaN(d.worst5Day)).toBe(true);   // only four days exist
+  });
+
+  it("computes the rolling window once there are enough days", () => {
+    const rows = ["01", "02", "03", "04", "05"].map((d) => at(`2026-05-${d} 09:00`, -1));
+    const d = dailyRisk(rows, false);
+    expect(d.worst3Day).toBe(-3);
+    expect(d.worst5Day).toBe(-5);
+  });
+
+  it("reports no loss when the book never had a losing day", () => {
+    const d = dailyRisk([at("2026-05-01 09:00", 3, "TP_HIT")], false);
+    expect(d.worstDayLoss).toBe(0);
+    expect(d.worstDayClose).toBe(3);   // the worst day was still a winner
+    expect(Number.isNaN(d.worst3Day)).toBe(true);   // one day of history
+  });
+
+  it("charges spread the same way stats() does", () => {
+    // entry-stop is 0.0010 and EURUSD's estimated spread is 0.00002, so the
+    // round trip costs 2 * (0.00002 / 0.0010) = 0.04R.
+    const rows = [at("2026-05-01 09:00", -1)];
+    expect(dailyRisk(rows, false).worstDayLoss).toBe(1);
+    expect(dailyRisk(rows, true).worstDayLoss).toBeCloseTo(1.04, 10);
+  });
+
+  it("ignores trades that never resolved", () => {
+    const d = dailyRisk([mk({ status: "OPEN", r: NaN, exitTime: "-" })], false);
+    expect(d.days).toBe(0);
+    expect(d.worstDayLoss).toBe(0);
+  });
+});
+
+describe("riskForLimit — sizing against a prop-firm cap", () => {
+  it("sizes so the worst observed loss exactly meets the limit", () => {
+    expect(riskForLimit(-2, 3)).toBe(1.5);     // 2R day at 1.5% = 3%
+    expect(riskForLimit(-4, 5)).toBe(1.25);
+  });
+
+  it("returns Infinity when the worst case was not a loss", () => {
+    expect(riskForLimit(0, 3)).toBe(Infinity);
+    expect(riskForLimit(2, 3)).toBe(Infinity);
   });
 });

@@ -33,7 +33,7 @@ import {
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
 import {
-  SPREAD_EST, entryTfGroups, f, limitShadowRows, marketShadowRows, stats, type Trade,
+  SPREAD_EST, dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows, riskForLimit, stats, type Trade,
 } from "../src/replay_stats";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
@@ -937,6 +937,26 @@ async function main() {
       `· longest win streak ${t.winStreak} · breakeven scratches **${t.be}** ` +
       `(${f(t.scratchPct, 1)}% of resolved) · net ${f(t.finalR, 1)}R over window`;
     console.log(`\n${riskNote.replace(/\*\*/g, "")}`);
+
+    // Prop-firm limits are a DAILY cap (commonly 3%) and an OVERALL cap
+    // (commonly 5%), and neither is the whole-window maxDD above. A book can
+    // sit inside the overall limit and still lose a funded account in one
+    // session, so the sizing a subscriber can actually run is set by the daily
+    // figure. worstDayLoss is measured from the start of the day; firms that
+    // trail the limit from the day's high-water mark will see more.
+    const dr = dailyRisk(all, spreadAdj);
+    const pct = (x: number) => (Number.isFinite(x) ? `${f(x, 2)}%` : "n/a");
+    const propNote =
+      `daily risk — ${dr.days} days with a close · worst intraday loss ${f(dr.worstDayLoss)}R ` +
+      `(${dr.worstDayLossDate}) · worst day close ${f(dr.worstDayClose)}R (${dr.worstDayCloseDate}) · ` +
+      `worst 3-day ${f(dr.worst3Day)}R · worst 5-day ${f(dr.worst5Day)}R`;
+    const sizingNote =
+      `   max risk/trade that held: 3% daily ${pct(riskForLimit(dr.worstDayLoss, 3))} · ` +
+      `5% overall ${pct(riskForLimit(t.maxDD, 5))}`;
+    console.log(propNote);
+    console.log(sizingNote);
+    block.push("", propNote, sizingNote.trim());
+
     return { block: block.join("\n"), riskNote };
   };
 
