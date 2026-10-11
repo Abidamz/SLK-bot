@@ -488,3 +488,86 @@ Reconfirmed on the same 33 alerts (adj): pending limit 31.87R → market 33.83R
 inverted (agrees +13.35R PF 3.09, opposes +22.81R PF 4.65) though less
 extremely than on four pairs, and agreement with multiTfGate rose 67.5% → 81.0%.
 Still do not ship.
+
+---
+
+## The 360-day run settles it: two months in thirteen pass, and they are 84% of the profit
+
+3 pairs, `30m,1h`, **360d** (`2025-10-16 → 2026-10-11`), adj:
+
+**69 alerts · 25 TP / 34 SL / 10 BE · 42.4% win · +35.3R · PF 2.00 ·
+maxDD 10.59R · longest losing streak 10**
+
+| | 180d | 360d |
+|---|---|---|
+| R per alert | +1.10 | **+0.51** |
+| max drawdown | 3.18R | **10.59R** |
+| return ÷ drawdown | 11.4 | **3.3** |
+| losing streak | 4 | **10** |
+| months passing @0.75% | 2/7 | **2/13** |
+
+| month | alerts | netR | at 0.75% | verdict |
+|---|---|---|---|---|
+| 2025-10 | 1 | −1.0 | −0.78% | FAIL |
+| 2025-11 | 4 | −4.4 | −3.29% | FAIL |
+| 2025-12 | 7 | +0.3 | +0.26% | FAIL |
+| 2026-01 | 11 | +3.9 | +2.89% | FAIL |
+| 2026-02 | 7 | −6.3 | −4.72% | FAIL |
+| 2026-03 | 2 | +5.8 | +4.39% | FAIL |
+| 2026-04 | 10 | +7.1 | +5.30% | FAIL |
+| **2026-05** | 6 | **+12.8** | **+9.63%** | **PASS** |
+| **2026-06** | 8 | **+16.7** | **+12.56%** | **PASS** |
+| 2026-07 | 5 | −0.2 | −0.14% | FAIL |
+| 2026-08 | 5 | +3.7 | +2.76% | FAIL |
+| 2026-09 | 1 | −1.1 | −0.83% | FAIL |
+| 2026-10 | 2 | −2.0 | −1.53% | FAIL |
+
+**May and June 2026 are +29.5R of the year's +35.3R — 84% of it.** The other
+eleven months total **+5.8R**, or **+0.53R a month**, which at 0.75% risk is
+**+0.40% a month.** Six of thirteen months were net negative.
+
+### The sizing ceiling is lower than the target requires
+
+`max risk/trade that held: 3% daily 0.96% · 5% overall 0.47%`
+
+The overall 5% limit binds, at **0.47% risk**. At that risk even the two best
+months make 6.0% and 7.8%. **An 8% monthly target is not reachable at the risk
+this book's drawdown permits.** The two constraints are incompatible with the
+current entry logic.
+
+### A subscriber starting at the wrong moment loses the account immediately
+
+The window's max drawdown runs from inception (`-`) to **2025-12-04** and is
+**10.59R**. Someone who started in October 2025 at 1% risk is down 10.6% by
+early December — through a 5% overall limit and, on 2025-12-02 (worst day
+3.12R), through a 3% daily limit as well.
+
+### Every projection made from the 180-day window was wrong
+
++1.41R/week, +1.097R per alert, 58.6% win rate, 3.18R drawdown, "2/7 months
+pass" — all measured correctly, all from a six-month window that turned out to
+contain the two best months of the thirteen. The 180d book is not a smaller
+version of the 360d book; it is its most favourable slice.
+
+### The two windows are not nested, and April shows it
+
+April reads 6 alerts / +6.2R on the 180d run and 10 alerts / +7.1R on the 360d
+run. The 180d window starts **2026-04-14**, mid-month, with truncated lookback,
+so the engine sees fewer key levels and emits fewer alerts. May and June are
+**identical across both runs** (6 alerts +12.8R, 8 alerts +16.7R), which is the
+check that confirms this is a lookback artifact and not a discrepancy. Any
+month near the start of a window is understated; do not compare early months
+across runs of different length.
+
+### What still holds over the full year
+
+Market execution is worth **more** over 360 days, not less: adj pending limit
+31.06R → market 36.33R, **+5.27R (+17%)**. Market also beats
+entry-at-signal (35.35R), so the next open was the better price on this book.
+
+Continuation shadow is dead over the year: **−253.22R adj**, PF 0.50. Its
+market-entry variant is +118.56R but PF 0.90 — below break-even. Do not ship.
+
+Bias gate, window split at 2026-04-14: agrees 31 alerts +14.51R PF 2.07,
+opposes 38 alerts +20.83R PF 1.95 — no longer strongly inverted, but still not
+adding anything. Agreement with multiTfGate 74.0%. Do not ship.
