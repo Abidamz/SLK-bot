@@ -46,12 +46,20 @@ const CODES: Record<string, string> = {
   USDCAD: "USD-CAD", NZDUSD: "NZD-USD",
   XAUUSD: "XAU-USD",
 };
-// Every live pair Dukascopy carries. The ten Deriv synthetics (V*) are not
-// available on this feed, so they cannot be replayed here at all.
-const DEFAULT_PAIRS = [
-  "AUDJPY", "EURJPY", "GBPJPY", "USDJPY", "USDCAD", "JAPAN225", "NAS100",
-  "EURUSD", "GBPUSD", "NZDUSD", "XAUUSD", "US30", "GER40",
-];
+/**
+ * Pairs the replay scans by default, cut from thirteen to the three that the
+ * 180d OANDA replay showed spread-adjusted positive in both the full window
+ * and the older 90d sub-window — see docs/BACKTEST_FINDINGS_2026-10-11.md and
+ * the matching cut to PAIRS in wrangler.jsonc.
+ *
+ * The ten Deriv synthetics cannot be replayed here at all: this script
+ * requires OANDA, which does not carry them, so no backtest can ever produce
+ * a result for them in either direction.
+ *
+ * To scan the full institutional set again, pass it explicitly:
+ *   npx tsx scripts/backtest.ts AUDJPY,EURJPY,GBPJPY,USDJPY,USDCAD,JAPAN225,NAS100,EURUSD,GBPUSD,NZDUSD,XAUUSD,US30,GER40 180
+ */
+const DEFAULT_PAIRS = ["JAPAN225", "NAS100", "EURUSD"];
 
 /** ESTIMATE of typical spread, in price units. Conservative averages, NOT measured. */
 const SPREAD_EST: Record<string, number> = {

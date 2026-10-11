@@ -23,7 +23,29 @@
     // institutional pairs to OANDA; index CFDs also support the keyless
     // Dukascopy public feed when OANDA is unavailable; canonical provider
     // instrument mappings are defined in worker/src/provider.ts.
-    "PAIRS": "EURUSD,GBPUSD,USDJPY,AUDJPY,GBPJPY,XAUUSD,NAS100,US30,GER40,JAPAN225,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S,USDCAD,NZDUSD,EURJPY",
+    //
+    // CUT FROM 23 TO 3 on 2026-10-11, on the 180d OANDA replay recorded in
+    // docs/BACKTEST_FINDINGS_2026-10-11.md. These three carry the whole book:
+    // JAPAN225 +12.7R, NAS100 +12.8R, EURUSD +10.7R spread-adjusted, +36.2R
+    // between them, against -32.8R for the ten institutional pairs dropped.
+    // All three were also positive in the older 90d sub-window
+    // (+9.2R / +14.9R / +10.7R).
+    //
+    // EURJPY (+2.2R / +1.0R) was the one dropped pair that was positive in both
+    // windows and is the first candidate to restore. US30 (+0.4R) and XAUUSD
+    // (+0.2R) were flat. USDJPY (+0.7R over 180d, -5.2R over the older 90d)
+    // flipped sign between windows.
+    //
+    // This is IN-SAMPLE SELECTION: the pairs were picked from the same window
+    // being measured, and the older 90d run is a sub-window rather than
+    // out-of-sample. Expect forward results to come in below these figures.
+    //
+    // All ten Deriv synthetics were removed here. They have never produced a
+    // stored alert, and the backtest cannot produce a result for them at all:
+    // it requires OANDA, which does not carry them. Cut as UNPROVEN, not as
+    // measured losers. SYNTH_ENTRY_TFS and the Deriv routing are left in place
+    // so they can return without further code changes.
+    "PAIRS": "JAPAN225,NAS100,EURUSD",
     "ENTRY_TFS": "15m,30m,1h",
     // Deriv synthetics confirm on the selected primary timeframes; institutional
     // pairs continue to use the full ENTRY_TFS set.
