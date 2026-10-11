@@ -146,9 +146,16 @@ export function dailyRisk(rows: Trade[], spreadAdj: boolean): DailyRisk {
  * worst-case loss inside a limit. Infinity means the worst case on this data
  * was not a loss, so the limit does not bind — which on a short book is a
  * warning about the sample, not a licence to size up.
+ *
+ * worstR is a MAGNITUDE, >= 0, which is the convention dailyRisk().worstDayLoss
+ * and stats().maxDD both use. This originally took a signed loss, and the report
+ * passed it magnitudes, so every call returned Infinity and the sizing line
+ * printed "n/a" on every run it was ever used on. Unit tests missed it because
+ * they fed the function the signed values its own comment described and never
+ * the values its only caller produces.
  */
 export function riskForLimit(worstR: number, limitPct: number): number {
-  return worstR >= 0 ? Infinity : limitPct / -worstR;
+  return worstR > 0 ? limitPct / worstR : Infinity;
 }
 
 /**

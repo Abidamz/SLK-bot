@@ -334,3 +334,55 @@ windows now in which agreeing with the gate has not helped.
 - Opposing liquidity as the first target; intent-shift exit.
 - Whether Deriv accepts a WebSocket from Cloudflare egress:
   `GET /api/probe-deriv?symbol=R_75` answers it, relay and direct side by side.
+
+---
+
+## A 1-trade-per-day cap destroys the book — measured, and my prediction was wrong
+
+`BACKTEST_MAX_TRADES_PER_DAY=1`, 4 pairs, `30m,1h`, 180d, against the uncapped
+4-pair baseline (45 alerts, +36.3R adj, PF 2.73, maxDD 5.43R):
+
+| | uncapped | 1/day cap | |
+|---|---|---|---|
+| alerts | 45 | 31 | 68.9% retained |
+| net R (adj) | +36.3 | **+14.4** | **−60.3%** |
+| profit factor | 2.73 | 1.86 | |
+| max drawdown | 5.43R | **7.47R** | **+37.6% — worse** |
+| longest losing streak | — | 9 | |
+
+**Do not ship this.** The cap was predicted from a Poisson model of the average
+alert rate to retain 91.4% of alerts and cost ~8.6% of return. It retained
+68.9% and cost 60%. The model was wrong because alerts are not Poisson: they
+cluster, and the clustering is not random with respect to outcome.
+
+The mechanism is the finding. The 14 suppressed alerts carried **+21.9R**, or
+**+1.564R each**, against **+0.465R** for the 31 kept. **The first alert of the
+day is 3.4× less profitable per alert than the ones after it.** Taking "first
+alert of the day" is therefore not a neutral tie-break — it is a systematic
+selection of the worse trade, and it also removes the diversification that was
+keeping the drawdown down, which is why maxDD rose while trade count fell.
+
+### Capping entries does not bound daily loss
+
+Worst intraday loss with the cap active was still **2.09R on 2026-07-14**. The
+31 capped alerts closed across **28 distinct days**, so at least three days had
+two or more closes. The cap counts entry days; the daily limit is measured on
+the day the loss is realised. **Positions carry overnight, so a cap of one
+entry per day cannot bound the daily drawdown at 1R.** Any sizing table built
+on that assumption is wrong.
+
+The rule that would bound it is a cap on **concurrent open risk**, not on
+entries per day. Not implemented; proposed, not shipped.
+
+### Bug found by this run: `riskForLimit` sign convention
+
+`max risk/trade that held: 3% daily n/a · 5% overall n/a` printed on every run.
+`riskForLimit` returned `Infinity` for any input `>= 0`, but
+`dailyRisk().worstDayLoss` and `stats().maxDD` are both magnitudes, so the only
+call site always got `Infinity`. Unit tests passed because they fed the
+function the signed values its own doc comment described and never the values
+its only caller produces. Fixed to take a magnitude, with a test that goes
+through `dailyRisk` and `stats` rather than calling the function directly.
+
+The general lesson: **a unit test that constructs its own input proves the
+function, not the integration.** The sizing line had never produced a number.

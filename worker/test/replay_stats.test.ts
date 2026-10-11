@@ -234,13 +234,25 @@ describe("daily risk — the prop-firm constraint", () => {
 
 describe("riskForLimit — sizing against a prop-firm cap", () => {
   it("sizes so the worst observed loss exactly meets the limit", () => {
-    expect(riskForLimit(-2, 3)).toBe(1.5);     // 2R day at 1.5% = 3%
-    expect(riskForLimit(-4, 5)).toBe(1.25);
+    expect(riskForLimit(2, 3)).toBe(1.5);      // a 2R day at 1.5% = 3%
+    expect(riskForLimit(4, 5)).toBe(1.25);
   });
 
-  it("returns Infinity when the worst case was not a loss", () => {
+  it("returns Infinity when no loss was observed", () => {
     expect(riskForLimit(0, 3)).toBe(Infinity);
-    expect(riskForLimit(2, 3)).toBe(Infinity);
+  });
+
+  it("takes the magnitudes its callers actually produce", () => {
+    // The integration the report depends on. This function used to expect a
+    // signed loss while dailyRisk and stats both return magnitudes, so the
+    // sizing line printed "n/a" on every run and no unit test noticed.
+    const rows = [mk({ status: "SL_HIT", r: -2, exitTime: "2026-05-01 09:00",
+                       entryTime: "2026-05-01 09:00", exit: 1.1,
+                       entry: 1.1010, stop: 1.1000 })];
+    const dr = dailyRisk(rows, false);
+    expect(dr.worstDayLoss).toBe(2);
+    expect(riskForLimit(dr.worstDayLoss, 3)).toBe(1.5);
+    expect(Number.isFinite(riskForLimit(stats(rows, false).maxDD, 5))).toBe(true);
   });
 });
 
