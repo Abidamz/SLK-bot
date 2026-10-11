@@ -96,3 +96,24 @@ ever be enabled.
 - TAYO Strategy thread — https://www.mytradingland.com/thread/slk-strategy-c24584/1
 - Top-Down Analysis Using TAYO (JhayFx) — https://jhayfx.substack.com/p/top-down-analysis-using-slk-strategy
 - X: @The_4thMan, @Kelvinking_
+
+### Read but not yet transcribed
+
+**`VfABZXNFaNI` — "Storyline and Entries."** — https://youtu.be/VfABZXNFaNI
+
+Channel **"Trade with Ichiban"** (`UCgxZQzko_wVJU5GT8cyGOzw`, 419 subscribers).
+Metadata only; **nothing of the content is known.** Four transcript fetches on
+2026-10-11 all returned the service's "YouTube is temporarily limiting
+requests" page, spread over about six minutes. The title maps directly onto the
+two pieces of work still open in the roadmap — the storyline layer and the
+entry model — so this should be read before either is built, in case it
+changes the specification.
+
+Two things to settle before treating it as spec: whether "Trade with Ichiban"
+is the 4thman channel under another name or a third party (the references
+above name @The_4thMan and two playlists, neither of which is this channel),
+and whether the owner regards it as authoritative in the same way as the
+mentorship videos.
+
+Retry via `https://youtubetotranscript.com/transcript?v=VfABZXNFaNI` and read
+`chunkIndex` in order. Do not construct proxy URLs for it.
