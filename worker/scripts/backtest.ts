@@ -33,8 +33,8 @@ import {
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
 import {
-  SPREAD_EST, challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows,
-  marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
+  SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f,
+  limitShadowRows, marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
 } from "../src/replay_stats";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
@@ -331,6 +331,13 @@ const PROP_DAILY = Number(process.env.BACKTEST_PROP_DAILY ?? 3);
 const PROP_TOTAL = Number(process.env.BACKTEST_PROP_TOTAL ?? 5);
 const RISK_PCTS = (process.env.BACKTEST_RISK_PCTS ?? "0.5,0.75,1")
   .split(",").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x > 0);
+/**
+ * Most trades to take per calendar day, 0 = uncapped. A prop-firm tool: it
+ * bounds the worst single day so risk per trade can be raised without touching
+ * the daily limit. It costs expectancy - suppressed alerts were all positive EV
+ * - so it is only worth running when the daily limit is what binds.
+ */
+const MAX_TRADES_PER_DAY = Number(process.env.BACKTEST_MAX_TRADES_PER_DAY ?? 0);
 for (const tf of ENTRY_TFS) {
   if (tf !== "30m" && tf !== "1h" && tf !== "2h") {
     throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 30m, 1h, 2h`);
@@ -359,7 +366,8 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
   "BACKTEST_ENTRY_TFS", "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
-  "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET", "BACKTEST_PROP_TOTAL",
+  "BACKTEST_MAX_TRADES_PER_DAY", "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
+  "BACKTEST_PROP_TOTAL",
   "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_VERBOSE",
 ] as const;
 
@@ -1014,6 +1022,24 @@ async function main() {
       `\n!! No spread estimate for: ${missing.join(", ")}.` +
         ` Their "spread-adjusted" figures equal raw (cost treated as 0), so those rows understate real cost.`,
     );
+  }
+
+  // Applied to the whole book, not per pair: a subscriber's account sees one
+  // stream of alerts across every instrument, so that is the stream the cap
+  // has to bound. The suppressed count is printed because a cap that quietly
+  // removed half the book would look like an improvement in every ratio.
+  if (MAX_TRADES_PER_DAY > 0) {
+    for (const [label, bucket] of [["origin", all], ["continuation", contAll], ["confirmation", confAll]] as const) {
+      const before = bucket.length;
+      const kept = capPerDay(bucket, MAX_TRADES_PER_DAY);
+      bucket.length = 0;
+      bucket.push(...kept);
+      if (label === "origin" || before !== kept.length) {
+        console.log(
+          `\n*** BACKTEST_MAX_TRADES_PER_DAY=${MAX_TRADES_PER_DAY} — ${label}: ` +
+          `${before} -> ${kept.length} alerts (${before - kept.length} suppressed) ***`);
+      }
+    }
   }
 
   const raw = emit(false);

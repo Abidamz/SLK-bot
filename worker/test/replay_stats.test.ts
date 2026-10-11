@@ -7,8 +7,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows,
-  monthlyBuckets, riskForLimit, stats, type Trade,
+  capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows,
+  marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
 } from "../src/replay_stats";
 
 function mk(o: Partial<Trade> & { status: string; r: number }): Trade {
@@ -316,5 +316,46 @@ describe("prop challenge — would a month have passed", () => {
     const adj = monthlyBuckets(rows, true)[0];
     // EURUSD spread 0.00002 over a 0.0010 stop = 0.02R a side, 0.04 round trip.
     expect(adj.netR).toBeCloseTo(raw.netR - 0.04, 10);
+  });
+});
+
+describe("capPerDay — daily trade cap", () => {
+  const at = (entryTime: string, r: number, status = "SL_HIT") =>
+    mk({ status, r, entryTime, exitTime: entryTime, exit: 1.1, entry: 1.1010, stop: 1.1000 });
+
+  it("keeps the first N of a day, in entry order", () => {
+    const rows = [at("2026-05-01 09:00", -1), at("2026-05-01 11:00", 3, "TP_HIT"),
+                  at("2026-05-01 14:00", -1)];
+    const kept = capPerDay(rows, 1);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].entryTime).toBe("2026-05-01 09:00");
+  });
+
+  it("does not pick the day's best trade - that would be untradeable", () => {
+    // The loser is first and the winner is second. Choosing by outcome would
+    // report a number no subscriber could actually have taken.
+    const rows = [at("2026-05-01 09:00", -1), at("2026-05-01 11:00", 3, "TP_HIT")];
+    expect(capPerDay(rows, 1)[0].r).toBe(-1);
+  });
+
+  it("sorts before capping, so unsorted input cannot change which trade wins", () => {
+    const rows = [at("2026-05-01 14:00", -1), at("2026-05-01 09:00", 3, "TP_HIT")];
+    const kept = capPerDay(rows, 1);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].entryTime).toBe("2026-05-01 09:00");
+  });
+
+  it("counts days separately", () => {
+    const rows = [at("2026-05-01 09:00", -1), at("2026-05-01 11:00", -1),
+                  at("2026-05-02 09:00", -1)];
+    expect(capPerDay(rows, 1)).toHaveLength(2);
+    expect(capPerDay(rows, 2)).toHaveLength(3);
+  });
+
+  it("treats zero, negative and non-finite as uncapped", () => {
+    const rows = [at("2026-05-01 09:00", -1), at("2026-05-01 11:00", -1)];
+    expect(capPerDay(rows, 0)).toHaveLength(2);
+    expect(capPerDay(rows, -1)).toHaveLength(2);
+    expect(capPerDay(rows, NaN)).toHaveLength(2);
   });
 });

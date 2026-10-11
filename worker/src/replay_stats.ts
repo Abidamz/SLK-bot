@@ -151,6 +151,34 @@ export function riskForLimit(worstR: number, limitPct: number): number {
   return worstR >= 0 ? Infinity : limitPct / -worstR;
 }
 
+/**
+ * Keeps at most `max` trades per calendar day, taken in entry order.
+ *
+ * A daily trade cap is a prop-firm tool, not an edge: it exists to bound the
+ * worst single day so risk per trade can be raised. It costs expectancy,
+ * because every suppressed alert had positive expected value, so it is only
+ * worth it when the daily limit - not the return - is what binds.
+ *
+ * Entry order is the only rule that is actually implementable live. Choosing
+ * the day's best trade in hindsight would report a number nobody could trade,
+ * and the first alert is what a subscriber acting on notifications would take.
+ */
+export function capPerDay(rows: Trade[], max: number): Trade[] {
+  if (!Number.isFinite(max) || max <= 0) return rows;
+  const ordered = [...rows].sort((a, b) =>
+    (a.entryTime + a.setupId).localeCompare(b.entryTime + b.setupId));
+  const seen = new Map<string, number>();
+  const out: Trade[] = [];
+  for (const t of ordered) {
+    const d = t.entryTime.slice(0, 10);
+    const n = seen.get(d) ?? 0;
+    if (n >= max) continue;
+    seen.set(d, n + 1);
+    out.push(t);
+  }
+  return out;
+}
+
 /** One calendar month of closed trades, with the three figures a prop firm tests. */
 export interface MonthBucket {
   month: string;
