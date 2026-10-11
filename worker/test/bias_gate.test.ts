@@ -9,6 +9,8 @@ import {
   sweepEvent,
   type BiasTier,
 } from "../src/bias_gate";
+import { storylineTiers } from "../src/bias_gate";
+import { defaultStrategy } from "../src/config";
 import type { Candle, KeyLevel } from "../src/types";
 
 const H = 3_600_000;
@@ -275,5 +277,57 @@ describe("biasGate — origin timeframe plus one lower", () => {
 
   it("gives no bias on an empty tier list", () => {
     expect(biasGate([])).toBeNull();
+  });
+});
+
+describe("storylineTiers — key levels attached per timeframe", () => {
+  // A zigzag: down to 1.0900, back up to 1.1300, down to 1.0900, back up. That
+  // gives keyLevels two V troughs, two A peaks, and open-close overlaps at the
+  // turns — enough of each kind to filter meaningfully.
+  const CLOSES = [
+    1.1200, 1.1150, 1.1100, 1.1050, 1.1000, 1.0950, 1.0900,
+    1.0950, 1.1000, 1.1050, 1.1100, 1.1150, 1.1200, 1.1250, 1.1300,
+    1.1250, 1.1200, 1.1150, 1.1100, 1.1050, 1.1000, 1.0950, 1.0900,
+    1.0950, 1.1000, 1.1050, 1.1100, 1.1150, 1.1200, 1.1250,
+  ];
+  const d1: Candle[] = CLOSES.map((c, i) => {
+    const o = i === 0 ? c + 0.005 : CLOSES[i - 1];
+    return { t: i * 86400_000, o, h: Math.max(o, c) + 0.005, l: Math.min(o, c) - 0.005, c };
+  });
+  // One wide-range bar, so keyLevels emits a DECISION zone as well.
+  d1[10] = { ...d1[10], h: d1[10].c + 0.03, l: d1[10].c - 0.03 };
+  const cfg = defaultStrategy();
+
+  it("keeps the order it was given, which is the rule itself", () => {
+    const tiers = storylineTiers([{ tf: "d1", candles: d1 }, { tf: "h4", candles: d1.slice(0, 20) }], cfg);
+    expect(tiers.map((t) => t.tf)).toEqual(["d1", "h4"]);
+    expect(tiers[0].levels.length).toBeGreaterThan(0);
+  });
+
+  it("finds A, V and OC levels in a zigzag", () => {
+    const kinds = new Set(storylineTiers([{ tf: "d1", candles: d1 }], cfg)[0].levels.map((l) => l.kind));
+    expect(kinds.has("A")).toBe(true);
+    expect(kinds.has("V")).toBe(true);
+    expect(kinds.has("OC")).toBe(true);
+  });
+
+  it("excludes DECISION zones by default and takes them when asked", () => {
+    const byDefault = storylineTiers([{ tf: "d1", candles: d1 }], cfg)[0].levels;
+    expect(byDefault.some((l) => l.kind === "DECISION")).toBe(false);
+    const asked = storylineTiers([{ tf: "d1", candles: d1 }], cfg, { kinds: ["DECISION"] })[0].levels;
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((l) => l.kind === "DECISION")).toBe(true);
+  });
+
+  it("honours minTouches", () => {
+    const all = storylineTiers([{ tf: "d1", candles: d1 }], cfg)[0].levels;
+    expect(all.length).toBeGreaterThan(0);
+    expect(storylineTiers([{ tf: "d1", candles: d1 }], cfg, { minTouches: 999 })[0].levels).toEqual([]);
+  });
+
+  it("gives a two-candle stub no levels at all", () => {
+    const tiers = storylineTiers([{ tf: "mo", candles: d1.slice(0, 2) }], cfg);
+    expect(tiers[0].candles.length).toBe(2);
+    expect(tiers[0].levels).toEqual([]);
   });
 });

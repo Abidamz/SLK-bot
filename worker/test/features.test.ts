@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import * as F from "../src/features";
 import { BASE, fromCloses, mkCandles } from "./fixtures";
+import type { Candle } from "../src/types";
 
 describe("structure", () => {
   it("reads bearish lower-highs/lower-lows", () => {
@@ -148,5 +149,51 @@ describe("misc gates", () => {
     const closed = { t: now - 1800_000, o: 1, h: 2, l: 0.5, c: 1.5 };
     const forming = { t: now - 5_000, o: 1, h: 2, l: 0.5, c: 1.5 };
     expect(F.dropIncomplete([closed, forming], 900, now)).toEqual([closed]);
+  });
+});
+
+describe("calendarSeriesComplete — the period still in progress is dropped", () => {
+  const day = (y: number, m: number, d: number, c: number): Candle =>
+    ({ t: Date.UTC(y, m - 1, d), o: c, h: c + 0.01, l: c - 0.01, c });
+
+  // Mon 2026-09-28 to Fri 2026-10-02 is one ISO week; Mon 2026-10-05 opens the next.
+  const weekA = [day(2026, 9, 28, 1.10), day(2026, 9, 29, 1.11), day(2026, 9, 30, 1.12),
+    day(2026, 10, 1, 1.13), day(2026, 10, 2, 1.14)];
+  const weekB = [day(2026, 10, 5, 1.15), day(2026, 10, 6, 1.16), day(2026, 10, 7, 1.17)];
+
+  it("drops the week that has not finished, keeping the Friday close", () => {
+    const w = F.calendarSeriesComplete([...weekA, ...weekB], "W", Date.UTC(2026, 9, 7, 12));
+    expect(w.length).toBe(1);
+    expect(w[0].t).toBe(Date.UTC(2026, 8, 28));
+    expect(w[0].c).toBe(1.14);
+  });
+
+  it("keeps a finished week before any new bar has landed", () => {
+    // Monday morning: the newest daily bar is Friday's, so the week behind it is
+    // complete. Unconditionally dropping the last group would lose a whole week.
+    expect(F.calendarSeriesComplete(weekA, "W", Date.UTC(2026, 9, 5, 0, 30)).length).toBe(1);
+  });
+
+  it("drops an in-progress month that dropIncomplete would keep", () => {
+    const july = [day(2026, 7, 1, 1.00), day(2026, 7, 15, 1.05), day(2026, 7, 31, 1.10)];
+    const close = Date.UTC(2026, 6, 31, 12);
+    expect(F.calendarSeriesComplete(july, "M", close).length).toBe(0);
+    // The fixed-period test this replaces. July opens on the 1st, so t + 30d
+    // lands on the 31st and the unfinished candle passes — a gate reading it
+    // would be reading a monthly close that has not happened yet.
+    expect(F.dropIncomplete(F.resampleCalendar(july, "M"), 30 * 86400, close).length).toBe(1);
+  });
+
+  it("keeps a month once the next one has started", () => {
+    const m = F.calendarSeriesComplete(
+      [day(2026, 7, 1, 1.00), day(2026, 7, 31, 1.10), day(2026, 8, 3, 1.20)],
+      "M", Date.UTC(2026, 7, 3, 12),
+    );
+    expect(m.length).toBe(1);
+    expect(m[0].c).toBe(1.10);
+  });
+
+  it("is empty in, empty out", () => {
+    expect(F.calendarSeriesComplete([], "W", Date.UTC(2026, 9, 7))).toEqual([]);
   });
 });

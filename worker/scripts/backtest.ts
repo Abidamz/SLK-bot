@@ -15,8 +15,9 @@
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
-import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS } from "../src/config";
-import { resampleCandles, dropIncomplete, resampleCalendar } from "../src/features";
+import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS, type StrategyConfig } from "../src/config";
+import { resampleCandles, dropIncomplete, calendarSeriesComplete } from "../src/features";
+import { biasGate, storylineTiers, type BiasEvidence, type BiasTier } from "../src/bias_gate";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
 import {
@@ -31,7 +32,7 @@ import {
   type ContinuationSetup,
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
-import type { Alert, Candle } from "../src/types";
+import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
 const ROOT = "https://jetta.dukascopy.com/v1/candles";
 
@@ -144,6 +145,14 @@ interface Trade {
   marketStatus: string; marketEntry: number; marketExitTime: string; marketR: number;
   /** Continuation shadow only: how impulsive the break candle was. */
   bodyPct?: number; bodyAtr?: number;
+  /**
+   * Direction of the setup. Stored explicitly so the origin book can be split
+   * by whether the bias gate agreed with it; reading it back from the ordering
+   * of entry/stop/tp would be one more thing to get wrong.
+   */
+  dir?: Direction;
+  /** Bias-gate shadow: the gate's state at the tick this setup was produced. */
+  biasDir?: string; biasKind?: string; mtfDir?: string;
 }
 
 /**
@@ -293,9 +302,101 @@ const CONF_LOOKBACK = Number(process.env.BACKTEST_CONF_LOOKBACK ?? CONF_PARAMS.s
  */
 const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "false") === "true";
 
+/**
+ * The storyline bias gate, measured side by side with multiTfGate rather than
+ * swapped in blind.
+ *
+ * multiTfGate asks for a breakout on every timeframe at once and asks for no
+ * rejection and no candle closure anywhere. The rule as taught is the other
+ * way round: rejection and closure on the timeframe the bias is built from,
+ * then one of three confirmations exactly one timeframe below it. These are
+ * not two settings of the same filter — they disagree on kind, so the first
+ * question is how often each one fires and how often they agree.
+ */
+const BIAS_ENABLED = (process.env.BACKTEST_BIAS ?? "true") === "true";
+/**
+ * Which key-level kinds the gate may reject from. DECISION is excluded by
+ * default: it is a single wide-range candle's body, kept in keyLevels so the
+ * pre-existing behaviour is not silently discarded, and it is not a key level
+ * in the teaching. OC is included and is the knob to watch — keyLevels emits
+ * one for every consecutive pair of overlapping bodies, which is most bars, so
+ * a gate that rejects from any OC level will find a rejection almost every
+ * candle. The level counts are printed per pair so the volume is visible
+ * rather than inferred.
+ */
+const LEVEL_KIND_NAMES: KeyLevel["kind"][] = ["A", "V", "OC", "DECISION"];
+const BIAS_KIND_TOKENS = (process.env.BACKTEST_BIAS_LEVEL_KINDS ?? "A,V,OC")
+  .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+const BIAS_LEVEL_KINDS = new Set<KeyLevel["kind"]>(
+  BIAS_KIND_TOKENS.filter((s): s is KeyLevel["kind"] => LEVEL_KIND_NAMES.includes(s as KeyLevel["kind"])),
+);
+/** Tokens that were not a real key-level kind, so a typo cannot silently mean "no levels". */
+const BIAS_KIND_IGNORED = BIAS_KIND_TOKENS.filter((s) => !BIAS_LEVEL_KINDS.has(s as KeyLevel["kind"]));
+/** Require a level to have been touched at least this often before it can sponsor a rejection. */
+const BIAS_MIN_TOUCHES = Number(process.env.BACKTEST_BIAS_MIN_TOUCHES ?? 0);
+const BIAS_ORIGIN_LOOKBACK = Number(process.env.BACKTEST_BIAS_ORIGIN_LOOKBACK ?? 4);
+const BIAS_CONFIRM_LOOKBACK = Number(process.env.BACKTEST_BIAS_CONFIRM_LOOKBACK ?? 6);
+const BIAS_SWEPT_LOOKBACK = Number(process.env.BACKTEST_BIAS_SWEPT_LOOKBACK ?? 12);
+
+/** Per-tier tally of what the gate did, aggregated across pairs in main(). */
+interface BiasSummary {
+  ticks: number;
+  /** Gate direction per tick, including "none" for no bias. */
+  dirs: Record<string, number>;
+  /** Which of the three confirmations fired. */
+  kinds: Record<string, number>;
+  /** Which adjacent timeframe pair produced the storyline, e.g. "w1>d1". */
+  pairs: Record<string, number>;
+  /** multiTfGate direction | biasGate direction, per tick. */
+  agree: Record<string, number>;
+  /** Key levels available on each tier, from the most recent refresh. */
+  levels: Record<string, number>;
+}
+
+const emptyBias = (): BiasSummary =>
+  ({ ticks: 0, dirs: {}, kinds: {}, pairs: {}, agree: {}, levels: {} });
+
+function mergeBias(into: BiasSummary, add: BiasSummary): BiasSummary {
+  const bumpAll = (a: Record<string, number>, b: Record<string, number>) => {
+    for (const [k, v] of Object.entries(b)) a[k] = (a[k] ?? 0) + v;
+  };
+  into.ticks += add.ticks;
+  bumpAll(into.dirs, add.dirs);
+  bumpAll(into.kinds, add.kinds);
+  bumpAll(into.pairs, add.pairs);
+  bumpAll(into.agree, add.agree);
+  for (const [k, v] of Object.entries(add.levels)) into.levels[k] = v;
+  return into;
+}
+
+/**
+ * The four timeframes the storyline binds, highest first, each with the key
+ * levels marked on it. biasGate walks adjacent pairs, so this ordering *is*
+ * the rule: a monthly storyline confirms on the weekly, a weekly on the daily,
+ * a daily on the 4H.
+ *
+ * The monthly tier is the navigator. It is offered but not required, because a
+ * storyline legitimately starts on the weekly or the daily when the monthly is
+ * unclear — and on a 730-day daily load there are only about two dozen monthly
+ * candles to read it from.
+ */
+function biasTiers(
+  d1c: Candle[], d1t: Candle[], w1t: Candle[], h4: Candle[], close: number, cfg: StrategyConfig,
+): BiasTier[] {
+  return storylineTiers([
+    { tf: "mo", candles: calendarSeriesComplete(d1c, "M", close) },
+    { tf: "w1", candles: w1t },
+    { tf: "d1", candles: d1t },
+    { tf: "h4", candles: h4 },
+  ], cfg, { kinds: [...BIAS_LEVEL_KINDS], minTouches: BIAS_MIN_TOUCHES });
+}
+
+const fmtCounts = (rec: Record<string, number>): string =>
+  Object.entries(rec).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join("  ") || "n/a";
+
 async function replay(
   pair: string, days: number, strategy = defaultStrategy(),
-): Promise<{ origin: Trade[]; continuation: Trade[]; confirmation: Trade[] }> {
+): Promise<{ origin: Trade[]; continuation: Trade[]; confirmation: Trade[]; bias: BiasSummary }> {
   const useOanda = SOURCE === "oanda";
   const code = CODES[pair] ?? pair;
   if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
@@ -317,12 +418,15 @@ async function replay(
     // Must match the normal return shape. Returning a bare [] here makes
     // `r.origin` undefined in the caller, and spreading undefined throws —
     // so one pair with no bars would abort the entire replay.
-    return { origin: [], continuation: [], confirmation: [] };
+    return { origin: [], continuation: [], confirmation: [], bias: emptyBias() };
   }
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
   const h1 = resampleCandles(m1, TF_SECONDS["1h"]);
-  const w1 = resampleCalendar(d1, "W");
+  // The weekly and monthly series are built inside the tick loop, from the
+  // daily bars that had actually closed by then. Building them once from the
+  // full daily load — as the weekly series used to be — hands the gate the
+  // whole rest of the window, including weeks that had not started.
 
   const seen = new Set<string>();
   const trades: Trade[] = [];
@@ -342,6 +446,8 @@ async function replay(
   let contUnfilled = 0;
   const contGateSeen: Record<string, number> = {};
   let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
+  const bias = emptyBias();
+  let biasCache: { key: string; ev: BiasEvidence | null } = { key: "", ev: null };
   const confSeen = new Set<string>();
   const confTrades: Trade[] = [];
   /** Third-candle tallies, so the 80-90% claim gets counted rather than trusted. */
@@ -360,21 +466,58 @@ async function replay(
     if (base.length < 40) { skip.base++; continue; }                          // prod: minCandles
     const h4 = dropIncomplete(resampleCandles(base, TF_SECONDS["4h"]), TF_SECONDS["4h"], close);
     if (h4.length < 30) { skip.h4++; continue; }                              // prod gate
-    const d1t = d1.filter((c) => c.t + 86400_000 <= close).slice(-400);       // prod: candlesLimit
+    const d1c = d1.filter((c) => c.t + 86400_000 <= close);                   // complete days only
+    const d1t = d1c.slice(-400);                                              // prod: candlesLimit
     if (d1t.length < 25) { skip.d1++; continue; }
     const snaps = storylineSeries(d1t, h4, strategy);
 
-    // Continuation bias gate. Weekly/daily/4H only change when one of their
-    // own candles closes, so the result is cached on those close times —
-    // otherwise every tick would recompute three swing scans for nothing.
-    if (CONT_ENABLED) {
-      const gateKey = [w1.at(-1)?.t ?? 0, d1t.at(-1)?.t ?? 0, h4.at(-1)?.t ?? 0].join("|");
-      if (gateKey !== gateCache.key) {
-        const byName: Record<string, Candle[]> = { w1, d1: d1t, h4 };
-        const chosen = CONT_GATE.map((k) => byName[k]).filter((c): c is Candle[] => Boolean(c) && c.length > 0);
-        gateCache = { key: gateKey, dir: multiTfGate(chosen) };
+    // Both gates read the same timeframes, and those only change when one of
+    // their own candles closes, so both results are cached on the daily and 4H
+    // close times — otherwise every 30-minute tick would recompute swing
+    // scans, key levels and calendar resampling for nothing. The weekly and
+    // monthly series are pure functions of the daily series, so a daily close
+    // is the finest granularity at which they can change either.
+    const tfKey = [d1t.at(-1)?.t ?? 0, h4.at(-1)?.t ?? 0].join("|");
+    if (tfKey !== gateCache.key) {
+      const w1t = calendarSeriesComplete(d1c, "W", close);
+      const byName: Record<string, Candle[]> = { w1: w1t, d1: d1t, h4 };
+      gateCache = {
+        key: tfKey,
+        dir: CONT_ENABLED
+          ? multiTfGate(CONT_GATE.map((k) => byName[k]).filter((c): c is Candle[] => Boolean(c) && c.length > 0))
+          : null,
+      };
+      if (BIAS_ENABLED) {
+        const tiers = biasTiers(d1c, d1t, w1t, h4, close, strategy);
+        biasCache = {
+          key: tfKey,
+          ev: biasGate(tiers, {
+            originLookback: BIAS_ORIGIN_LOOKBACK,
+            confirmLookback: BIAS_CONFIRM_LOOKBACK,
+            sweptLookback: BIAS_SWEPT_LOOKBACK,
+          }),
+        };
+        for (const t of tiers) bias.levels[t.tf] = t.levels.length;
       }
+    }
+    if (CONT_ENABLED) {
       contGateSeen[gateCache.dir ?? "none"] = (contGateSeen[gateCache.dir ?? "none"] ?? 0) + 1;
+    }
+    if (BIAS_ENABLED) {
+      const ev = biasCache.ev;
+      bias.ticks++;
+      bias.dirs[ev?.dir ?? "none"] = (bias.dirs[ev?.dir ?? "none"] ?? 0) + 1;
+      if (ev) {
+        bias.kinds[ev.confirmation] = (bias.kinds[ev.confirmation] ?? 0) + 1;
+        const pk = `${ev.originTf}>${ev.confirmTf}`;
+        bias.pairs[pk] = (bias.pairs[pk] ?? 0) + 1;
+      }
+      // Agreement matrix: multiTfGate direction | biasGate direction. The
+      // diagonal is the two rules saying the same thing; the off-diagonal
+      // cells are where they disagree, which is the whole point of running
+      // them side by side.
+      const k = `${gateCache.dir ?? "none"}|${ev?.dir ?? "none"}`;
+      bias.agree[k] = (bias.agree[k] ?? 0) + 1;
     }
 
     const tfs: [string, Candle[], number][] = [["30m", base, close]];
@@ -466,7 +609,7 @@ async function replay(
             ? evaluateSignal(cs.direction, mktEntry, cs.stop, mktTp, after, 120)
             : null;
           contTrades.push({
-            pair, tf, setupId: cs.setupId,
+            pair, tf, setupId: cs.setupId, dir: cs.direction,
             entryTime: new Date(cs.time).toISOString().slice(0, 16).replace("T", " "),
             entry: cs.entry, stop: cs.stop, tp: cs.tp,
             status: oc?.status ?? "OPEN",
@@ -496,7 +639,7 @@ async function replay(
           const third = thirdCandleOutcome(tfCandles, ce);
           confThird[third] = (confThird[third] ?? 0) + 1;
           confTrades.push({
-            pair, tf, setupId: ce.setupId,
+            pair, tf, setupId: ce.setupId, dir: ce.direction,
             entryTime: new Date(ce.time).toISOString().slice(0, 16).replace("T", " "),
             entry: ce.entry, stop: ce.stop, tp: ce.tp,
             status: oc?.status ?? "OPEN",
@@ -537,7 +680,10 @@ async function replay(
           ? evaluateSignal(a.direction, marketEntry, a.stopLoss, a.tpInternal, after, 120)
           : null;
         trades.push({
-          pair, tf, setupId: a.setupId,
+          pair, tf, setupId: a.setupId, dir: a.direction,
+          biasDir: biasCache.ev?.dir ?? "none",
+          biasKind: biasCache.ev?.confirmation ?? "",
+          mtfDir: gateCache.dir ?? "none",
           entryTime: new Date(a.candleCloseTime).toISOString().slice(0, 16).replace("T", " "),
           entry: a.entry, stop: a.stopLoss, tp: a.tpInternal,
           status: oc?.status ?? "OPEN",
@@ -573,7 +719,16 @@ async function replay(
   }
   const thirdSummary = Object.entries(confThird).map(([k, v]) => `${k} ${v}`).join("  ");
   if (CONF_ENABLED) console.log(`   conf entries ${confTrades.length} · third candle: ${thirdSummary || "n/a"}`);
-  return { origin: trades, continuation: contTrades, confirmation: confTrades };
+  if (BIAS_ENABLED) {
+    const fired = bias.ticks - (bias.dirs.none ?? 0);
+    const pct = bias.ticks ? ((fired / bias.ticks) * 100).toFixed(1) : "0.0";
+    console.log(
+      `   bias gate: fired ${fired}/${bias.ticks} ticks (${pct}%) · ${fmtCounts(bias.dirs)}` +
+        ` · levels ${fmtCounts(bias.levels)}`,
+    );
+    console.log(`   bias conf: ${fmtCounts(bias.kinds)} · tiers ${fmtCounts(bias.pairs)}`);
+  }
+  return { origin: trades, continuation: contTrades, confirmation: confTrades, bias };
 }
 
 function stats(rows: Trade[], spreadAdj: boolean) {
@@ -676,6 +831,10 @@ async function main() {
     process.exit(1);
   }
   console.log(`source: ${SOURCE}`);
+  if (BIAS_ENABLED && BIAS_KIND_IGNORED.length) {
+    console.log(`!! BACKTEST_BIAS_LEVEL_KINDS: ignoring unknown kind(s) ${BIAS_KIND_IGNORED.join(", ")} ` +
+      `(valid: ${LEVEL_KIND_NAMES.join(", ")}) — using ${[...BIAS_LEVEL_KINDS].join("/") || "NONE"}`);
+  }
 
   const requestedMinTpR = Number(process.env.BACKTEST_MIN_TP_R ?? "");
   const strategy = Number.isFinite(requestedMinTpR) && requestedMinTpR > 0
@@ -692,12 +851,14 @@ async function main() {
   const all: Trade[] = [];
   const contAll: Trade[] = [];
   const confAll: Trade[] = [];
+  const biasAll = emptyBias();
   try {
     for (const pair of pairs) {
       const r = await replay(pair, days, strategy);
       all.push(...r.origin);
       contAll.push(...r.continuation);
       confAll.push(...r.confirmation);
+      mergeBias(biasAll, r.bias);
     }
   } finally {
     console.info = originalInfo;
@@ -780,6 +941,79 @@ async function main() {
     `close). Model 2 is the alternative. Model 3 is the main table above, included\n` +
     `as the reference.\n\n${execLines.join("\n")}\n\n`;
   lines += `\n## Risk over time (raw / spread-adjusted)\n\n- raw: ${raw.riskNote}\n- adj: ${adj.riskNote}\n\n`;
+
+  // ── Bias gate ────────────────────────────────────────────────────────
+  // The storyline rule, measured against the gate the continuation model
+  // already uses. Fire rate and agreement first, because a gate that fires on
+  // every tick or on none of them needs no further measurement. Then what it
+  // would do to the origin book — split across the two halves of the window,
+  // because an unsplit filter result on this data has already changed sign
+  // between halves once, and a filter that only works in one regime is not a
+  // filter.
+  if (BIAS_ENABLED) {
+    const fired = biasAll.ticks - (biasAll.dirs.none ?? 0);
+    const firePct = biasAll.ticks ? (fired / biasAll.ticks) * 100 : NaN;
+    console.log(`\nBIAS GATE — ${fired}/${biasAll.ticks} ticks carry a bias (${f(firePct, 1)}%) ` +
+      `· levels ${[...BIAS_LEVEL_KINDS].join("/") || "none"} minTouches ${BIAS_MIN_TOUCHES} ` +
+      `· originLookback ${BIAS_ORIGIN_LOOKBACK} confirmLookback ${BIAS_CONFIRM_LOOKBACK} ` +
+      `sweptLookback ${BIAS_SWEPT_LOOKBACK}`);
+    console.log(`   direction    : ${fmtCounts(biasAll.dirs)}`);
+    console.log(`   confirmation : ${fmtCounts(biasAll.kinds)}`);
+    console.log(`   origin>conf  : ${fmtCounts(biasAll.pairs)}`);
+    console.log(`   levels/tier  : ${fmtCounts(biasAll.levels)}`);
+    const agreeKeys = Object.keys(biasAll.agree).sort();
+    let both = 0; let same = 0;
+    for (const k of agreeKeys) {
+      const [mtf, bg] = k.split("|");
+      if (mtf === "none" || bg === "none") continue;
+      both += biasAll.agree[k];
+      if (mtf === bg) same += biasAll.agree[k];
+    }
+    console.log(`   vs multiTfGate — both fired on ${both} ticks, same direction on ${same} ` +
+      `(${both ? f((same / both) * 100, 1) + "%" : "-"})`);
+    for (const k of agreeKeys) console.log(`      ${(k + " ").padEnd(16)}${biasAll.agree[k]}`);
+
+    // What the gate would do to the alerts the live engine already produces.
+    const bucket = (want: "agree" | "oppose" | "none"): Trade[] => all.filter((t) => {
+      const b = t.biasDir ?? "none";
+      if (b === "none") return want === "none";
+      if (want === "none" || !t.dir) return false;
+      return (b === t.dir) === (want === "agree");
+    });
+    const midIso = new Date(Date.now() - END_OFFSET_DAYS * 86400_000 - (days / 2) * 86400_000)
+      .toISOString().slice(0, 10);
+    const agreeRow = (label: string, rows: Trade[]): string => {
+      const s = stats(rows, true);
+      const older = stats(rows.filter((t) => t.entryTime.slice(0, 10) < midIso), true);
+      const recent = stats(rows.filter((t) => t.entryTime.slice(0, 10) >= midIso), true);
+      return `${label.padEnd(8)} ${String(rows.length).padStart(4)} alerts · net ${f(s.finalR)}R · ` +
+        `PF ${f(s.pf)} · win ${f(s.winrate, 1)}%  || older half ${older.tp + older.sl} closed ` +
+        `${f(older.finalR)}R · recent half ${recent.tp + recent.sl} closed ${f(recent.finalR)}R`;
+    };
+    const agreeLines: string[] = [];
+    console.log(`   origin book by gate agreement (adj, window split at ${midIso}):`);
+    for (const [label, want] of [["agrees", "agree"], ["opposes", "oppose"], ["no bias", "none"]] as const) {
+      const line = agreeRow(label, bucket(want));
+      console.log(`      ${line}`);
+      agreeLines.push(`- ${line}`);
+    }
+
+    lines += `\n## Bias gate — the storyline rule, measured\n\n` +
+      `multiTfGate wants a breakout on every timeframe at once and asks for no rejection\n` +
+      `and no candle closure anywhere. biasGate wants rejection and closure on the origin\n` +
+      `timeframe and one of three confirmations exactly one timeframe below it. Both ran on\n` +
+      `every tick of this replay.\n\n` +
+      `- ticks with a bias: ${fired}/${biasAll.ticks} (${f(firePct, 1)}%)\n` +
+      `- direction: ${fmtCounts(biasAll.dirs)}\n- confirmation: ${fmtCounts(biasAll.kinds)}\n` +
+      `- origin>confirm tier: ${fmtCounts(biasAll.pairs)}\n- key levels per tier: ${fmtCounts(biasAll.levels)}\n` +
+      `- level kinds ${[...BIAS_LEVEL_KINDS].join("/")} · minTouches ${BIAS_MIN_TOUCHES} · ` +
+      `lookbacks ${BIAS_ORIGIN_LOOKBACK}/${BIAS_CONFIRM_LOOKBACK}/${BIAS_SWEPT_LOOKBACK}\n` +
+      `- vs multiTfGate: both fired on ${both} ticks, same direction on ${same}\n` +
+      `- agreement cells (multiTfGate|biasGate): ${agreeKeys.map((k) => `${k} ${biasAll.agree[k]}`).join(", ")}\n\n` +
+      `Origin book split by whether the gate agreed, spread-adjusted, with the window\n` +
+      `halved so a regime-only result cannot hide in the total:\n\n${agreeLines.join("\n")}\n\n`;
+  }
+
   lines += `\n## Trades (pair, tf, entry time UTC, entry → exit, status, R)\n\n`;
   lines += `| pair | tf | entry time | entry | stop | tp | status | exit | exit time | R |\n|---|---|---|---|---|---|---|---|---|---|\n`;
   for (const r of all) {

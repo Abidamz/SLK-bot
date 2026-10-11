@@ -33,7 +33,8 @@
  * breakout on every timeframe simultaneously and required no rejection and no
  * closure anywhere — stricter than the rule on count, looser on kind.
  */
-import { bosEvent, findSwings } from "./features";
+import { bosEvent, findSwings, keyLevels } from "./features";
+import type { StrategyConfig } from "./config";
 import type { Candle, Direction, KeyLevel } from "./types";
 
 /**
@@ -288,4 +289,52 @@ export function biasGate(tiers: BiasTier[], opts: BiasGateOptions = {}): BiasEvi
     };
   }
   return null;
+}
+
+export interface TierSource {
+  /** Label used in diagnostics, e.g. "mo", "w1", "d1", "h4". */
+  tf: string;
+  /** Candles for this timeframe, truncated to what had closed by the tick. */
+  candles: Candle[];
+}
+
+export interface TierLevelOptions {
+  /**
+   * Key-level kinds the gate may reject from. Defaults to A, V and OC.
+   *
+   * DECISION is left out: it is a single wide-range candle's body, kept in
+   * keyLevels so pre-existing behaviour is not silently discarded, and it is
+   * not a key level in the teaching. OC is the one to watch — keyLevels emits
+   * one for every consecutive pair of overlapping bodies, which is most bars,
+   * so a gate free to reject from any OC level will find a rejection on almost
+   * every candle.
+   */
+  kinds?: KeyLevel["kind"][];
+  /** A level must have been touched at least this often to sponsor a rejection. */
+  minTouches?: number;
+}
+
+/**
+ * Attach key levels to each timeframe so the result can go straight into
+ * biasGate. Tiers must already be ordered highest to lowest — that ordering is
+ * the rule, not a convenience, because biasGate reads rejection and closure on
+ * one tier and confirmation on the next one down.
+ *
+ * A tier with fewer than three candles gets no levels. Two candles cannot hold
+ * an A or V extremum, and keyLevels on a stub series produces a zone width
+ * derived from an ATR that does not exist yet.
+ */
+export function storylineTiers(
+  sources: TierSource[],
+  cfg: StrategyConfig,
+  opts: TierLevelOptions = {},
+): BiasTier[] {
+  const kinds = new Set<KeyLevel["kind"]>(opts.kinds ?? ["A", "V", "OC"]);
+  const minTouches = opts.minTouches ?? 0;
+  return sources.map(({ tf, candles }) => ({
+    tf,
+    candles,
+    levels: candles.length < 3 ? [] : keyLevels(candles, cfg)
+      .filter((l) => kinds.has(l.kind) && l.touches >= minTouches),
+  }));
 }

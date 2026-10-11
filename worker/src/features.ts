@@ -162,6 +162,29 @@ export function resampleCalendar(daily: Candle[], period: "W" | "M"): Candle[] {
   }));
 }
 
+/**
+ * resampleCalendar, with the period still in progress at `now` removed.
+ *
+ * dropIncomplete cannot do this job. It tests `c.t + tfSeconds <= now`, and a
+ * calendar candle opens on the first *trading* day of its period, so the test
+ * is only exact for weeks. On a 31-day month the candle opens on the 1st and
+ * `t + 30d` lands on the 31st — the in-progress monthly candle passes the test
+ * for the last day or two of the month, and a gate reading it would be
+ * reading a close that has not happened yet.
+ *
+ * This compares calendar keys instead, using the same key resampleCalendar
+ * groups by, so the last group is dropped exactly when `now` still sits inside
+ * it.
+ */
+export function calendarSeriesComplete(daily: Candle[], period: "W" | "M", now: number): Candle[] {
+  const series = resampleCalendar(daily, period);
+  if (!series.length || !daily.length) return series;
+  const lastBar = daily[daily.length - 1];
+  return calendarKey(lastBar.t, period) === calendarKey(now, period)
+    ? series.slice(0, -1)
+    : series;
+}
+
 const ARROWS: Record<string, string> = { bullish: "↑", bearish: "↓", consolidation: "↔", "n/a": "?" };
 
 export function htfAlignment(d1: Candle[], h4Env: string, left = 2, right = 2): string {
