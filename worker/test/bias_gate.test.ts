@@ -33,16 +33,41 @@ function level(o: Partial<KeyLevel> & { originIndex: number; price: number; tol?
   };
 }
 
-describe("engulfing — an outside bar, wick and body", () => {
-  it("requires the high above and the low below the previous candle", () => {
-    const prev = candle(0, 1.10, 1.1050, 1.0950, 1.1020);
-    expect(isEngulfing(candle(1, 1.0940, 1.1060, 1.0940, 1.1055), prev)).toBe(true);
-    // High above but low not below: overshadows the body, not the range.
-    expect(isEngulfing(candle(1, 1.0960, 1.1060, 1.0960, 1.1055), prev)).toBe(false);
-    // Low below but high not above.
-    expect(isEngulfing(candle(1, 1.0940, 1.1040, 1.0940, 1.0950), prev)).toBe(false);
-    // Equal on one side is not overshadowing.
-    expect(isEngulfing(candle(1, 1.0950, 1.1050, 1.0950, 1.1020), prev)).toBe(false);
+describe("engulfing — the body covers the previous body, wicks irrelevant", () => {
+  // prev is bullish with a body of [1.1000, 1.1020] inside a range of
+  // [1.0950, 1.1050].
+  const prev = candle(0, 1.1000, 1.1050, 1.0950, 1.1020);
+
+  it("covers the previous body and ignores the wicks entirely", () => {
+    // Body [1.0990, 1.1030] covers [1.1000, 1.1020], and the whole candle sits
+    // inside the previous range — the wicks are not engulfed, and that does
+    // not matter.
+    expect(isEngulfing(candle(1, 1.1030, 1.1040, 1.0980, 1.0990), prev)).toBe(true);
+    // Wicks well beyond the previous range still qualify, of course.
+    expect(isEngulfing(candle(1, 1.1030, 1.1090, 1.0900, 1.0990), prev)).toBe(true);
+  });
+
+  it("is a reversal pattern, so the two candles must be opposite colours", () => {
+    // A bigger green candle on top of a green candle is momentum, not an
+    // engulfing, even though its body covers the previous one outright.
+    expect(isEngulfing(candle(1, 1.0980, 1.1100, 1.0970, 1.1090), prev)).toBe(false);
+  });
+
+  it("needs the coverage to be genuine rather than a shared boundary", () => {
+    // Bearish body [1.1000, 1.1020] exactly matches the previous body.
+    expect(isEngulfing(candle(1, 1.1020, 1.1030, 1.0990, 1.1000), prev)).toBe(false);
+    // Covers the top of the previous body but leaves the bottom exposed.
+    expect(isEngulfing(candle(1, 1.1030, 1.1040, 1.1000, 1.1005), prev)).toBe(false);
+    // Covers the bottom but leaves the top exposed.
+    expect(isEngulfing(candle(1, 1.0995, 1.1015, 1.0980, 1.0998), prev)).toBe(false);
+  });
+
+  it("has nothing to say when either candle is a doji", () => {
+    const doji = candle(0, 1.1000, 1.1050, 1.0950, 1.1000);
+    // No body to engulf.
+    expect(isEngulfing(candle(1, 1.1030, 1.1040, 1.0980, 1.0990), doji)).toBe(false);
+    // No body to engulf with.
+    expect(isEngulfing(candle(1, 1.1030, 1.1040, 1.0980, 1.1030), prev)).toBe(false);
   });
 
   it("takes direction from the engulfing candle's own close", () => {
@@ -53,13 +78,13 @@ describe("engulfing — an outside bar, wick and body", () => {
 
   it("finds the most recent engulfing in the requested direction only", () => {
     const cs = [
-      candle(0, 1.1000, 1.1050, 1.0950, 1.1020),
-      candle(1, 1.0940, 1.1060, 1.0940, 1.1055), // bullish outside bar
-      candle(2, 1.1055, 1.1080, 1.1000, 1.1070),
-      candle(3, 1.1070, 1.1090, 1.1040, 1.1080),
+      candle(0, 1.1000, 1.1050, 1.0950, 1.1020), // bullish body [1.1000, 1.1020]
+      candle(1, 1.1030, 1.1040, 1.0980, 1.0990), // bearish engulfing
+      candle(2, 1.0990, 1.1080, 1.0985, 1.1070), // bullish engulfing of candle 1
+      candle(3, 1.1070, 1.1090, 1.1040, 1.1080), // same colour as 2: momentum
     ];
-    expect(engulfingEvent(cs, "LONG", 4)?.index).toBe(1);
-    expect(engulfingEvent(cs, "SHORT", 4)).toBeNull();
+    expect(engulfingEvent(cs, "LONG", 4)?.index).toBe(2);
+    expect(engulfingEvent(cs, "SHORT", 4)?.index).toBe(1);
     // Outside the lookback window it is not reported.
     expect(engulfingEvent(cs, "LONG", 1)).toBeNull();
   });
@@ -135,7 +160,7 @@ describe("confirmation one timeframe lower — three interchangeable forms", () 
   it("accepts an engulfing on its own", () => {
     const cs = [
       candle(0, 1.1000, 1.1050, 1.0950, 1.1020),
-      candle(1, 1.1030, 1.1060, 1.0940, 1.0950), // bearish outside bar
+      candle(1, 1.1030, 1.1060, 1.0940, 1.0950), // bearish engulfing
     ];
     expect(confirmationEvent(cs, [], bearish, { lookback: 2 })?.kind).toBe("engulfing");
   });
@@ -167,7 +192,7 @@ describe("confirmation one timeframe lower — three interchangeable forms", () 
       candle(3, 1.1100, 1.1080, 1.0950, 1.0960),
       candle(4, 1.0960, 1.1060, 1.0900, 1.0950), // pivot low 1.0900
       candle(5, 1.0950, 1.1130, 1.0940, 1.1050), // wick above 1.1120, closes below: sweep
-      candle(6, 1.1100, 1.1150, 1.0920, 1.0960), // also a bearish outside bar
+      candle(6, 1.1100, 1.1150, 1.0920, 1.0945), // body [1.0945, 1.1100] covers candle 5
       candle(7, 1.0960, 1.0980, 1.0880, 1.0880), // closes below 1.0900: break down
     ];
     expect(confirmationEvent(cs, [], bearish, { lookback: 6, sweptLookback: 8 })?.kind)
@@ -180,7 +205,7 @@ describe("confirmation one timeframe lower — three interchangeable forms", () 
   it("returns null when the confirmation runs against the bias", () => {
     const cs = [
       candle(0, 1.1000, 1.1050, 1.0950, 1.0960),
-      candle(1, 1.0950, 1.1070, 1.0940, 1.1060), // bullish outside bar
+      candle(1, 1.0950, 1.1070, 1.0940, 1.1060), // bullish engulfing
     ];
     expect(confirmationEvent(cs, [], bearish, { lookback: 2 })).toBeNull();
   });
@@ -193,8 +218,8 @@ describe("biasGate — origin timeframe plus one lower", () => {
     candle(1, 1.0930, 1.0940, 1.0895, 1.0925), // rejection + close above
   ];
   const dailyConfirm = [
-    candle(0, 1.1000, 1.1050, 1.0950, 1.1020),
-    candle(1, 1.1030, 1.1060, 1.0940, 1.1055), // bullish engulfing
+    candle(0, 1.1050, 1.1060, 1.0940, 1.0950), // bearish body [1.0950, 1.1050]
+    candle(1, 1.0940, 1.1080, 1.0930, 1.1070), // bullish engulfing of that body
   ];
 
   const tier = (tf: string, candles: Candle[], levels: KeyLevel[] = []): BiasTier =>

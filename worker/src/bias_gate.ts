@@ -37,12 +37,31 @@ import { bosEvent, findSwings } from "./features";
 import type { Candle, Direction, KeyLevel } from "./types";
 
 /**
- * An engulfing candle: one that overshadows the previous candle, wick and body
- * both. This is an outside bar, which is stricter than the common
- * body-only definition — the range must be contained, not just the body.
+ * An engulfing candle: the body of the second candle completely covers the
+ * body of the first. The wicks are not part of the test — an engulfing candle
+ * can sit entirely inside the previous candle's range and still qualify.
+ *
+ * Two consequences of taking the definition literally:
+ *
+ *   - The pattern is a reversal, so the two candles must be opposite colours.
+ *     A larger candle in the same direction is momentum, not an engulfing.
+ *   - A doji has no body, so neither a doji as the engulfing candle nor a doji
+ *     as the candle being engulfed can produce the pattern.
+ *
+ * Coverage must be genuine rather than a shared boundary: at least one end of
+ * the body has to extend past the previous body, which also rules out two
+ * equal-sized bodies stacked end to end.
  */
 export function isEngulfing(c: Candle, prev: Candle): boolean {
-  return c.h > prev.h && c.l < prev.l;
+  const dir = engulfingDirection(c);
+  const prevDir = engulfingDirection(prev);
+  if (dir === null || prevDir === null) return false;
+  if (dir === prevDir) return false;
+  const cHi = Math.max(c.o, c.c);
+  const cLo = Math.min(c.o, c.c);
+  const pHi = Math.max(prev.o, prev.c);
+  const pLo = Math.min(prev.o, prev.c);
+  return cHi >= pHi && cLo <= pLo && (cHi > pHi || cLo < pLo);
 }
 
 /**
