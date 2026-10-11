@@ -33,7 +33,7 @@ import {
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
 import {
-  SPREAD_EST, f, limitShadowRows, marketShadowRows, stats, type Trade,
+  SPREAD_EST, entryTfGroups, f, limitShadowRows, marketShadowRows, stats, type Trade,
 } from "../src/replay_stats";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
@@ -299,6 +299,30 @@ const BE_ENABLED = (process.env.BACKTEST_BE ?? "true") !== "false";
 const BE_TRIGGER_R = Number(process.env.BACKTEST_BE_TRIGGER_R ?? 1.5);
 
 /**
+ * Which timeframes the replay scans for entries.
+ *
+ * Defaults to "30m,1h" - exactly what the replay has always done. Note that
+ * this does NOT match production, where ENTRY_TFS is "15m,30m,1h": the replay
+ * has never scanned 15m, so its alert count has always understated the live one.
+ *
+ * Set BACKTEST_ENTRY_TFS="30m,1h,2h" to add the 2H arm. The 2H is the entry
+ * timeframe the methodology specifies - after the 4H breakout you drop exactly
+ * one timeframe, and both entry models run on the 2H - whereas production
+ * scans three timeframes below that. The per-entry-TF table in the report is
+ * what settles whether the difference matters.
+ *
+ * 15m is deliberately not offered here: the tick loop walks 30m boundaries, so
+ * a 15m arm would need the loop itself moved to m15, not just another series.
+ */
+const ENTRY_TFS = (process.env.BACKTEST_ENTRY_TFS ?? "30m,1h")
+  .split(",").map((x) => x.trim()).filter(Boolean);
+for (const tf of ENTRY_TFS) {
+  if (tf !== "30m" && tf !== "1h" && tf !== "2h") {
+    throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 30m, 1h, 2h`);
+  }
+}
+
+/**
  * The storyline bias gate, measured side by side with multiTfGate rather than
  * swapped in blind.
  *
@@ -419,6 +443,12 @@ async function replay(
 
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
   const h1 = resampleCandles(m1, TF_SECONDS["1h"]);
+  const h2 = resampleCandles(m1, TF_SECONDS["2h"]);
+  // Full-window series per entry timeframe, used to resolve an outcome forward
+  // from a detection time. This replaces a `tf === "1h" ? h1 : m30` ternary
+  // that appeared three times and would have silently handed a 2H scan the 30m
+  // series instead of the 2H one.
+  const entrySeries: Record<string, Candle[]> = { "30m": m30, "1h": h1, "2h": h2 };
   // The weekly and monthly series are built inside the tick loop, from the
   // daily bars that had actually closed by then. Building them once from the
   // full daily load — as the weekly series used to be — hands the gate the
@@ -516,10 +546,16 @@ async function replay(
       bias.agree[k] = (bias.agree[k] ?? 0) + 1;
     }
 
-    const tfs: [string, Candle[], number][] = [["30m", base, close]];
-    if (close % 3_600_000 === 0) {                                            // 1h boundary
-      const h1s = dropIncomplete(resampleCandles(base, 3600), 3600, close);
-      tfs.push(["1h", h1s, close]);
+    // The 30m arm keeps using `base` directly rather than a resample of it, so
+    // the default run stays identical to every result recorded before this knob
+    // existed. Every other arm is resampled from `base` and truncated to the
+    // candles that had closed by `close` - the same split the 1h arm used.
+    const tfs: [string, Candle[], number][] = ENTRY_TFS.includes("30m") ? [["30m", base, close]] : [];
+    for (const tf of ENTRY_TFS) {
+      if (tf === "30m") continue;
+      const secs = TF_SECONDS[tf];
+      if (close % (secs * 1000) !== 0) continue;                              // no candle closed on this tf yet
+      tfs.push([tf, dropIncomplete(resampleCandles(base, secs), secs, close), close]);
     }
     for (const [tf, candles, nowMs] of tfs) {
       const res = scanEntry({
@@ -544,7 +580,7 @@ async function replay(
         // after them to evaluate. That is what left 31 of 33 setups stuck OPEN.
         // The full series is used below, and only to resolve outcomes forward
         // from the detection time — the same split the origin model uses.
-        const tfCandles = tf === "1h" ? h1 : m30;
+        const tfCandles = entrySeries[tf];
         // Detect on the 4 HOURS, not the entry timeframe. The continuation
         // setup is a higher-timeframe construct — the key level, the impulsive
         // break and the imbalance all live on the 4H, which is why the 4H is
@@ -623,7 +659,7 @@ async function replay(
         }
       }
       if (CONF_ENABLED && gateCache.dir) {
-        const tfCandles = tf === "1h" ? h1 : m30;
+        const tfCandles = entrySeries[tf];
         for (const ce of findConfirmationEntries(candles, gateCache.dir, {
           ...CONF_PARAMS, rr: CONF_RR, setupLookback: CONF_LOOKBACK,
           stopBuffer: CONF_STOP_PIPS * pipSize(pair),
@@ -651,7 +687,7 @@ async function replay(
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
         seen.add(a.setupId);
-        const tfCandles = tf === "1h" ? h1 : m30;
+        const tfCandles = entrySeries[tf];
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
         const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120,
           false, BE_TRIGGER_R, BE_ENABLED);
@@ -840,6 +876,25 @@ async function main() {
       f(t.winrate, 1), f(t.finalR, 1), f(t.avgR), f(t.pf), f(t.maxDD), String(t.lossStreak)];
     console.log(tot.map((c) => c.padStart(9)).join(""));
     block.push(`| **${tot.join(" | ")}** |`);
+
+    // Per entry timeframe. Every origin trade has always carried its `tf`; it
+    // was simply never grouped by. This is the table that says whether the
+    // entries belong where production puts them.
+    if (ENTRY_TFS.length > 1) {
+      console.log("");
+      const tfBlock = [
+        `| entry tf | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`,
+        `|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
+      ];
+      for (const [etf, rows] of entryTfGroups(all, ENTRY_TFS)) {
+        const s2 = stats(rows, spreadAdj);
+        const line = [etf, String(s2.alerts), String(s2.tp), String(s2.sl), String(s2.be), String(s2.expired),
+          String(s2.open), f(s2.winrate, 1), f(s2.finalR, 1), f(s2.avgR), f(s2.pf), f(s2.maxDD), String(s2.lossStreak)];
+        console.log(line.map((c) => c.padStart(9)).join(""));
+        tfBlock.push(`| ${line.join(" | ")} |`);
+      }
+      block.push("", ...tfBlock);
+    }
     const riskNote = `max drawdown **${f(t.maxDD)}R** (${t.ddFrom} → ${t.ddTo} UTC) · ` +
       `≈${f(t.maxDD, 1)}% at 1% risk/trade · longest losing streak **${t.lossStreak}** ` +
       `· longest win streak ${t.winStreak} · breakeven scratches **${t.be}** ` +

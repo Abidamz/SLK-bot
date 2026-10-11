@@ -6,7 +6,7 @@
  * scratch was filed under `open` and reported as a position still running.
  */
 import { describe, expect, it } from "vitest";
-import { f, limitShadowRows, marketShadowRows, stats, type Trade } from "../src/replay_stats";
+import { entryTfGroups, f, limitShadowRows, marketShadowRows, stats, type Trade } from "../src/replay_stats";
 
 function mk(o: Partial<Trade> & { status: string; r: number }): Trade {
   return {
@@ -115,5 +115,46 @@ describe("f — the report formatter", () => {
     expect(f(NaN)).toBe("-");
     expect(f(1.23456)).toBe("1.23");
     expect(f(1.23456, 1)).toBe("1.2");
+  });
+});
+
+describe("replay accounting — entry-timeframe breakdown", () => {
+  // Every origin row has always carried its entry timeframe. Grouping by it is
+  // what answers whether entries belong where production puts them (15m/30m/1h)
+  // or one timeframe below the 4H breakout (2h), as the methodology specifies.
+  const rows = [
+    mk({ tf: "1h", status: "TP_HIT", r: 2.5 }),
+    mk({ tf: "30m", status: "SL_HIT", r: -1 }),
+    mk({ tf: "30m", status: "BE_HIT", r: 0 }),
+    mk({ tf: "2h", status: "TP_HIT", r: 2.5 }),
+  ];
+
+  it("groups in the caller's order, not the order the rows arrived in", () => {
+    expect(entryTfGroups(rows, ["30m", "1h", "2h"]).map(([tf]) => tf))
+      .toEqual(["30m", "1h", "2h"]);
+  });
+
+  it("omits a named timeframe that produced no trades", () => {
+    const g = entryTfGroups(rows, ["15m", "30m", "1h", "2h"]);
+    expect(g.map(([tf]) => tf)).toEqual(["30m", "1h", "2h"]);
+  });
+
+  it("still reports a timeframe nobody named, so trades are never dropped", () => {
+    const g = entryTfGroups(rows, ["30m", "1h"]);
+    expect(g.map(([tf]) => tf)).toEqual(["30m", "1h", "2h"]);
+    expect(g.find(([tf]) => tf === "2h")?.[1]).toHaveLength(1);
+  });
+
+  it("partitions exhaustively — the breakdown must sum back to the total", () => {
+    const g = entryTfGroups(rows, ["2h", "1h", "30m"]);
+    const sum = g.reduce((n, [, r]) => n + r.length, 0);
+    expect(sum).toBe(rows.length);
+    // ...and per-group net R has to reconcile with the whole book.
+    const parts = g.map(([, r]) => stats(r, false).finalR);
+    expect(Math.abs(parts.reduce((a, b) => a + b, 0) - stats(rows, false).finalR)).toBeLessThan(1e-9);
+  });
+
+  it("returns nothing for an empty book", () => {
+    expect(entryTfGroups([], ["30m", "1h", "2h"])).toEqual([]);
   });
 });

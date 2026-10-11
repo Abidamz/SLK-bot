@@ -36,6 +36,32 @@ export interface Trade {
   biasDir?: string; biasKind?: string; mtfDir?: string;
 }
 
+/**
+ * Groups trade rows by entry timeframe, in the caller's order, omitting groups
+ * with no rows.
+ *
+ * Every origin row has carried its entry timeframe since the beginning; nothing
+ * ever grouped by it, which is why the replay could never answer the one
+ * structural question the entry model turns on. It lives here rather than in
+ * scripts/backtest.ts because the replay needs OANDA and cannot be run in CI,
+ * whereas this can.
+ */
+export function entryTfGroups(rows: Trade[], order: string[]): [string, Trade[]][] {
+  const out: [string, Trade[]][] = [];
+  const named = new Set<string>();
+  for (const tf of order) {
+    named.add(tf);
+    const g = rows.filter((t) => t.tf === tf);
+    if (g.length) out.push([tf, g]);
+  }
+  // A timeframe nobody asked for still gets a row. Dropping it would let the
+  // breakdown look complete while quietly omitting trades from the total.
+  for (const tf of [...new Set(rows.map((t) => t.tf))]) {
+    if (!named.has(tf)) out.push([tf, rows.filter((t) => t.tf === tf)]);
+  }
+  return out;
+}
+
 /** Closed-trade equity curve, ordered by exit time. */
 function rack(rows: Trade[]) {
   const closed = rows.filter((t) => t.status !== "OPEN" && Number.isFinite(t.r))
