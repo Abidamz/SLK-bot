@@ -209,6 +209,80 @@ PF 0.83. Dead on every pair it now runs on.
 measured and the 90d run is a sub-window, not out-of-sample. Forward results
 should be expected below these figures.
 
+## Entry timeframe — the 2H is not where the edge is
+
+`BACKTEST_ENTRY_TFS=30m,1h,2h`, four pairs, 180d, spread-adjusted. The 2H is the
+arm the methodology specifies: after the 4H breakout you drop exactly one
+timeframe. Measured, it is the worst of the three.
+
+| entry tf | alerts | TP | SL | BE | win% | netR | PF | maxDD |
+|---|---|---|---|---|---|---|---|---|
+| 30m | 27 | 12 | 14 | 1 | 46.2% | +19.5 | 2.32 | 5.56R |
+| **1h** | 18 | 8 | 6 | 4 | 57.1% | +16.8 | **3.72** | 3.20R |
+| 2h | 8 | 2 | 4 | 2 | 33.3% | **+1.7** | **1.42** | 3.08R |
+
+The 2H arm is 15% of the book for 4% of the return. **There is no case for
+adding 2h to production `ENTRY_TFS`.** Eight alerts cannot settle much either
+way — PF 1.42 on eight trades is noise — but the burden of proof was on the
+change and it was not met.
+
+**1h is the strongest arm measured**, PF 3.72 against 2.32 for 30m. Production
+scans `15m,30m,1h`; the replay cannot test 15m at all, because the tick loop
+walks 30m boundaries. Whether dropping 30m helps is untested — the arms overlap
+in time, since an hourly close is also a 30m boundary, so this is a hypothesis
+to run, not a change to ship.
+
+## XAUUSD is the weakest pair in the book and it doubles the drawdown
+
+Same run, spread-adjusted, per pair:
+
+| pair | alerts | TP | SL | BE | win% | netR | PF | maxDD |
+|---|---|---|---|---|---|---|---|---|
+| JAPAN225 | 18 | 7 | 9 | 2 | 43.8% | +10.6 | 2.12 | 3.13R |
+| NAS100 | 15 | 7 | 5 | 3 | 58.3% | +14.6 | 3.80 | 3.16R |
+| EURUSD | 6 | 4 | 1 | 1 | 80.0% | +10.7 | 11.29 | 1.07R |
+| **XAUUSD** | **14** | **4** | **9** | **1** | **30.8%** | **+2.1** | **1.24** | **6.65R** |
+
+XAUUSD still meets the selection criterion — positive in both windows. What it
+does to the book is the problem:
+
+| | 3 pairs | 4 pairs | delta |
+|---|---|---|---|
+| alerts | 33 | 53 | +20 |
+| net R | +36.2 | +38.0 | **+1.8** |
+| PF | 3.86 | 2.52 | −1.34 |
+| max DD | 3.18R | 7.33R | **+4.15R (×2.31)** |
+
+**+1.8R of return for 2.3× the maximum drawdown.** That is the whole of
+XAUUSD's contribution, and it is a bad trade at the book level even though the
+pair is not a loser.
+
+Two things pull the other way and both are on the record. The methodology names
+gold as one of its two cleanest instruments, alongside JP225 — though that is a
+claim about his discretionary method on higher timeframes, not about this
+engine's alerts. And 14 alerts is a small sample: PF 1.24 on 13 resolved trades
+is barely distinguishable from 1.0.
+
+This is the owner's decision, not a magnitude judgement to be made quietly. The
+pair was excluded once on exactly that basis and restored; it should not be
+dropped the same way.
+
+### Continuation shadow flipped positive, and it is entirely XAUUSD
+
+Market entry now reads **+151.25R, PF 1.15** across 827 setups, against
+−24.76R before. The whole of it is XAUUSD: 481 setups at **+88.61R, PF 1.55**.
+That is the same figure measured in the 13-pair run, where the older 90d
+sub-window had it at **−62.29R**. It does not survive the split, and the
+spread-adjusted column for the same shadow is still negative (−16.72R,
+PF 0.88). **Still do not ship.**
+
+### Bias gate, fourth window
+
+Still 100% fire, now 23,890/23,890 ticks. Agrees 28 alerts +10.75R PF 1.73
+against opposes 25 alerts +27.28R PF 3.63 — and agrees is **−4.70R in the
+recent half**. Agreement with `multiTfGate` fell from 81.0% to 67.5%. Four
+windows now in which agreeing with the gate has not helped.
+
 ## Still open
 
 - The 10R/week floor is unchanged and remains ~75× the measured +0.13R/week.
