@@ -386,3 +386,51 @@ through `dailyRisk` and `stats` rather than calling the function directly.
 
 The general lesson: **a unit test that constructs its own input proves the
 function, not the integration.** The sizing line had never produced a number.
+
+---
+
+## Monthly challenge scoring: 3/7 pass, and every pass is in the first half
+
+Uncapped, 4 pairs (`JAPAN225,NAS100,EURUSD,XAUUSD`), `30m,1h`, 180d, adj.
+Target 8% · daily 3% · overall 5%, at 0.75% risk per trade:
+
+| month | alerts | netR | maxDD | worstDay | at 0.75% | verdict |
+|---|---|---|---|---|---|---|
+| 2026-04 | 8 | +12.0 | 1.14R | 1.10R | +9.01% | **PASS** |
+| 2026-05 | 6 | +12.8 | 1.05R | 1.05R | +9.63% | **PASS** |
+| 2026-06 | 9 | +15.7 | 1.04R | 1.04R | +11.78% | **PASS** |
+| 2026-07 | 12 | −2.6 | 5.41R | 2.09R | −1.98% | FAIL |
+| 2026-08 | 5 | +3.7 | 2.14R | 1.08R | +2.76% | FAIL |
+| 2026-09 | 3 | −3.2 | 3.23R | 2.13R | −2.42% | FAIL |
+| 2026-10 | 2 | −2.0 | 2.04R | 1.03R | −1.53% | FAIL |
+
+| window | alerts | netR | R per alert | months passing |
+|---|---|---|---|---|
+| Apr–Jun | 23 | **+40.5** | **+1.76** | 3/3 |
+| Jul–Oct | 22 | **−4.1** | **−0.19** | 0/4 |
+| whole | 45 | +36.4 | +0.81 | 3/7 |
+
+**The per-alert expectancy flips sign between the halves.** Every headline
+figure quoted elsewhere in this document — +1.41R/week, +1.097R per alert — is
+the good half. The recent four months are net negative.
+
+This is the unflattering reading, and it is the correct one: the pairs were
+selected on this same 180d window, so the last four months are **in-sample for
+selection and out-of-sample in time**, and they are still negative. A pair set
+chosen using data that includes those months should, if anything, be biased
+toward performing well in them.
+
+**July is the entire window's drawdown.** It is also the busiest month (12
+alerts) and it made −2.6R while carrying a 5.41R max — the window's maxDD is
+5.43R. The system traded most in the month it performed worst.
+
+**XAUUSD supplies the drawdown and none of the return:** 12 alerts, +0.2R,
+maxDD 5.62R, 27.3% win, against a book at +36.3R with a 5.43R max. Removing it
+is the first thing to measure against these monthly numbers.
+
+Execution reconfirmed on the same 45 alerts (adj): pending limit 32.05R →
+market 34.04R → always-filled 36.34R. **Market entry is worth +1.99R (+6.2%)**
+and 3 alerts never filled the limit at all.
+
+Bias gate reconfirmed inverted: agrees 23 alerts +9.97R PF 1.79, opposes 22
+alerts +26.36R PF 4.16. Do not ship.
