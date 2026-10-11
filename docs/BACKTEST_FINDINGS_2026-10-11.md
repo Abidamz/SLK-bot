@@ -434,3 +434,57 @@ and 3 alerts never filled the limit at all.
 
 Bias gate reconfirmed inverted: agrees 23 alerts +9.97R PF 1.79, opposes 22
 alerts +26.36R PF 4.16. Do not ship.
+
+---
+
+## Dropping XAUUSD: clear risk win, and the decay is not its fault
+
+3 pairs (`JAPAN225,NAS100,EURUSD`), `30m,1h`, 180d, adj — against the 4-pair
+book:
+
+| | 4 pairs | 3 pairs | |
+|---|---|---|---|
+| alerts | 45 | 33 | |
+| net R | +36.3 | **+36.2** | unchanged |
+| max drawdown | 5.43R | **3.18R** | **−41%** |
+| profit factor | 2.73 | **3.86** | |
+| losing streak | 7 | **4** | |
+| R per alert | +0.81 | **+1.10** | |
+| months passing @0.75% | 3/7 | **2/7** | |
+
+XAUUSD contributed **+5.8R in April alone**, enough to carry that month over the
+8% line. It bought one passing month and 71% more drawdown. On any
+risk-adjusted basis it is a bad trade; on a raw pass count it is not.
+
+### The recent-half decay survives removing it
+
+| window | 4 pairs | 3 pairs |
+|---|---|---|
+| Apr–Jun | +1.76R/alert | **+1.79R/alert** |
+| Jul–Oct | −0.19R/alert | **+0.03R/alert** |
+
+XAUUSD turned a flat period negative (−0.22R/alert of the damage was its own),
+**but the flatness is not its fault.** Stripped of XAUUSD the recent four months
+still earn **+0.03R per alert against +1.79R in the three before** — zero, not
+negative, but zero.
+
+Alert frequency fell at the same time: **6.7 alerts/month in Apr–Jun, 3.2/month
+in Jul–Oct.** Both the quality and the quantity of signals dropped after June.
+
+With seven monthly samples this cannot yet be separated into regime change
+versus edge decay. What can be said: the book did not make money in the last
+four months, on pairs selected using data that included those months.
+
+### The sizing line works for the first time
+
+`max risk/trade that held: 3% daily 1.44% · 5% overall 1.57%`
+
+1.44% is the largest risk per trade at which no historical day reached the 3%
+daily limit and no point reached the 5% overall limit. It is retrospective and
+carries zero margin, so it is a ceiling to reason from, not a number to run.
+
+Reconfirmed on the same 33 alerts (adj): pending limit 31.87R → market 33.83R
+→ always-filled 36.16R. **Market entry +1.96R (+6.2%).** Bias gate still
+inverted (agrees +13.35R PF 3.09, opposes +22.81R PF 4.65) though less
+extremely than on four pairs, and agreement with multiTfGate rose 67.5% → 81.0%.
+Still do not ship.
