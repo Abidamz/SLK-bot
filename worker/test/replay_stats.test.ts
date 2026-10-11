@@ -6,7 +6,10 @@
  * scratch was filed under `open` and reported as a position still running.
  */
 import { describe, expect, it } from "vitest";
-import { dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows, riskForLimit, stats, type Trade } from "../src/replay_stats";
+import {
+  challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows,
+  monthlyBuckets, riskForLimit, stats, type Trade,
+} from "../src/replay_stats";
 
 function mk(o: Partial<Trade> & { status: string; r: number }): Trade {
   return {
@@ -238,5 +241,80 @@ describe("riskForLimit — sizing against a prop-firm cap", () => {
   it("returns Infinity when the worst case was not a loss", () => {
     expect(riskForLimit(0, 3)).toBe(Infinity);
     expect(riskForLimit(2, 3)).toBe(Infinity);
+  });
+});
+
+describe("prop challenge — would a month have passed", () => {
+  const lim = { targetPct: 8, dailyPct: 3, totalPct: 5 };
+  const at = (exitTime: string, r: number, status = "SL_HIT") =>
+    mk({ status, r, exitTime, entryTime: exitTime, exit: 1.1, entry: 1.1010, stop: 1.1000 });
+
+  it("groups by calendar month, sorted, with the three figures a firm tests", () => {
+    const rows = [
+      at("2026-06-10 09:00", 2, "TP_HIT"), at("2026-05-10 09:00", -1),
+      at("2026-06-11 09:00", -1),
+    ];
+    const m = monthlyBuckets(rows, false);
+    expect(m.map((x) => x.month)).toEqual(["2026-05", "2026-06"]);
+    expect(m[0]).toMatchObject({ alerts: 1, netR: -1, worstDay: 1 });
+    expect(m[1]).toMatchObject({ alerts: 2, netR: 1 });
+    expect(m[1].maxDD).toBe(1);        // +2 then -1: peak 2, trough 1
+  });
+
+  it("fails a month that made the target but breached the daily limit", () => {
+    // 12% made, and the account was already gone on day one. Reporting this as
+    // a pass is how a backtest starts lying about a funded account.
+    const v = challengeVerdict(
+      { month: "2026-05", alerts: 5, netR: 12, maxDD: 2, worstDay: 4 }, 1, lim);
+    expect(v.pass).toBe(false);
+    expect(v.reason).toContain("daily");
+  });
+
+  it("reports the daily breach, not the missed target, when both happen", () => {
+    // The discriminating case: a month that misses the target AND breaches the
+    // daily limit fails either way, so only the reason shows which check ran
+    // first. A firm would have closed the account on the breach, and a report
+    // that says "made 5% < 8%" implies the month was merely unprofitable.
+    const m = { month: "2026-05", alerts: 5, netR: 5, maxDD: 2, worstDay: 4 };
+    const v = challengeVerdict(m, 1, lim);
+    expect(v.pass).toBe(false);
+    expect(v.reason).toContain("daily");
+    expect(v.reason).not.toContain("made");
+  });
+
+  it("fails on the overall limit before it considers the target", () => {
+    const v = challengeVerdict(
+      { month: "2026-05", alerts: 5, netR: 5, maxDD: 6, worstDay: 1 }, 1, lim);
+    expect(v.pass).toBe(false);
+    expect(v.reason).toContain("total");
+    expect(v.reason).not.toContain("made");
+  });
+
+  it("fails a clean month that simply did not make the target", () => {
+    const v = challengeVerdict(
+      { month: "2026-05", alerts: 5, netR: 5, maxDD: 2, worstDay: 1 }, 1, lim);
+    expect(v.pass).toBe(false);
+    expect(v.reason).toContain("made");
+  });
+
+  it("passes a month inside every limit", () => {
+    const v = challengeVerdict(
+      { month: "2026-05", alerts: 5, netR: 9, maxDD: 3, worstDay: 2 }, 1, lim);
+    expect(v.pass).toBe(true);
+  });
+
+  it("scales with risk per trade, which is the actual decision variable", () => {
+    const m = { month: "2026-05", alerts: 5, netR: 9, maxDD: 3, worstDay: 2 };
+    expect(challengeVerdict(m, 1, lim).pass).toBe(true);      // 9%, worst day 2%
+    expect(challengeVerdict(m, 0.5, lim).pass).toBe(false);  // 4.5% < 8%
+    expect(challengeVerdict(m, 2, lim).pass).toBe(false);    // worst day 4% >= 3%
+  });
+
+  it("charges spread once, not once per month", () => {
+    const rows = [at("2026-05-10 09:00", -1)];
+    const raw = monthlyBuckets(rows, false)[0];
+    const adj = monthlyBuckets(rows, true)[0];
+    // EURUSD spread 0.00002 over a 0.0010 stop = 0.02R a side, 0.04 round trip.
+    expect(adj.netR).toBeCloseTo(raw.netR - 0.04, 10);
   });
 });

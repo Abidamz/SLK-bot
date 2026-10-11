@@ -33,7 +33,8 @@ import {
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
 import {
-  SPREAD_EST, dailyRisk, entryTfGroups, f, limitShadowRows, marketShadowRows, riskForLimit, stats, type Trade,
+  SPREAD_EST, challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows,
+  marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
 } from "../src/replay_stats";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
@@ -316,6 +317,20 @@ const BE_TRIGGER_R = Number(process.env.BACKTEST_BE_TRIGGER_R ?? 1.5);
  */
 const ENTRY_TFS = (process.env.BACKTEST_ENTRY_TFS ?? "30m,1h")
   .split(",").map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Prop-firm challenge parameters. Subscribers trade funded accounts, so the
+ * question that decides whether this is usable is not "what did it make over
+ * 180 days" but "would it have passed a 30-day challenge, at the risk we would
+ * tell someone to run, without touching the daily or overall limit".
+ *
+ * Defaults are the tightest common set: 8% target, 3% daily, 5% overall.
+ */
+const PROP_TARGET = Number(process.env.BACKTEST_PROP_TARGET ?? 8);
+const PROP_DAILY = Number(process.env.BACKTEST_PROP_DAILY ?? 3);
+const PROP_TOTAL = Number(process.env.BACKTEST_PROP_TOTAL ?? 5);
+const RISK_PCTS = (process.env.BACKTEST_RISK_PCTS ?? "0.5,0.75,1")
+  .split(",").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x > 0);
 for (const tf of ENTRY_TFS) {
   if (tf !== "30m" && tf !== "1h" && tf !== "2h") {
     throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 30m, 1h, 2h`);
@@ -344,7 +359,8 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
   "BACKTEST_ENTRY_TFS", "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
-  "BACKTEST_SOURCE", "BACKTEST_VERBOSE",
+  "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET", "BACKTEST_PROP_TOTAL",
+  "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_VERBOSE",
 ] as const;
 
 const unknownBacktestVars = Object.keys(process.env)
@@ -956,6 +972,38 @@ async function main() {
     console.log(propNote);
     console.log(sizingNote);
     block.push("", propNote, sizingNote.trim());
+
+    // Would each month have passed a challenge? A 180-day aggregate averages
+    // six challenges into one number and reports the drawdown of the whole
+    // window, which is not the limit a firm enforces. This gives six samples.
+    const months = monthlyBuckets(all, spreadAdj);
+    if (months.length) {
+      const chLines = [`PROP CHALLENGE — monthly windows, target ${PROP_TARGET}% · daily ${PROP_DAILY}% · overall ${PROP_TOTAL}%`];
+      for (const risk of RISK_PCTS) {
+        const verdicts = months.map((m) => challengeVerdict(m, risk, {
+          targetPct: PROP_TARGET, dailyPct: PROP_DAILY, totalPct: PROP_TOTAL,
+        }));
+        const passed = verdicts.filter((v) => v.pass).length;
+        chLines.push(
+          `   risk ${f(risk, 2)}%/trade : ${passed}/${months.length} months pass · ` +
+          `worst day ${f(Math.max(...months.map((m) => m.worstDay * risk)), 2)}% · ` +
+          `worst month ${f(Math.min(...months.map((m) => m.netR * risk)), 2)}%`);
+      }
+      const mid = RISK_PCTS.length ? RISK_PCTS[Math.floor(RISK_PCTS.length / 2)] : 1;
+      chLines.push(`   per month at ${f(mid, 2)}% risk:`);
+      for (const m of months) {
+        const v = challengeVerdict(m, mid, {
+          targetPct: PROP_TARGET, dailyPct: PROP_DAILY, totalPct: PROP_TOTAL,
+        });
+        chLines.push(
+          `      ${m.month}  ${String(m.alerts).padStart(3)} alerts  netR ${f(m.netR, 1).padStart(6)}  ` +
+          `maxDD ${f(m.maxDD, 2).padStart(5)}R  worstDay ${f(m.worstDay, 2).padStart(5)}R  ` +
+          `${v.pass ? "PASS" : "FAIL"} — ${v.reason}`);
+      }
+      const ch = chLines.join("\n");
+      console.log("\n" + ch);
+      block.push("", "```", ch, "```");
+    }
 
     return { block: block.join("\n"), riskNote };
   };

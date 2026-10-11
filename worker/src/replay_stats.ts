@@ -151,6 +151,70 @@ export function riskForLimit(worstR: number, limitPct: number): number {
   return worstR >= 0 ? Infinity : limitPct / -worstR;
 }
 
+/** One calendar month of closed trades, with the three figures a prop firm tests. */
+export interface MonthBucket {
+  month: string;
+  alerts: number;
+  netR: number;
+  maxDD: number;
+  worstDay: number;
+}
+
+/**
+ * Splits the book into calendar months of closed trades.
+ *
+ * "Pass a challenge within a month" is a monthly question, and a 180-day
+ * aggregate cannot answer it: it averages six challenges into one number and
+ * reports the drawdown of the whole window rather than the worst month in it.
+ * This gives six samples of the thing actually being asked.
+ *
+ * Spread is charged once here; the per-month calls below pass spreadAdj=false
+ * so it is not charged twice.
+ */
+export function monthlyBuckets(rows: Trade[], spreadAdj: boolean): MonthBucket[] {
+  const closed = rows
+    .map((t) => applySpread(t, spreadAdj))
+    .filter((t) => t.status !== "OPEN" && Number.isFinite(t.r) && t.exitTime !== "-");
+  const byMonth = new Map<string, Trade[]>();
+  for (const t of closed) {
+    const m = t.exitTime.slice(0, 7);
+    const arr = byMonth.get(m);
+    if (arr) arr.push(t); else byMonth.set(m, [t]);
+  }
+  return [...byMonth.keys()].sort().map((month) => {
+    const rs = byMonth.get(month) as Trade[];
+    return {
+      month, alerts: rs.length, netR: stats(rs, false).finalR,
+      maxDD: stats(rs, false).maxDD, worstDay: dailyRisk(rs, false).worstDayLoss,
+    };
+  });
+}
+
+/** Prop-firm challenge limits, in percent of the starting balance. */
+export interface PropLimits {
+  targetPct: number;
+  dailyPct: number;
+  totalPct: number;
+}
+
+/**
+ * Would this month have passed a challenge at the given risk per trade?
+ *
+ * Reasons are returned in the order a firm would hit them. A daily breach ends
+ * the account immediately, so it is reported even in a month that made the
+ * target - a month that made 12% and blew the daily limit on the way is a
+ * failure, and reporting it as a pass is how a backtest starts lying.
+ */
+export function challengeVerdict(
+  m: MonthBucket, riskPct: number, lim: PropLimits,
+): { pass: boolean; reason: string } {
+  const ret = m.netR * riskPct, dd = m.maxDD * riskPct, day = m.worstDay * riskPct;
+  if (day >= lim.dailyPct) return { pass: false, reason: `daily ${f(day, 2)}% >= ${lim.dailyPct}%` };
+  if (dd >= lim.totalPct) return { pass: false, reason: `total ${f(dd, 2)}% >= ${lim.totalPct}%` };
+  if (ret < lim.targetPct) return { pass: false, reason: `made ${f(ret, 2)}% < ${lim.targetPct}%` };
+  return { pass: true, reason: `made ${f(ret, 2)}%, worst day ${f(day, 2)}%, max DD ${f(dd, 2)}%` };
+}
+
 /** Closed-trade equity curve, ordered by exit time. */
 function rack(rows: Trade[]) {
   const closed = rows.filter((t) => t.status !== "OPEN" && Number.isFinite(t.r))
