@@ -323,6 +323,42 @@ for (const tf of ENTRY_TFS) {
 }
 
 /**
+ * Every BACKTEST_* variable this script reads, so that an unrecognised one can
+ * be refused instead of silently ignored.
+ *
+ * That silence is the dangerous part. Running BACKTEST_ENTRY_TFS=30m,1h,2h
+ * against a checkout from before the knob existed prints a complete,
+ * plausible-looking report that quietly contains no 2H trades at all, and
+ * nothing in the output says the request was dropped. A typo in a knob name
+ * fails the same way. test/backtest_knobs.test.ts asserts this list matches
+ * the variables the source actually reads, so it cannot drift.
+ */
+const KNOWN_BACKTEST_VARS = [
+  "BACKTEST_BE", "BACKTEST_BE_TRIGGER_R", "BACKTEST_BIAS",
+  "BACKTEST_BIAS_CONFIRM_LOOKBACK", "BACKTEST_BIAS_LEVEL_KINDS",
+  "BACKTEST_BIAS_MIN_TOUCHES", "BACKTEST_BIAS_ORIGIN_LOOKBACK",
+  "BACKTEST_BIAS_SWEPT_LOOKBACK", "BACKTEST_CONF", "BACKTEST_CONF_LOOKBACK",
+  "BACKTEST_CONF_RR", "BACKTEST_CONF_STOP_PIPS", "BACKTEST_CONT_GATE",
+  "BACKTEST_CONT_IMPULSE_LOOKBACK", "BACKTEST_CONT_LEG_ORIGIN",
+  "BACKTEST_CONT_MAX_DEPTH", "BACKTEST_CONT_MIN_BODY_PCT",
+  "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
+  "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
+  "BACKTEST_ENTRY_TFS", "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
+  "BACKTEST_SOURCE", "BACKTEST_VERBOSE",
+] as const;
+
+const unknownBacktestVars = Object.keys(process.env)
+  .filter((k) => k.startsWith("BACKTEST_") && !(KNOWN_BACKTEST_VARS as readonly string[]).includes(k))
+  .sort();
+if (unknownBacktestVars.length) {
+  throw new Error(
+    `Unknown BACKTEST_* variable(s): ${unknownBacktestVars.join(", ")}.\n` +
+    `This script reads: ${[...KNOWN_BACKTEST_VARS].sort().join(", ")}.\n` +
+    `If you expected one of these to exist, this checkout predates it — git pull.`
+  );
+}
+
+/**
  * The storyline bias gate, measured side by side with multiTfGate rather than
  * swapped in blind.
  *
@@ -801,6 +837,7 @@ async function main() {
     process.exit(1);
   }
   console.log(`source: ${SOURCE}`);
+  console.log(`entry tfs : ${ENTRY_TFS.join(", ")}`);
   console.log(`breakeven : ${BE_ENABLED ? `armed at +${f(BE_TRIGGER_R, 2)}R (as the alert instructs)` : "OFF — fixed stop"}`);
   if (BIAS_ENABLED && BIAS_KIND_IGNORED.length) {
     console.log(`!! BACKTEST_BIAS_LEVEL_KINDS: ignoring unknown kind(s) ${BIAS_KIND_IGNORED.join(", ")} ` +
