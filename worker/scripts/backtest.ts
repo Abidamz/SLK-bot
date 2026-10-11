@@ -772,12 +772,33 @@ async function main() {
   }
 
   const requestedMinTpR = Number(process.env.BACKTEST_MIN_TP_R ?? "");
-  const strategy = Number.isFinite(requestedMinTpR) && requestedMinTpR > 0
-    ? { ...defaultStrategy(), minTpR: requestedMinTpR }
-    : defaultStrategy();   // the SAME gates the live worker uses
-  if (strategy.minTpR !== defaultStrategy().minTpR) {
-    console.log(`
-*** BACKTEST OVERRIDE: minTpR=${strategy.minTpR} (research comparison only) ***`);
+  /**
+   * The stop floor. Worth sweeping because cost is charged as
+   * spread / stopDistance, so a tight stop is what makes the round trip
+   * expensive in R — and costs were 19.19R of 22.51R gross on the 180d run,
+   * 85% of the edge. Note the tension this exposes: 10 pips is a FLOOR here,
+   * while the teaching's "my highest stop loss I can go for every trade is 10
+   * pips" is a CEILING. defaultStrategy() does not read MIN_STOP_PIPS (that
+   * happens in loadConfig, which the replay does not use), so the override has
+   * to be applied here.
+   *
+   * Measured before recommending a sweep: minStopDistance takes
+   * max(floor, minStopPips), and the floors swallow the knob for two of the
+   * three pairs now on the watchlist. JAPAN225 holds at 50 points for any
+   * minStopPips <= 50 and NAS100 at 25 for any value <= 25, so only EURUSD
+   * (linear, 0.0001 per pip) responds in the useful range. Sweeping this on
+   * the current watchlist changes one pair out of three.
+   */
+  const requestedMinStop = Number(process.env.BACKTEST_MIN_STOP_PIPS ?? "");
+  const strategy: StrategyConfig = {
+    ...defaultStrategy(),
+    ...(Number.isFinite(requestedMinTpR) && requestedMinTpR > 0 ? { minTpR: requestedMinTpR } : {}),
+    ...(Number.isFinite(requestedMinStop) && requestedMinStop > 0 ? { minStopPips: requestedMinStop } : {}),
+  };
+  for (const [name, val] of [["minTpR", requestedMinTpR], ["minStopPips", requestedMinStop]] as const) {
+    if (Number.isFinite(val) && val > 0) {
+      console.log(`\n*** BACKTEST OVERRIDE: ${name}=${val} (research comparison only) ***`);
+    }
   }
   // scanEntry logs every storyline transition, which is useful in production
   // but can overwhelm a long replay. Opt in with BACKTEST_VERBOSE=1.
