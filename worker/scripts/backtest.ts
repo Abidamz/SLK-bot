@@ -62,7 +62,7 @@ const CODES: Record<string, string> = {
  * To scan the full institutional set again, pass it explicitly:
  *   npx tsx scripts/backtest.ts AUDJPY,EURJPY,GBPJPY,USDJPY,USDCAD,JAPAN225,NAS100,EURUSD,GBPUSD,NZDUSD,XAUUSD,US30,GER40 180
  */
-const DEFAULT_PAIRS = ["JAPAN225", "NAS100", "EURUSD"];
+const DEFAULT_PAIRS = ["JAPAN225", "NAS100", "EURUSD", "XAUUSD"];
 
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };

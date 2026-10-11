@@ -24,17 +24,24 @@
     // Dukascopy public feed when OANDA is unavailable; canonical provider
     // instrument mappings are defined in worker/src/provider.ts.
     //
-    // CUT FROM 23 TO 3 on 2026-10-11, on the 180d OANDA replay recorded in
-    // docs/BACKTEST_FINDINGS_2026-10-11.md. These three carry the whole book:
-    // JAPAN225 +12.7R, NAS100 +12.8R, EURUSD +10.7R spread-adjusted, +36.2R
-    // between them, against -32.8R for the ten institutional pairs dropped.
-    // All three were also positive in the older 90d sub-window
-    // (+9.2R / +14.9R / +10.7R).
+    // CUT FROM 23 TO 4 on 2026-10-11, on the 180d OANDA replay recorded in
+    // docs/BACKTEST_FINDINGS_2026-10-11.md. The criterion is one thing only:
+    // spread-adjusted positive in BOTH the full 180d window and the older 90d
+    // sub-window. Six of the thirteen institutional pairs met it.
     //
-    // EURJPY (+2.2R / +1.0R) was the one dropped pair that was positive in both
-    // windows and is the first candidate to restore. US30 (+0.4R) and XAUUSD
-    // (+0.2R) were flat. USDJPY (+0.7R over 180d, -5.2R over the older 90d)
-    // flipped sign between windows.
+    //   listed   JAPAN225 +12.7R / +9.2R     NAS100 +12.8R / +14.9R
+    //            EURUSD   +10.7R / +10.7R    XAUUSD  +0.2R /  +3.7R
+    //   held     EURJPY    +2.2R /  +1.0R    US30    +0.4R /  +0.2R
+    //
+    // XAUUSD was left out of the first cut and restored the same day. It meets
+    // the criterion; excluding it was a magnitude judgement that was never
+    // stated as one, which is the error worth recording. EURJPY and US30 meet
+    // it too and are held rather than dropped - restore candidates in that
+    // order, the owner's call rather than a silent exclusion.
+    //
+    // USDJPY (+0.7R over 180d, -5.2R over the older 90d) flipped sign between
+    // windows and does not qualify. GBPJPY, GBPUSD, GER40, NZDUSD, AUDJPY and
+    // USDCAD were negative in both.
     //
     // This is IN-SAMPLE SELECTION: the pairs were picked from the same window
     // being measured, and the older 90d run is a sub-window rather than
@@ -45,7 +52,7 @@
     // it requires OANDA, which does not carry them. Cut as UNPROVEN, not as
     // measured losers. SYNTH_ENTRY_TFS and the Deriv routing are left in place
     // so they can return without further code changes.
-    "PAIRS": "JAPAN225,NAS100,EURUSD",
+    "PAIRS": "JAPAN225,NAS100,EURUSD,XAUUSD",
     "ENTRY_TFS": "15m,30m,1h",
     // Deriv synthetics confirm on the selected primary timeframes; institutional
     // pairs continue to use the full ENTRY_TFS set.

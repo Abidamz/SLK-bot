@@ -507,8 +507,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
-            <div><dt>Active Markets (3)</dt><dd id="pairs">JAPAN225 · NAS100 · EURUSD</dd></div>
-            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">3 Institutional · evidence-selected 2026-10-11</dd></div>
+            <div><dt>Active Markets (4)</dt><dd id="pairs">JAPAN225 · NAS100 · EURUSD · XAUUSD</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">4 Institutional · evidence-selected 2026-10-11</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>

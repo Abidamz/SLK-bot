@@ -144,11 +144,66 @@ gave roughly nothing back. Both are post-hoc selections from thirteen pairs.
 
 ## What changed as a result
 
-`PAIRS` in `worker/wrangler.jsonc` cut 23 → 3 (`JAPAN225,NAS100,EURUSD`), and
-`DEFAULT_PAIRS` in `worker/scripts/backtest.ts` to match. EURJPY is the first
-restore candidate. All ten Deriv synthetics were removed as **unproven** — they
-have never alerted, and no backtest can produce a result for them because the
-replay requires OANDA.
+`PAIRS` in `worker/wrangler.jsonc` cut 23 → 4
+(`JAPAN225,NAS100,EURUSD,XAUUSD`), and `DEFAULT_PAIRS` in
+`worker/scripts/backtest.ts` to match. All ten Deriv synthetics were removed as
+**unproven** — they have never alerted, and no backtest can produce a result
+for them because the replay requires OANDA.
+
+**Correction, same day.** The first cut went to three pairs and its comment
+claimed EURJPY was "the one dropped pair that was positive in both windows".
+That was wrong twice over. Three dropped pairs met the criterion — EURJPY,
+XAUUSD and US30 — and XAUUSD had been excluded by an unstated magnitude
+judgement rather than by the rule. XAUUSD is restored. EURJPY (+2.2R / +1.0R)
+and US30 (+0.4R / +0.2R) still meet the criterion and are held rather than
+dropped; they are recorded in the `wrangler.jsonc` comment so the exclusion is
+a decision on the record and not a silent one.
+
+## Breakeven A/B — the first measurement of a rule that ships in every alert
+
+Same 33 alerts, three pairs, 180d. The only difference is
+`BACKTEST_BE=false`, which runs a fixed stop instead of moving to entry at
++1.5R.
+
+| | alerts | TP | SL | BE | win% | raw netR | adj netR | adj PF | adj maxDD |
+|---|---|---|---|---|---|---|---|---|---|
+| breakeven armed at +1.5R | 33 | 17 | 12 | 4 | 58.6% | +37.67 | **+36.16** | **3.86** | **3.18R** |
+| fixed stop | 33 | 18 | 15 | 0 | 54.5% | +37.35 | +35.84 | 3.27 | 4.18R |
+
+The breakeven instruction is worth **+0.32R over 180 days — nothing in return
+terms.** What it buys is risk shape: max drawdown 4.18R → 3.18R (−24%) and
+profit factor 3.27 → 3.86. Four trades scratched at 12.1% of resolved, and
+without the rule three of them became losses and one became a winner.
+
+Keep it, but for the drawdown, not because it makes money.
+
+### Execution matters far less on the kept pairs
+
+Spread-adjusted, same 33 alerts:
+
+| entry model | net R | PF |
+|---|---|---|
+| pending limit @ retest close (30/33 filled) | +31.87 | 3.76 |
+| market @ next open | +33.83 | 3.68 |
+| entry @ retest close, always filled | +36.16 | 3.86 |
+
+On the 13-pair book the pending limit was **−3.54R** against +3.32R always
+filled — a sign flip. On the kept pairs the same comparison is +31.87R against
++36.16R, a 4.3R gap over six months. Switching execution is still worth doing
+but it is no longer the decisive lever it looked like before the cut.
+
+### The bias gate is now consistently inverted on this subset
+
+Still 100% fire (17,985/17,985 ticks). Split by agreement: **agrees 16 alerts
++13.35R PF 3.09** against **opposes 17 alerts +22.81R PF 4.65**, with
+"opposes" ahead in both halves (older +21.13 vs +13.63, recent +1.68 vs
+−0.28). On 33 alerts that is noise-level, but it is the third window in which
+agreeing with the gate has not helped.
+
+### Continuation shadow on the kept pairs
+
+346 setups, adj **−105.33R**, PF 0.39, 12.3% win. Market entry −24.76R,
+PF 0.83. Dead on every pair it now runs on.
 
 **This is in-sample selection.** The pairs were picked from the window being
 measured and the 90d run is a sub-window, not out-of-sample. Forward results
