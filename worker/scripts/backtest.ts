@@ -32,6 +32,9 @@ import {
   type ContinuationSetup,
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
+import {
+  SPREAD_EST, f, limitShadowRows, marketShadowRows, stats, type Trade,
+} from "../src/replay_stats";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
 const ROOT = "https://jetta.dukascopy.com/v1/candles";
@@ -61,13 +64,6 @@ const CODES: Record<string, string> = {
  */
 const DEFAULT_PAIRS = ["JAPAN225", "NAS100", "EURUSD"];
 
-/** ESTIMATE of typical spread, in price units. Conservative averages, NOT measured. */
-const SPREAD_EST: Record<string, number> = {
-  EURUSD: 0.00002, GBPUSD: 0.00004, XAUUSD: 0.40, USDZAR: 0.0025,
-  US30: 4.0, GER40: 1.2, JAPAN225: 8.0, NAS100: 1.5,
-  USDJPY: 0.015, AUDJPY: 0.02, GBPJPY: 0.03, EURJPY: 0.02,
-  USDCAD: 0.00002, NZDUSD: 0.00003,
-};
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };
 
@@ -145,23 +141,6 @@ async function loadDailyContext(code: string, year: number): Promise<Candle[]> {
   return all.filter((c, i) => i === 0 || c.t > all[i - 1].t);
 }
 
-interface Trade {
-  pair: string; tf: string; setupId: string;
-  entryTime: string; entry: number; stop: number; tp: number;
-  status: string; exit: number; exitTime: string; r: number;
-  limitStatus: string; limitEntry: number; limitExitTime: string; limitR: number;
-  marketStatus: string; marketEntry: number; marketExitTime: string; marketR: number;
-  /** Continuation shadow only: how impulsive the break candle was. */
-  bodyPct?: number; bodyAtr?: number;
-  /**
-   * Direction of the setup. Stored explicitly so the origin book can be split
-   * by whether the bias gate agreed with it; reading it back from the ordering
-   * of entry/stop/tp would be one more thing to get wrong.
-   */
-  dir?: Direction;
-  /** Bias-gate shadow: the gate's state at the tick this setup was produced. */
-  biasDir?: string; biasKind?: string; mtfDir?: string;
-}
 
 /**
  * Read KEY=VALUE pairs from a .env file, for keys not already in the
@@ -309,6 +288,15 @@ const CONF_LOOKBACK = Number(process.env.BACKTEST_CONF_LOOKBACK ?? CONF_PARAMS.s
  * which happens constantly. Left in place, gated off, so the gap is visible.
  */
 const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "false") === "true";
+/**
+ * The breakeven instruction that ships in every alert: move the stop to entry
+ * at +1.5R. evaluateSignal models it and it is on by default, so the headline
+ * figures are the strategy subscribers are actually told to trade. Set
+ * BACKTEST_BE=false to measure the same alerts with a fixed stop instead —
+ * the difference is what that one line of the alert is worth.
+ */
+const BE_ENABLED = (process.env.BACKTEST_BE ?? "true") !== "false";
+const BE_TRIGGER_R = Number(process.env.BACKTEST_BE_TRIGGER_R ?? 1.5);
 
 /**
  * The storyline bias gate, measured side by side with multiTfGate rather than
@@ -665,7 +653,8 @@ async function replay(
         seen.add(a.setupId);
         const tfCandles = tf === "1h" ? h1 : m30;
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
-        const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120);
+        const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120,
+          false, BE_TRIGGER_R, BE_ENABLED);
         // Two execution models, both off the price production actually quotes.
         //
         // notify.ts instructs a pending limit AT THE RETEST CLOSE (a.entry), not
@@ -680,12 +669,14 @@ async function replay(
         const fillIndex = after.slice(0, LIMIT_WINDOW_CANDLES)
           .findIndex((c) => a.direction === "LONG" ? c.l <= limitEntry : c.h >= limitEntry);
         const limitOc = fillIndex >= 0
-          ? evaluateSignal(a.direction, limitEntry, a.stopLoss, a.tpInternal, after.slice(fillIndex), 120)
+          ? evaluateSignal(a.direction, limitEntry, a.stopLoss, a.tpInternal, after.slice(fillIndex), 120,
+            false, BE_TRIGGER_R, BE_ENABLED)
           : null;
         const mktCandle = after[0];
         const marketEntry = mktCandle?.o ?? a.entry;
         const marketOc = mktCandle
-          ? evaluateSignal(a.direction, marketEntry, a.stopLoss, a.tpInternal, after, 120)
+          ? evaluateSignal(a.direction, marketEntry, a.stopLoss, a.tpInternal, after, 120,
+            false, BE_TRIGGER_R, BE_ENABLED)
           : null;
         trades.push({
           pair, tf, setupId: a.setupId, dir: a.direction,
@@ -739,71 +730,6 @@ async function replay(
   return { origin: trades, continuation: contTrades, confirmation: confTrades, bias };
 }
 
-function stats(rows: Trade[], spreadAdj: boolean) {
-  const adj = (t: Trade): Trade => {
-    if (!spreadAdj || t.status === "OPEN" || !Number.isFinite(t.r)) return t;
-    const riskDist = Math.abs(t.entry - t.stop);
-    const spread = SPREAD_EST[t.pair] ?? 0;
-    const costR = riskDist > 0 ? spread / riskDist : 0;
-    return { ...t, r: t.r - 2 * costR };
-  };
-  const rowsA = rows.map(adj);
-  const tp = rowsA.filter((r) => r.status === "TP_HIT");
-  const sl = rowsA.filter((r) => r.status === "SL_HIT");
-  const ex = rowsA.filter((r) => r.status === "EXPIRED");
-  const closed = [...tp, ...sl];
-  const r = closed.map((t) => t.r);
-  const wins = tp.map((t) => t.r);
-  const losses = sl.map((t) => Math.abs(t.r));
-  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-  return {
-    alerts: rowsA.length, tp: tp.length, sl: sl.length, expired: ex.length,
-    open: rowsA.length - tp.length - sl.length - ex.length,
-    winrate: closed.length ? (tp.length / closed.length) * 100 : NaN,
-    avgR: r.length ? sum(r) / r.length : NaN,
-    pf: losses.length && sum(losses) > 0 ? sum(wins) / sum(losses) : NaN,
-    ...rack(rowsA),
-  };
-}
-
-/** Closed-trade equity curve, ordered by exit time. */
-function rack(rows: Trade[]) {
-  const closed = rows.filter((t) => t.status !== "OPEN" && Number.isFinite(t.r))
-    .sort((a, b) => (a.exitTime + a.setupId).localeCompare(b.exitTime + b.setupId));
-  let cum = 0, peak = 0, maxDD = 0, ddFrom = "-", ddTo = "-", peakAt: string | null = null;
-  let loss = 0, win = 0, maxLoss = 0, maxWin = 0;
-  for (const t of closed) {
-    cum += t.r;
-    if (cum > peak) { peak = cum; peakAt = t.exitTime; }
-    if (peak - cum > maxDD) { maxDD = peak - cum; ddFrom = peakAt ?? "-"; ddTo = t.exitTime; }
-    if (t.r > 0) { win++; loss = 0; } else { loss++; win = 0; }
-    if (loss > maxLoss) maxLoss = loss;
-    if (win > maxWin) maxWin = win;
-  }
-  return { maxDD, ddFrom, ddTo, lossStreak: maxLoss, winStreak: maxWin, finalR: cum };
-}
-
-const f = (x: number, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : "-");
-
-function limitShadowRows(rows: Trade[]): Trade[] {
-  return rows.map((t) => ({
-    ...t,
-    entry: t.limitEntry,
-    status: t.limitStatus,
-    exitTime: t.limitExitTime,
-    r: t.limitR,
-  }));
-}
-
-function marketShadowRows(rows: Trade[]): Trade[] {
-  return rows.map((t) => ({
-    ...t,
-    entry: t.marketEntry,
-    status: t.marketStatus,
-    exitTime: t.marketExitTime,
-    r: t.marketR,
-  }));
-}
 
 /**
  * OANDA only.
@@ -839,6 +765,7 @@ async function main() {
     process.exit(1);
   }
   console.log(`source: ${SOURCE}`);
+  console.log(`breakeven : ${BE_ENABLED ? `armed at +${f(BE_TRIGGER_R, 2)}R (as the alert instructs)` : "OFF — fixed stop"}`);
   if (BIAS_ENABLED && BIAS_KIND_IGNORED.length) {
     console.log(`!! BACKTEST_BIAS_LEVEL_KINDS: ignoring unknown kind(s) ${BIAS_KIND_IGNORED.join(", ")} ` +
       `(valid: ${LEVEL_KIND_NAMES.join(", ")}) — using ${[...BIAS_LEVEL_KINDS].join("/") || "NONE"}`);
@@ -872,29 +799,30 @@ async function main() {
     console.info = originalInfo;
   }
 
-  const cols = ["pair", "alerts", "TP", "SL", "EXP", "open", "win%", "netR", "avgR", "PF", "maxDD-R", "loseStrk"];
+  const cols = ["pair", "alerts", "TP", "SL", "BE", "EXP", "open", "win%", "netR", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
   let lines = `# TAYO walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
   const emit = (spreadAdj: boolean) => {
     const block: string[] = [];
-    block.push(`| pair | alerts | TP | SL | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`);
-    block.push(`|---|---|---|---|---|---|---|---|---|---|---|---|`);
+    block.push(`| pair | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`);
+    block.push(`|---|---|---|---|---|---|---|---|---|---|---|---|---|`);
     for (const pair of pairs) {
       const rows = all.filter((t) => t.pair === pair);
       const s = stats(rows, spreadAdj);
-      const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.expired), String(s.open),
+      const line = [pair, String(s.alerts), String(s.tp), String(s.sl), String(s.be), String(s.expired), String(s.open),
         f(s.winrate, 1), f(s.finalR, 1), f(s.avgR), f(s.pf), f(s.maxDD), String(s.lossStreak)];
       console.log(line.map((c) => c.padStart(9)).join(""));
       block.push(`| ${line.join(" | ")} |`);
     }
     const t = stats(all, spreadAdj);
-    const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.expired), String(t.open),
+    const tot = ["TOTAL", String(t.alerts), String(t.tp), String(t.sl), String(t.be), String(t.expired), String(t.open),
       f(t.winrate, 1), f(t.finalR, 1), f(t.avgR), f(t.pf), f(t.maxDD), String(t.lossStreak)];
     console.log(tot.map((c) => c.padStart(9)).join(""));
     block.push(`| **${tot.join(" | ")}** |`);
     const riskNote = `max drawdown **${f(t.maxDD)}R** (${t.ddFrom} → ${t.ddTo} UTC) · ` +
       `≈${f(t.maxDD, 1)}% at 1% risk/trade · longest losing streak **${t.lossStreak}** ` +
-      `· longest win streak ${t.winStreak} · net ${f(t.finalR, 1)}R over window`;
+      `· longest win streak ${t.winStreak} · breakeven scratches **${t.be}** ` +
+      `(${f(t.scratchPct, 1)}% of resolved) · net ${f(t.finalR, 1)}R over window`;
     console.log(`\n${riskNote.replace(/\*\*/g, "")}`);
     return { block: block.join("\n"), riskNote };
   };
