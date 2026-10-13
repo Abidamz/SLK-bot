@@ -77,6 +77,106 @@ export function structureInvalidationLevel(
   return lows.length ? lows[lows.length - 1].price : null;
 }
 
+/** A pivot that the market has defended: liquidity above/below it was taken,
+ *  and the move away was impulsive enough to break structure. Until then a
+ *  swing high is just a price; after, it is the extreme the range is built
+ *  from and the natural place to protect a stop behind. */
+export interface StrongPivot {
+  kind: "strong_high" | "strong_low";
+  /** The swept extreme, now protected. */
+  price: number;
+  sweepIndex: number;
+  sweepTime: number;
+  /** The impulsive displacement that confirmed it. */
+  bosIndex: number;
+  bosTime: number;
+}
+
+/**
+ * Strong highs and lows: a liquidity sweep DIRECTLY FOLLOWED by an impulsive
+ * move that breaks structure. Both halves are required.
+ *
+ * A sweep alone proves nothing - price takes liquidity and often carries on
+ * through. A break alone is just a break. It is the sequence that matters: the
+ * sweep took the resting orders, and the displacement away shows which side
+ * paid for them. That is what makes the swept extreme defensible.
+ *
+ * `confirmWindow` bounds "directly". A break twelve candles later belongs to a
+ * different story and must not retroactively promote this pivot.
+ */
+export function strongPivots(
+  candles: Candle[],
+  cfg: StrategyConfig,
+  confirmWindow = 6,
+  impulseAtr = 1.0,
+): StrongPivot[] {
+  const n = candles.length;
+  if (n < 5) return [];
+  const atrVal = atr(candles, cfg.atrPeriod);
+  const [highs, lows] = findSwings(candles, cfg.pivotLeft, cfg.pivotRight);
+  const out: StrongPivot[] = [];
+
+  const impulsive = (i: number, dir: "up" | "down"): boolean => {
+    const c = candles[i];
+    const body = dir === "up" ? c.c - c.o : c.o - c.c;
+    return atrVal > 0 && body >= impulseAtr * atrVal;
+  };
+
+  /** Index of the first impulsive candle in the window after `from` whose body
+   *  closes past a swing that existed before it, or -1. The "existed before"
+   *  check matters: closing past a swing the same candle created is not a
+   *  break of anything. */
+  const confirm = (
+    from: number, dir: "up" | "down", swings: { index: number; price: number }[],
+  ): number => {
+    for (let j = from + 1; j < Math.min(n, from + 1 + confirmWindow); j++) {
+      if (!impulsive(j, dir)) continue;
+      const c = candles[j];
+      const prev = candles[j - 1];
+      for (const sw of swings) {
+        if (sw.index >= j) continue;
+        const broke = dir === "up"
+          ? c.c > sw.price && prev.c <= sw.price
+          : c.c < sw.price && prev.c >= sw.price;
+        if (broke) return j;
+      }
+    }
+    return -1;
+  };
+
+  for (const sw of highs) {
+    for (let i = sw.index + 1; i < n; i++) {
+      const c = candles[i];
+      if (c.h > sw.price && c.c < sw.price) {
+        const j = confirm(i, "down", lows);
+        if (j >= 0) {
+          out.push({
+            kind: "strong_high", price: sw.price,
+            sweepIndex: i, sweepTime: c.t, bosIndex: j, bosTime: candles[j].t,
+          });
+        }
+        break; // the first sweep of this high decides it
+      }
+    }
+  }
+  for (const sw of lows) {
+    for (let i = sw.index + 1; i < n; i++) {
+      const c = candles[i];
+      if (c.l < sw.price && c.c > sw.price) {
+        const j = confirm(i, "up", highs);
+        if (j >= 0) {
+          out.push({
+            kind: "strong_low", price: sw.price,
+            sweepIndex: i, sweepTime: c.t, bosIndex: j, bosTime: candles[j].t,
+          });
+        }
+        break;
+      }
+    }
+  }
+  return out.sort((a, b) => a.sweepTime - b.sweepTime);
+}
+
 /** Most recent break of structure: [index, "up"|"down", level]. */
 export function bosEvent(
   candles: Candle[], left = 2, right = 2,
