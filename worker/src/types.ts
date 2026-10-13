@@ -117,6 +117,17 @@ export interface KeyLevel {
   originIndex: number;
   touches: number;
   flipped: boolean;
+  /**
+   * Which way price closed through the level: "up" = it broke upward and now
+   * acts as support below (RBS, resistance becomes support), "down" = it broke
+   * downward and now acts as resistance above (SBR, support becomes
+   * resistance). null = never broken.
+   *
+   * `flipped` alone cannot say which, and the two are not interchangeable: an
+   * SBR is a bearish fact and an RBS a bullish one, so crediting either to a
+   * trade in the opposite direction rewards a level for the wrong reason.
+   */
+  flipDir: "up" | "down" | null;
   fvgOverlap: boolean;
 }
 

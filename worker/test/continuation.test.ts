@@ -56,7 +56,7 @@ const FLAT = fromCloses([
 
 function levelAt(originIndex: number, lo: number, hi: number): KeyLevel {
   return {
-    kind: "A", originPrice: (lo + hi) / 2, zoneLo: lo, zoneHi: hi,
+    kind: "A", originPrice: (lo + hi) / 2, zoneLo: lo, zoneHi: hi, flipDir: null,
     originTime: Date.UTC(2026, 0, 5) + originIndex * 3_600_000,
     originIndex, touches: 0, flipped: false, fvgOverlap: false,
   };

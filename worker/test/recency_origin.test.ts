@@ -18,6 +18,7 @@ describe("origin level recency and proximity prioritization", () => {
       originIndex: 10,
       touches: 3,
       flipped: false,
+      flipDir: null,
       fvgOverlap: true, // Historic FVG from last week
     };
 
@@ -30,7 +31,8 @@ describe("origin level recency and proximity prioritization", () => {
       originTime: Date.parse("2026-09-21T16:00:00.000Z"),
       originIndex: 95,
       touches: 1,
-      flipped: true, // Flipped support into resistance
+      flipped: true,
+      flipDir: "down", // Flipped support into resistance
       fvgOverlap: false,
     };
 
@@ -56,6 +58,7 @@ describe("origin level recency and proximity prioritization", () => {
       originIndex: 10,
       touches: 3,
       flipped: false,
+      flipDir: null,
       fvgOverlap: true,
     };
 

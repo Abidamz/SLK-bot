@@ -537,7 +537,7 @@ export function evaluateDirectionalBias(
     entryTf, direction, entryCandles, d1Candles, h4Candles, h1Candles,
     cfg = {
       pivotLeft: 2, pivotRight: 2, minSwingsEnv: 2, phaseLookback: 8,
-      atrPeriod: 14, avLen: 2, levelToleranceAtr: 0.1, flipMarginAtr: 0.2,
+      atrPeriod: 14, avLen: 2, levelToleranceAtr: 0.1, flipMarginAtr: 0.2, flipDirectionAware: false,
       decisionAtrMult: 1.5, levelLookback: 120, zoneMaxDistanceAtr: 3.5,
       touchWindow: 20, sweepWindow: 12, bosWindow: 12, retestWindow: 16,
       retestToleranceAtr: 0.1, slBufferAtr: 0.1, minRiskAtr: 0.8, minStopPips: 10,

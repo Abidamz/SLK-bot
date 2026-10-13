@@ -90,6 +90,13 @@
     // entry models on both the 180d and 360d windows. Set to "limit" to restore
     // the previous instruction without a code change.
     "EXECUTION_MODE": "market",
+    // Credit a flipped level in origin selection only when the flip agrees
+    // with the trade: an RBS (broke up, now support below) for a long, an SBR
+    // (broke down, now resistance above) for a short. Off because the
+    // undirected version - which scores ANY flip at 1.0, so a bearish break
+    // lifts a long's origin just as much - is what has been running. Measure it
+    // with BACKTEST_FLIP_DIRECTION_AWARE=true before turning it on here.
+    "FLIP_DIRECTION_AWARE": "false",
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
     // Two markets per cron tick. Measured 2026-10-07 after the scheduler/store

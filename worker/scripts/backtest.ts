@@ -389,7 +389,8 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MAX_DEPTH", "BACKTEST_CONT_MIN_BODY_PCT",
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
-  "BACKTEST_ENTRY_TFS", "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
+  "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
+  "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
   "BACKTEST_MAX_TRADES_PER_DAY", "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
   "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_TARGET_SWEEP",
@@ -929,11 +930,23 @@ async function main() {
    * the current watchlist changes one pair out of three.
    */
   const requestedMinStop = Number(process.env.BACKTEST_MIN_STOP_PIPS ?? "");
+  /**
+   * A flipped level changed role, and the role has a direction. Off by default
+   * in production, so this is how the change gets measured before it is shipped:
+   * run the same window with and without it and compare. See
+   * test/flip_direction.test.ts for what it does to origin selection.
+   */
+  const flipRaw = process.env.BACKTEST_FLIP_DIRECTION_AWARE;
+  const flipAware = (flipRaw ?? "").trim().toLowerCase() === "true";
   const strategy: StrategyConfig = {
     ...defaultStrategy(),
+    ...(flipRaw !== undefined ? { flipDirectionAware: flipAware } : {}),
     ...(Number.isFinite(requestedMinTpR) && requestedMinTpR > 0 ? { minTpR: requestedMinTpR } : {}),
     ...(Number.isFinite(requestedMinStop) && requestedMinStop > 0 ? { minStopPips: requestedMinStop } : {}),
   };
+  if (flipRaw !== undefined) {
+    console.log(`\n*** BACKTEST OVERRIDE: flipDirectionAware=${flipAware} (research comparison only) ***`);
+  }
   for (const [name, val] of [["minTpR", requestedMinTpR], ["minStopPips", requestedMinStop]] as const) {
     if (Number.isFinite(val) && val > 0) {
       console.log(`\n*** BACKTEST OVERRIDE: ${name}=${val} (research comparison only) ***`);

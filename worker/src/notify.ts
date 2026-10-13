@@ -960,8 +960,15 @@ export function formatBiasCard(
   ];
 
   if (origin) {
+    // The role a broken level takes on has a direction, and the two are not
+    // interchangeable for the reader: RBS is support below (a reason to buy),
+    // SBR is resistance above (a reason to sell). Naming it says which.
     const structType = origin.flipped
-      ? "Flipped Breaker (Disrespected Support/Resistance)"
+      ? origin.flipDir === "up"
+        ? "RBS Breaker (Resistance Became Support — broke up, now support below)"
+        : origin.flipDir === "down"
+          ? "SBR Breaker (Support Became Resistance — broke down, now resistance above)"
+          : "Flipped Breaker (Disrespected Support/Resistance)"
       : `${origin.kind}-Level Origin Zone`;
     const fvgText = origin.fvgOverlap
       ? "Overlaps 30m/1H FVG Imbalance ✅"

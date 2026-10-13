@@ -293,10 +293,10 @@ export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
       if (!(closes[i] <= closes[i + k])) isV = false;
     }
     if (isA) {
-      levels.push({ kind: "A", originPrice: closes[i], zoneLo: closes[i] - tol, zoneHi: closes[i] + tol, originTime: candles[i].t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+      levels.push({ kind: "A", originPrice: closes[i], zoneLo: closes[i] - tol, zoneHi: closes[i] + tol, originTime: candles[i].t, originIndex: i, touches: 0, flipped: false, flipDir: null, fvgOverlap: false });
     }
     if (isV) {
-      levels.push({ kind: "V", originPrice: closes[i], zoneLo: closes[i] - tol, zoneHi: closes[i] + tol, originTime: candles[i].t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+      levels.push({ kind: "V", originPrice: closes[i], zoneLo: closes[i] - tol, zoneHi: closes[i] + tol, originTime: candles[i].t, originIndex: i, touches: 0, flipped: false, flipDir: null, fvgOverlap: false });
     }
   }
 
@@ -309,10 +309,10 @@ export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
     const overlapLo = Math.max(Math.min(prev.o, prev.c), Math.min(c.o, c.c));
     const overlapHi = Math.min(Math.max(prev.o, prev.c), Math.max(c.o, c.c));
     if (overlapHi > overlapLo) {
-      levels.push({ kind: "OC", originPrice: (overlapLo + overlapHi) / 2, zoneLo: overlapLo, zoneHi: overlapHi, originTime: c.t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+      levels.push({ kind: "OC", originPrice: (overlapLo + overlapHi) / 2, zoneLo: overlapLo, zoneHi: overlapHi, originTime: c.t, originIndex: i, touches: 0, flipped: false, flipDir: null, fvgOverlap: false });
     }
     if (atrVal > 0 && c.h - c.l >= cfg.decisionAtrMult * atrVal) {
-      levels.push({ kind: "DECISION", originPrice: c.c, zoneLo: Math.min(c.o, c.c), zoneHi: Math.max(c.o, c.c), originTime: c.t, originIndex: i, touches: 0, flipped: false, fvgOverlap: false });
+      levels.push({ kind: "DECISION", originPrice: c.c, zoneLo: Math.min(c.o, c.c), zoneHi: Math.max(c.o, c.c), originTime: c.t, originIndex: i, touches: 0, flipped: false, flipDir: null, fvgOverlap: false });
     }
   }
 
@@ -322,8 +322,13 @@ export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
       const c = candles[j];
       const brokeUp = c.c > lv.zoneHi + cfg.flipMarginAtr * atrVal;
       const brokeDn = c.c < lv.zoneLo - cfg.flipMarginAtr * atrVal;
-      if (brokeUp || brokeDn) lv.flipped = true;
-      else if (c.h >= lv.zoneLo && c.l <= lv.zoneHi) lv.touches += 1;
+      if (brokeUp || brokeDn) {
+        lv.flipped = true;
+        // First decisive break sets the role. A later break the other way is a
+        // new flip, so it overwrites - what matters is the level's CURRENT role,
+        // not the first thing that ever happened to it.
+        lv.flipDir = brokeUp ? "up" : "down";
+      } else if (c.h >= lv.zoneLo && c.l <= lv.zoneHi) lv.touches += 1;
     }
   }
   return levels;
@@ -361,7 +366,12 @@ export function selectOrigin(
     const proximity = Math.max(0, 1 - distAtr / cfg.zoneMaxDistanceAtr) * 3.0;
     const recency = (lv.originIndex / maxOriginIndex) * 2.0;
     const fvgScore = lv.fvgOverlap ? 1.5 : 0;
-    const flipScore = lv.flipped ? 1.0 : 0;
+    // A flip means the level changed ROLE, and the role is directional: broke
+    // up = support below (RBS), broke down = resistance above (SBR). Only the
+    // role that agrees with the trade is evidence for it, so with the knob on a
+    // contradictory flip scores nothing instead of the same 1.0.
+    const flipAgrees = direction === "LONG" ? lv.flipDir === "up" : lv.flipDir === "down";
+    const flipScore = lv.flipped && (!cfg.flipDirectionAware || flipAgrees) ? 1.0 : 0;
     const touchScore = 0.5 * Math.min(lv.touches, 2);
 
     const score = proximity + recency + fvgScore + flipScore + touchScore;

@@ -79,7 +79,8 @@ function story(
 ): Storyline {
   const level: KeyLevel = {
     kind: "A", originPrice, zoneLo: zone[0], zoneHi: zone[1],
-    originTime: BASE, originIndex: 5, touches: 2, flipped: false, fvgOverlap: true,
+    originTime: BASE, originIndex: 5, touches: 2, flipped: false,
+      flipDir: null, fvgOverlap: true,
   };
   return {
     asof: BASE, valid: true, reason: "ok", direction,

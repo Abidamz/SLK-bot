@@ -28,6 +28,18 @@ export interface StrategyConfig {
   levelLookback: number;
   decisionAtrMult: number;
   flipMarginAtr: number;
+  /**
+   * Credit a flipped level in selectOrigin only when the flip agrees with the
+   * trade: an RBS (broke up, now support) for a long, an SBR (broke down, now
+   * resistance) for a short.
+   *
+   * Off by default. The undirected version scores ANY flip at 1.0, so a level
+   * that broke downward - a bearish fact - lifts the score of a long's origin
+   * just as much as one that broke upward. That is wrong on the spec, but it
+   * has been the shipped behaviour, so it is a knob to A/B rather than a
+   * silent change to live signals.
+   */
+  flipDirectionAware: boolean;
   zoneMaxDistanceAtr: number;
   fvgLookback: number;
   touchWindow: number;
@@ -117,6 +129,7 @@ export function defaultStrategy(): StrategyConfig {
     levelLookback: 120,
     decisionAtrMult: 1.5,
     flipMarginAtr: 0.5,
+    flipDirectionAware: false,
     zoneMaxDistanceAtr: 3.5,
     fvgLookback: 80,
     touchWindow: 64,
@@ -146,6 +159,7 @@ interface EnvVars {
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
   RETEST_DEPTH_PCT?: string;
+  FLIP_DIRECTION_AWARE?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -232,10 +246,14 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
   const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
+  const flipDirectionAware =
+    (env.FLIP_DIRECTION_AWARE ?? "false").trim().toLowerCase() === "true";
+
   const minTpR = Number(env.MIN_TP_R ?? "");
   const retestDepthPct = Number(env.RETEST_DEPTH_PCT ?? "100");
   const pairBatchSize = Math.max(1, Number(env.PAIR_BATCH_SIZE ?? "2") || 2);
   const strategy = defaultStrategy();
+  strategy.flipDirectionAware = flipDirectionAware;
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;

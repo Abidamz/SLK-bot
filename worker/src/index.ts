@@ -2963,6 +2963,7 @@ export default {
         touches: 2,
         broken: false,
         flipped: true,
+        flipDir: "down" as const,
         fvgOverlap: true,
       };
       const results = await notifyBias(

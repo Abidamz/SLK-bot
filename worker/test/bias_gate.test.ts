@@ -23,6 +23,7 @@ function level(o: Partial<KeyLevel> & { originIndex: number; price: number; tol?
   const tol = o.tol ?? 0.001;
   const { price, tol: _tol, ...rest } = o;
   return {
+    flipDir: null,
     kind: "V",
     originPrice: price,
     zoneLo: price - tol,
