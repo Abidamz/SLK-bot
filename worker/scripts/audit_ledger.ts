@@ -26,7 +26,8 @@
  */
 
 import {
-  challengeVerdict, dailyRisk, f, monthlyBuckets, riskForLimit, stats, type Trade,
+  challengeVerdict, dailyRisk, f, maxSafeRisk, monthlyBuckets, riskForLimit, stats,
+  type PropLimits, type Trade,
 } from "../src/replay_stats";
 
 const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
@@ -147,7 +148,9 @@ async function main(): Promise<void> {
   console.log(`   worst day close ${f(dr.worstDayClose, 2)}R (${dr.worstDayCloseDate}) · worst 3-day ${f(dr.worst3Day, 2)}R · worst 5-day ${f(dr.worst5Day, 2)}R`);
   console.log(`   window maxDD ${f(s.maxDD, 2)}R`);
   const pct = (x: number) => (Number.isFinite(x) ? `${f(x, 2)}%` : "n/a");
-  console.log(`   max risk/trade that held: ${PROP_DAILY}% daily ${pct(riskForLimit(dr.worstDayLoss, PROP_DAILY))} · `
+  console.log(`   arithmetic ceiling (EXCLUSIVE - at exactly this value the limit is`);
+  console.log(`     touched, and challengeVerdict scores touching as a breach):`);
+  console.log(`     ${PROP_DAILY}% daily ${pct(riskForLimit(dr.worstDayLoss, PROP_DAILY))} · `
     + `${PROP_TOTAL}% overall ${pct(riskForLimit(s.maxDD, PROP_TOTAL))}`);
 
   const months = monthlyBuckets(trades, false);
@@ -159,6 +162,11 @@ async function main(): Promise<void> {
         + `worst day ${f(Math.max(...months.map((m) => m.worstDay * risk)), 2)}% · `
         + `worst month ${f(Math.min(...months.map((m) => m.netR * risk)), 2)}%`);
     }
+    const lim: PropLimits = { targetPct: PROP_TARGET, dailyPct: PROP_DAILY, totalPct: PROP_TOTAL };
+    const safe = maxSafeRisk(months, lim);
+    console.log(`   largest risk at which EVERY month passes: `
+      + (Number.isFinite(safe) ? `${f(safe, 2)}%` : "- (even 0.05% breaches)"));
+
     const mid = RISK_PCTS[Math.floor(RISK_PCTS.length / 2)] ?? 1;
     console.log(`   per month at ${f(mid, 2)}% risk:`);
     for (const m of months) {

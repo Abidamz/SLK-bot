@@ -8,7 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f, limitShadowRows,
-  marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
+  marketShadowRows, maxSafeRisk, monthlyBuckets, riskForLimit, stats,
+  type MonthBucket, type Trade,
 } from "../src/replay_stats";
 
 function mk(o: Partial<Trade> & { status: string; r: number }): Trade {
@@ -369,5 +370,47 @@ describe("capPerDay — daily trade cap", () => {
     expect(capPerDay(rows, 0)).toHaveLength(2);
     expect(capPerDay(rows, -1)).toHaveLength(2);
     expect(capPerDay(rows, NaN)).toHaveLength(2);
+  });
+});
+
+/** riskForLimit returns limitPct / worstR - the risk at which the limit is
+ *  EXACTLY touched - while challengeVerdict scores `day >= dailyPct` as a
+ *  breach. Read together they contradict: on the live ledger (worst day 4R,
+ *  3% daily) riskForLimit says 0.75%, and 0.75% then fails on
+ *  `daily 3.00% >= 3%`. maxSafeRisk exists so a report cannot print both. */
+describe("maxSafeRisk", () => {
+  const LIM = { targetPct: 8, dailyPct: 3, totalPct: 5 };
+  const month = (o: Partial<MonthBucket>): MonthBucket =>
+    ({ month: "2026-09", alerts: 4, netR: 0, maxDD: 0, worstDay: 0, ...o });
+
+  it("returns a risk strictly below the value riskForLimit reports", () => {
+    const m = month({ netR: 12, maxDD: 4, worstDay: 4 });
+    // The arithmetic ceiling: 3% / 4R.
+    expect(riskForLimit(4, 3)).toBeCloseTo(0.75, 10);
+    // ...and that exact value is a breach, not a pass.
+    expect(challengeVerdict(m, 0.75, LIM).pass).toBe(false);
+    // The largest grid step that genuinely holds is one below it.
+    expect(maxSafeRisk([m], LIM)).toBeCloseTo(0.7, 10);
+    expect(challengeVerdict(m, 0.7, LIM).pass).toBe(true);
+  });
+
+  it("is NaN when no risk level clears every month, not 0", () => {
+    // A weak month can never reach an 8% target without also breaching the
+    // daily limit. 0 would read as "risk nothing and you are safe".
+    const weak = month({ month: "2026-08", netR: 2, maxDD: 1.05, worstDay: 1 });
+    const strong = month({ netR: 9.5, maxDD: 1, worstDay: 1 });
+    expect(Number.isNaN(maxSafeRisk([weak, strong], LIM))).toBe(true);
+  });
+
+  it("judges every month, not just the worst one", () => {
+    const bad = month({ month: "2026-10", netR: 2.1, maxDD: 4, worstDay: 4 });
+    const good = month({ netR: 12, maxDD: 4, worstDay: 4 });
+    expect(maxSafeRisk([good], LIM)).toBeCloseTo(0.7, 10);
+    expect(Number.isNaN(maxSafeRisk([good, bad], LIM))).toBe(true);
+  });
+
+  it("tops out at the 2% grid ceiling rather than running away", () => {
+    const easy = month({ netR: 100, maxDD: 0.5, worstDay: 0.5 });
+    expect(maxSafeRisk([easy], LIM)).toBeCloseTo(2, 10);
   });
 });

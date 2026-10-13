@@ -159,6 +159,30 @@ export function riskForLimit(worstR: number, limitPct: number): number {
 }
 
 /**
+ * Largest per-trade risk, on a grid, at which EVERY month passes the challenge.
+ *
+ * This deliberately does not reuse riskForLimit for the headline number.
+ * riskForLimit returns limitPct / worstR - the risk at which the limit is
+ * exactly TOUCHED - while challengeVerdict scores `day >= dailyPct` as a
+ * breach. On the live ledger that made the report print "3% daily -> 0.75%"
+ * as the max risk that held, in the same run whose month table showed 0.75%
+ * failing October on `daily 3.00% >= 3%`. Deriving the answer from the same
+ * predicate that judges it is the only way the two cannot disagree.
+ *
+ * Returns NaN when even the smallest step breaches, so the caller prints "-"
+ * rather than a 0 that reads as "risk nothing and you are fine".
+ */
+export function maxSafeRisk(months: MonthBucket[], lim: PropLimits): number {
+  let best = NaN;
+  for (let step = 1; step <= 40; step++) {
+    const risk = step * 0.05;
+    if (months.every((m) => challengeVerdict(m, risk, lim).pass)) best = risk;
+  }
+  return best;
+}
+
+
+/**
  * Keeps at most `max` trades per calendar day, taken in entry order.
  *
  * A daily trade cap is a prop-firm tool, not an edge: it exists to bound the
