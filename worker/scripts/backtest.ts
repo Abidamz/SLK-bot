@@ -34,7 +34,8 @@ import {
 import { evaluateSignal } from "../src/outcomes";
 import {
   SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f,
-  limitShadowRows, marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
+  limitShadowRows, marketShadowRows, monthlyBuckets, oosReport, riskForLimit, stats,
+  type Trade,
 } from "../src/replay_stats";
 import { emptyBucket, renderSweepTable, sweepRows, targetPrice, type SweepBucket }
   from "../src/target_sweep";
@@ -329,6 +330,16 @@ const ENTRY_TFS = (process.env.BACKTEST_ENTRY_TFS ?? "30m,1h")
  * Defaults are the tightest common set: 8% target, 3% daily, 5% overall.
  */
 const PROP_TARGET = Number(process.env.BACKTEST_PROP_TARGET ?? 8);
+
+/**
+ * Out-of-sample split. Selecting the instruments that performed best across a
+ * window and then quoting that same window as the expected result reports the
+ * maximum of a sample as if it were its mean. So the report also shows what the
+ * chosen instruments did on the later part of the window, which played no part
+ * in choosing them. 0 disables the block.
+ */
+const OOS_DAYS = Number(process.env.BACKTEST_OOS_DAYS ?? 120);
+const OOS_MIN_ALERTS = Number(process.env.BACKTEST_OOS_MIN_ALERTS ?? 10);
 const PROP_DAILY = Number(process.env.BACKTEST_PROP_DAILY ?? 3);
 const PROP_TOTAL = Number(process.env.BACKTEST_PROP_TOTAL ?? 5);
 const RISK_PCTS = (process.env.BACKTEST_RISK_PCTS ?? "0.5,0.75,1")
@@ -392,6 +403,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
   "BACKTEST_FLIP_IMPULSE_ATR",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
+  "BACKTEST_OOS_DAYS", "BACKTEST_OOS_MIN_ALERTS",
   "BACKTEST_MAX_STOP_PIPS", "BACKTEST_MAX_TRADES_PER_DAY",
   "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
@@ -1080,6 +1092,35 @@ async function main() {
       const ch = chLines.join("\n");
       console.log("\n" + ch);
       block.push("", "```", ch, "```");
+    }
+
+
+    // Out-of-sample split. Sits inside emit() so it is printed and written for
+    // both the raw and the spread-adjusted pass, like the rest of the report.
+    if (OOS_DAYS > 0 && all.length) {
+      const oos = oosReport(all, spreadAdj, { heldOutDays: OOS_DAYS, minAlerts: OOS_MIN_ALERTS });
+      const sel = Number.isFinite(oos.splitTime)
+        ? new Date(oos.splitTime).toISOString().slice(0, 10) : "n/a";
+      const L = [
+        `OUT-OF-SAMPLE - picked on entries before ${sel}, judged on the ${OOS_DAYS}d after`,
+        `   picking needs >= ${OOS_MIN_ALERTS} alerts and positive R/alert; the ranking never sees the held-out window`,
+        `   pair       sel alerts  sel R/alert  |  oos alerts  oos R/alert   picked`,
+      ];
+      for (const i of oos.instruments) {
+        L.push(
+          `   ${i.pair.padEnd(10)}${String(i.selAlerts).padStart(6)}${f(i.selExp).padStart(13)}  |` +
+          `${String(i.oosAlerts).padStart(12)}${f(i.oosExp).padStart(13)}   ${i.selected ? "yes" : "-"}`,
+        );
+      }
+      L.push(`   picked ${oos.selectedPairs.length} of ${oos.instruments.length}: ${oos.selectedPairs.join(", ") || "none"}`);
+      L.push(`   HELD-OUT RESULT of the picked book : ${oos.oosAlerts} alerts - net ${f(oos.oosNet, 1)}R - ${f(oos.oosExp)}R/alert`);
+      L.push(`   whole book over the same window    : ${oos.allOosAlerts} alerts - net ${f(oos.allOosNet, 1)}R`);
+      L.push(`   The "picked" line is the answer. The per-pair table above merges both`);
+      L.push(`   periods, so it cannot separate a durable edge from one instrument`);
+      L.push(`   having a good quarter.`);
+      const o = L.join("\n");
+      console.log("\n" + o);
+      block.push("", "```", o, "```");
     }
 
     return { block: block.join("\n"), riskNote };

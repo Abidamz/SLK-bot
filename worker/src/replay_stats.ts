@@ -358,3 +358,116 @@ export function marketShadowRows(rows: Trade[]): Trade[] {
     r: t.marketR,
   }));
 }
+
+// ---------------------------------------------------------------- out-of-sample
+
+export interface OosInstrument {
+  pair: string;
+  selAlerts: number; selNet: number; /** Selection-period expectancy per alert, in R. */ selExp: number;
+  oosAlerts: number; oosNet: number; oosExp: number;
+  /** Positive expectancy over enough selection-period trades to mean anything. */
+  selected: boolean;
+}
+
+export interface OosReport {
+  splitTime: number;
+  /** Ranked by selection-period expectancy, best first. */
+  instruments: OosInstrument[];
+  selectedPairs: string[];
+  /** Held-out result of the SELECTED instruments - the number that counts. */
+  oosNet: number; oosAlerts: number; oosExp: number;
+  /** Held-out result of the whole book, selected or not, for contrast. */
+  allOosNet: number; allOosAlerts: number;
+}
+
+/**
+ * Splits a book into a selection period and a held-out validation period, then
+ * reports what the instruments chosen on the first half actually did on the
+ * second.
+ *
+ * This exists because picking the winners of a window and then quoting that
+ * same window as the result is not a measurement. Selecting XAUUSD because it
+ * printed the largest R, then reporting its R as expected performance, is the
+ * maximum of a sample presented as its mean. The only honest reading is: choose
+ * on period A, and let period B - which never influenced the choice - say
+ * whether the choice was skill.
+ *
+ * Trades are assigned by ENTRY time. Assigning by exit would let a trade that
+ * entered before the split carry post-split information back into the selection
+ * period, which is the same look-ahead the shadow models have been burned by.
+ *
+ * Expectancy is finalR / alerts rather than stats().avgR, because avgR averages
+ * over closed TP/SL only and ignores breakeven scratches and expiries - the two
+ * outcomes that are invisible to profit factor. This matches how R/alert is
+ * quoted everywhere else in the report.
+ */
+/**
+ * Parse the "YYYY-MM-DD HH:MM" timestamps this repo stores.
+ *
+ * They are produced by toISOString().slice(0,16).replace("T"," "), so the value
+ * is UTC but carries no zone marker - and Date.parse reads that shape as LOCAL
+ * time. When splitTime is derived from the rows themselves the offset cancels
+ * out, but a caller passing an explicit epoch `now` would skew the boundary by
+ * the host's UTC offset and silently move trades across it.
+ */
+function parseUtc(s: string): number {
+  if (!s || s === "-") return NaN;
+  return Date.parse(s.includes("T") || s.endsWith("Z") ? s : `${s.replace(" ", "T")}Z`);
+}
+
+export function oosReport(
+  rows: Trade[],
+  spreadAdj: boolean,
+  opts: { heldOutDays: number; now?: number; minAlerts?: number },
+): OosReport {
+  const minAlerts = opts.minAlerts ?? 10;
+  const empty: OosReport = {
+    splitTime: NaN, instruments: [], selectedPairs: [],
+    oosNet: 0, oosAlerts: 0, oosExp: NaN, allOosNet: 0, allOosAlerts: 0,
+  };
+  const times = rows.map((t) => parseUtc(t.entryTime)).filter((n) => Number.isFinite(n));
+  if (!times.length) return empty;
+
+  const end = opts.now ?? Math.max(...times);
+  const splitTime = end - opts.heldOutDays * 86_400_000;
+
+  const byPair = new Map<string, Trade[]>();
+  for (const t of rows) {
+    if (!byPair.has(t.pair)) byPair.set(t.pair, []);
+    byPair.get(t.pair)!.push(t);
+  }
+
+  const instruments: OosInstrument[] = [];
+  for (const [pair, tr] of byPair) {
+    const sel = tr.filter((t) => parseUtc(t.entryTime) < splitTime);
+    const oos = tr.filter((t) => parseUtc(t.entryTime) >= splitTime);
+    const ss = stats(sel, spreadAdj);
+    const os = stats(oos, spreadAdj);
+    const selExp = ss.alerts ? ss.finalR / ss.alerts : NaN;
+    instruments.push({
+      pair,
+      selAlerts: ss.alerts, selNet: ss.finalR, selExp,
+      oosAlerts: os.alerts, oosNet: os.finalR,
+      oosExp: os.alerts ? os.finalR / os.alerts : NaN,
+      // A single lucky trade must not be able to select its own instrument.
+      selected: ss.alerts >= minAlerts && Number.isFinite(selExp) && selExp > 0,
+    });
+  }
+  instruments.sort((a, b) => (b.selExp || -Infinity) - (a.selExp || -Infinity));
+
+  const chosen = instruments.filter((i) => i.selected);
+  const oosAlerts = chosen.reduce((s, i) => s + i.oosAlerts, 0);
+  const oosNet = chosen.reduce((s, i) => s + i.oosNet, 0);
+  const allOos = instruments.reduce(
+    (a, i) => ({ net: a.net + i.oosNet, alerts: a.alerts + i.oosAlerts }),
+    { net: 0, alerts: 0 },
+  );
+
+  return {
+    splitTime,
+    instruments,
+    selectedPairs: chosen.map((i) => i.pair),
+    oosNet, oosAlerts, oosExp: oosAlerts ? oosNet / oosAlerts : NaN,
+    allOosNet: allOos.net, allOosAlerts: allOos.alerts,
+  };
+}
