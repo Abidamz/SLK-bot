@@ -32,6 +32,10 @@ import {
   type ContinuationSetup,
 } from "../src/continuation";
 import { evaluateSignal } from "../src/outcomes";
+import { alertMix, simulate } from "../src/prop_sim";
+import {
+  corrMatrix, dailyRByPair, dropRedundant, maxPair, meanPairwiseCorrelation,
+} from "../src/portfolio";
 import {
   SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f,
   limitShadowRows, marketShadowRows, monthlyBuckets, oosReport, riskForLimit, stats,
@@ -340,6 +344,16 @@ const PROP_TARGET = Number(process.env.BACKTEST_PROP_TARGET ?? 8);
  */
 const OOS_DAYS = Number(process.env.BACKTEST_OOS_DAYS ?? 120);
 const OOS_MIN_ALERTS = Number(process.env.BACKTEST_OOS_MIN_ALERTS ?? 10);
+
+/**
+ * Portfolio layer. Correlation has always been an assumption fed to the prop sim
+ * - 0 for "independent", 0.3 for "somewhat correlated". Measuring it matters
+ * because the entire case for running many instruments is that their bad days do
+ * not arrive together.
+ */
+const CORR_THRESHOLD = Number(process.env.BACKTEST_CORR_THRESHOLD ?? 0.7);
+const DAILY_LOSS_CAP = Number(process.env.BACKTEST_DAILY_LOSS_CAP ?? 2);
+const PROP_TRIALS = Number(process.env.BACKTEST_PROP_TRIALS ?? 20000);
 const PROP_DAILY = Number(process.env.BACKTEST_PROP_DAILY ?? 3);
 const PROP_TOTAL = Number(process.env.BACKTEST_PROP_TOTAL ?? 5);
 const RISK_PCTS = (process.env.BACKTEST_RISK_PCTS ?? "0.5,0.75,1")
@@ -404,6 +418,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_FLIP_IMPULSE_ATR",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
   "BACKTEST_OOS_DAYS", "BACKTEST_OOS_MIN_ALERTS",
+  "BACKTEST_CORR_THRESHOLD", "BACKTEST_DAILY_LOSS_CAP", "BACKTEST_PROP_TRIALS",
   "BACKTEST_MAX_STOP_PIPS", "BACKTEST_MAX_TRADES_PER_DAY",
   "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
@@ -1121,6 +1136,59 @@ async function main() {
       const o = L.join("\n");
       console.log("\n" + o);
       block.push("", "```", o, "```");
+    }
+
+    // Portfolio: measured correlation, redundancy drop, and the prop sim driven
+    // by the book's own mix rather than an assumed one.
+    if (all.length) {
+      const series = dailyRByPair(all, spreadAdj);
+      const cm = corrMatrix(series);
+      const meanR = meanPairwiseCorrelation(cm);
+      const top = maxPair(cm);
+      const mix = alertMix(all, spreadAdj);
+      const months = new Set(all.map((t) => t.entryTime.slice(0, 7))).size || 1;
+      const nPairs = new Set(all.map((t) => t.pair)).size || 1;
+      const perMonth = all.length / months / nPairs;
+      const exp = mix.winRate * mix.targetR - mix.lossRate;
+      // NaN means the series were too flat or too few to correlate. Falling back
+      // to 0 assumes independence, so it is labelled rather than silent.
+      const corrUsed = Number.isFinite(meanR) ? meanR : 0;
+      const expectancy: Record<string, number> = {};
+      for (const pr of Object.keys(series)) {
+        const rows = all.filter((t) => t.pair === pr);
+        const st = stats(rows, spreadAdj);
+        expectancy[pr] = st.alerts ? st.finalR / st.alerts : NaN;
+      }
+      const red = dropRedundant({ expectancy, corr: cm, threshold: CORR_THRESHOLD });
+
+      const P = [
+        `PORTFOLIO - ${nPairs} instruments - correlation measured from daily realised R`,
+        `   mean pairwise r ${f(corrUsed, 3)}${Number.isFinite(meanR) ? "" : "  (not computable - assumed 0, i.e. independent)"}`,
+        top ? `   most correlated pair  ${top.a} / ${top.b}  r=${f(top.r, 3)}` : "",
+        `   redundancy drop at r>=${f(CORR_THRESHOLD, 2)}: kept ${red.kept.length}, dropped ${red.dropped.length}` +
+          (red.dropped.length ? ` (${red.dropped.map((d) => `${d.pair} via ${d.becauseOf} ${f(d.r, 2)}`).join("; ")})` : ""),
+        `   Sparse series attenuate r toward 0, so read this as a LOWER bound on`,
+        `   correlation and prefer the pessimistic reading.`,
+        ``,
+        `MONTE CARLO - the book's own mix, ${DAILY_LOSS_CAP}-loss daily cap, ${PROP_TRIALS} trials`,
+        `   mix win ${(mix.winRate * 100).toFixed(1)}% loss ${(mix.lossRate * 100).toFixed(1)}% scratch ${(mix.scratchRate * 100).toFixed(1)}% @ ${f(mix.targetR)}R  =>  ${exp >= 0 ? "+" : ""}${f(exp)}R/trade`,
+        `   alerts/month/instrument ${f(perMonth)} (${all.length} alerts / ${months} mo / ${nPairs} pairs)`,
+        `   risk      pass    blown   neither   avg trades`,
+      ].filter(Boolean);
+      for (const risk of RISK_PCTS) {
+        const r = simulate({
+          mix, rules: { targetPct: PROP_TARGET, dailyPct: PROP_DAILY, overallPct: PROP_TOTAL, tradingDays: 21 },
+          instruments: nPairs, alertsPerMonthPerInstrument: perMonth, riskPct: risk,
+          correlation: corrUsed, dailyLossCap: DAILY_LOSS_CAP, trials: PROP_TRIALS, seed: 20261011,
+        });
+        P.push(
+          `   ${risk.toFixed(2)}%${r.passRate.toFixed(1).padStart(9)}%${r.blownRate.toFixed(1).padStart(8)}%` +
+          `${r.neitherRate.toFixed(1).padStart(9)}%${r.avgTrades.toFixed(1).padStart(12)}`,
+        );
+      }
+      const po = P.join("\n");
+      console.log("\n" + po);
+      block.push("", "```", po, "```");
     }
 
     return { block: block.join("\n"), riskNote };

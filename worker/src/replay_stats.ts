@@ -297,6 +297,15 @@ function rack(rows: Trade[]) {
  * costs trades the same way. Divergence here would make the daily limit look
  * safer than the equity curve it is supposed to describe.
  */
+/**
+ * Rows-level spread application, exported so other modules charge spread with
+ * exactly the same arithmetic stats() uses. Reimplementing costR elsewhere is
+ * how two parts of a report end up disagreeing by a rounding error nobody traces.
+ */
+export function applySpreadRows(rows: Trade[], spreadAdj: boolean): Trade[] {
+  return rows.map((t) => applySpread(t, spreadAdj));
+}
+
 function applySpread(t: Trade, spreadAdj: boolean): Trade {
   if (!spreadAdj || t.status === "OPEN" || !Number.isFinite(t.r)) return t;
   const riskDist = Math.abs(t.entry - t.stop);
