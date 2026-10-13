@@ -322,13 +322,20 @@ export function keyLevels(candles: Candle[], cfg: StrategyConfig): KeyLevel[] {
       const c = candles[j];
       const brokeUp = c.c > lv.zoneHi + cfg.flipMarginAtr * atrVal;
       const brokeDn = c.c < lv.zoneLo - cfg.flipMarginAtr * atrVal;
-      if (brokeUp || brokeDn) {
+      // Body, not range: a wick through the zone with a small body is a sweep,
+      // which is the opposite event from a displacement that retires the level.
+      const body = Math.abs(c.c - c.o);
+      const impulsive = !(cfg.flipImpulseAtr && cfg.flipImpulseAtr > 0)
+        || (atrVal > 0 && body >= cfg.flipImpulseAtr * atrVal);
+      if ((brokeUp || brokeDn) && impulsive) {
         lv.flipped = true;
         // First decisive break sets the role. A later break the other way is a
         // new flip, so it overwrites - what matters is the level's CURRENT role,
         // not the first thing that ever happened to it.
         lv.flipDir = brokeUp ? "up" : "down";
-      } else if (c.h >= lv.zoneLo && c.l <= lv.zoneHi) lv.touches += 1;
+      } else if (!(brokeUp || brokeDn) && c.h >= lv.zoneLo && c.l <= lv.zoneHi) {
+        lv.touches += 1;
+      }
     }
   }
   return levels;

@@ -390,6 +390,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
   "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
+  "BACKTEST_FLIP_IMPULSE_ATR",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
   "BACKTEST_MAX_STOP_PIPS", "BACKTEST_MAX_TRADES_PER_DAY",
   "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
@@ -942,13 +943,21 @@ async function main() {
    */
   const flipRaw = process.env.BACKTEST_FLIP_DIRECTION_AWARE;
   const flipAware = (flipRaw ?? "").trim().toLowerCase() === "true";
+  /** Minimum breaking-candle body, in ATR, for a level to count as disrespected.
+   *  Unset reproduces the shipped "any close beyond the zone" behaviour, so the
+   *  A/B is the same window with and without the impulse requirement. */
+  const flipImpulse = Number(process.env.BACKTEST_FLIP_IMPULSE_ATR ?? "");
   const strategy: StrategyConfig = {
     ...defaultStrategy(),
     ...(flipRaw !== undefined ? { flipDirectionAware: flipAware } : {}),
+    ...(Number.isFinite(flipImpulse) && flipImpulse > 0 ? { flipImpulseAtr: flipImpulse } : {}),
     ...(Number.isFinite(requestedMinTpR) && requestedMinTpR > 0 ? { minTpR: requestedMinTpR } : {}),
     ...(Number.isFinite(requestedMinStop) && requestedMinStop > 0 ? { minStopPips: requestedMinStop } : {}),
     ...(Number.isFinite(requestedMaxStop) && requestedMaxStop > 0 ? { maxStopPips: requestedMaxStop } : {}),
   };
+  if (Number.isFinite(flipImpulse) && flipImpulse > 0) {
+    console.log(`\n*** BACKTEST OVERRIDE: flipImpulseAtr=${flipImpulse} (research comparison only) ***`);
+  }
   if (flipRaw !== undefined) {
     console.log(`\n*** BACKTEST OVERRIDE: flipDirectionAware=${flipAware} (research comparison only) ***`);
   }

@@ -68,6 +68,19 @@ export interface StrategyConfig {
    * get it tagged; the honest reading of a ceiling is "do not take this trade".
    */
   maxStopPips?: number;
+  /**
+   * Minimum breaking-candle BODY, in ATR, for a level to count as disrespected.
+   * Undefined = any close beyond the zone flips it, which is the shipped
+   * behaviour.
+   *
+   * The spec is that a key level is disrespected when it is broken by an
+   * IMPULSIVE BODY DISPLACEMENT candle, not merely closed beyond. Without a
+   * body condition a drifting candle that happens to close a hair past the zone
+   * retires a level that the market never actually rejected, and the level then
+   * scores as a flipped breaker it never became. Body, not range: a long wick
+   * through the zone with a small body is a sweep, which is the opposite event.
+   */
+  flipImpulseAtr?: number;
   /** cap synthetic execution targets when a promoted external draw is very far */
   maxPromotedTpR: number;
   /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
@@ -176,6 +189,7 @@ interface EnvVars {
   RETEST_DEPTH_PCT?: string;
   FLIP_DIRECTION_AWARE?: string;
   MAX_STOP_PIPS?: string;
+  FLIP_IMPULSE_ATR?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -262,6 +276,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
   const maxStopPips = Number(env.MAX_STOP_PIPS ?? "");
+  const flipImpulseAtr = Number(env.FLIP_IMPULSE_ATR ?? "");
   const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
   const flipDirectionAware =
     (env.FLIP_DIRECTION_AWARE ?? "false").trim().toLowerCase() === "true";
@@ -274,6 +289,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(maxStopPips) && maxStopPips > 0) strategy.maxStopPips = maxStopPips;
+  if (Number.isFinite(flipImpulseAtr) && flipImpulseAtr > 0) strategy.flipImpulseAtr = flipImpulseAtr;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
   if (Number.isFinite(retestDepthPct) && retestDepthPct >= 1 && retestDepthPct <= 100) {
