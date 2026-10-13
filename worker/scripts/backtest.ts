@@ -36,6 +36,8 @@ import {
   SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f,
   limitShadowRows, marketShadowRows, monthlyBuckets, riskForLimit, stats, type Trade,
 } from "../src/replay_stats";
+import { emptyBucket, renderSweepTable, sweepRows, targetPrice, type SweepBucket }
+  from "../src/target_sweep";
 import type { Alert, Candle, Direction, KeyLevel } from "../src/types";
 
 const ROOT = "https://jetta.dukascopy.com/v1/candles";
@@ -338,6 +340,28 @@ const RISK_PCTS = (process.env.BACKTEST_RISK_PCTS ?? "0.5,0.75,1")
  * - so it is only worth running when the daily limit is what binds.
  */
 const MAX_TRADES_PER_DAY = Number(process.env.BACKTEST_MAX_TRADES_PER_DAY ?? 0);
+
+/**
+ * Target sweep: re-score the SAME alert set at other R multiples of the same
+ * stop distance, e.g. "1,1.5,2,2.5,3,3.5,4,5". Empty disables it.
+ *
+ * This exists because "can we win 3 trades in 5" cannot be answered from the
+ * headline win rate alone. Win rate and R:R move against each other by
+ * construction: at 1:3 break-even is a 25% win rate, so a 60% win rate is only
+ * impressive next to the target it was measured at. Sweeping the target shows
+ * the whole curve on identical alerts - the only thing that changes is where
+ * the target sits - so a point on it can be compared to the shipped setting
+ * without re-running the scan or changing which setups fired.
+ */
+const TARGET_SWEEP = (process.env.BACKTEST_TARGET_SWEEP ?? "")
+  .split(",").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x > 0)
+  .sort((a, b) => a - b);
+
+/** Accumulated across every pair, so it lives at module scope: the per-pair
+ *  replay is its own function and returns only its trade arrays, while the
+ *  table is printed once at the end from the whole book. Keyed by target R. */
+const sweepAcc = new Map<number, SweepBucket>();
+for (const rr of TARGET_SWEEP) sweepAcc.set(rr, emptyBucket());
 for (const tf of ENTRY_TFS) {
   if (tf !== "30m" && tf !== "1h" && tf !== "2h") {
     throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 30m, 1h, 2h`);
@@ -368,7 +392,8 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_ENTRY_TFS", "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
   "BACKTEST_MAX_TRADES_PER_DAY", "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
-  "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_VERBOSE",
+  "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_TARGET_SWEEP",
+  "BACKTEST_VERBOSE",
 ] as const;
 
 const unknownBacktestVars = Object.keys(process.env)
@@ -794,6 +819,23 @@ async function replay(
           marketExitTime: marketOc ? new Date(marketOc.exitTime).toISOString().slice(0, 16).replace("T", " ") : "-",
           marketR: marketOc?.rMultiple ?? NaN,
         });
+
+        // Target sweep. Same entry, same stop, same candle window, same
+        // evaluateSignal - only the target moves, so any difference in the
+        // table below is the target's doing and nothing else's.
+        for (const rr of TARGET_SWEEP) {
+          const tp = targetPrice(a.direction, a.entry, a.stopLoss, rr);
+          const o2 = evaluateSignal(a.direction, a.entry, a.stopLoss, tp, after, 120,
+            false, BE_TRIGGER_R, BE_ENABLED);
+          const b = sweepAcc.get(rr)!;
+          b.n++;
+          if (!o2 || o2.status === "OPEN" || o2.status === "EXPIRED") { b.open++; continue; }
+          if (o2.status === "TP_HIT") b.tp++;
+          else if (o2.status === "SL_HIT") b.sl++;
+          else if (o2.status === "BE_HIT") b.be++;
+          else b.open++;
+          if (Number.isFinite(o2.rMultiple)) b.r += o2.rMultiple;
+        }
       }
     }
   }
@@ -1249,6 +1291,15 @@ async function main() {
       `- entries: ${confAll.length}\n` +
       `- adj net ${f(cf.finalR)}R · PF ${f(cf.pf)} · win ${f(cf.winrate, 1)}% · maxDD ${f(cf.maxDD)}R\n` +
       `- ${thirdStr}\n\n`;
+  }
+
+  if (TARGET_SWEEP.length) {
+    const cur = stats(all, false);  // raw, like the sweep rows - not spread-adjusted
+    const rows = sweepRows(TARGET_SWEEP, sweepAcc);
+    const sw = renderSweepTable(
+      rows, cur.alerts ? cur.finalR / cur.alerts : NaN, cur.alerts).join("\n");
+    console.log("\n" + sw);
+    lines += `\n## Target sweep\n\n\`\`\`\n${sw}\n\`\`\`\n`;
   }
 
   const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;
