@@ -177,6 +177,57 @@ export function strongPivots(
   return out.sort((a, b) => a.sweepTime - b.sweepTime);
 }
 
+/** The extreme defended pivot of the structure: the highest strong high and
+ *  the lowest strong low. "Protected" is doing the work - an ordinary swing
+ *  extreme is just a price the market happened to reach, whereas an apex has
+ *  had the liquidity beyond it taken and the move away confirmed, so it is the
+ *  level the structure is actually built from. */
+export interface Apex {
+  high: StrongPivot | null;
+  low: StrongPivot | null;
+}
+
+/** Reduce confirmed pivots to the two extremes. Split out from apex() so the
+ *  selection can be tested directly rather than only through a candle fixture
+ *  that happens to contain several defended pivots. */
+export function apexFromPivots(pivots: readonly StrongPivot[]): Apex {
+  let high: StrongPivot | null = null;
+  let low: StrongPivot | null = null;
+  for (const p of pivots) {
+    if (p.kind === "strong_high" && (high === null || p.price > high.price)) high = p;
+    if (p.kind === "strong_low" && (low === null || p.price < low.price)) low = p;
+  }
+  return { high, low };
+}
+
+export function apex(
+  candles: Candle[], cfg: StrategyConfig, confirmWindow = 6, impulseAtr = 1.0,
+): Apex {
+  return apexFromPivots(strongPivots(candles, cfg, confirmWindow, impulseAtr));
+}
+
+/**
+ * Stop placed strictly beyond the apex that protects the trade: below the
+ * defended low for a long, above the defended high for a short.
+ *
+ * Returns null when there is no defended pivot on the protective side. That is
+ * not a fallback to some other placement - a caller that silently substituted a
+ * wider or narrower stop would be reporting an apex stop it did not use. The
+ * honest answer is "there is nothing defended to hide behind", and the caller
+ * decides what that means.
+ *
+ * `buffer` is added on top, strictly beyond, because a stop exactly at the
+ * apex sits where the liquidity that already got taken was resting.
+ */
+export function apexStop(
+  direction: "LONG" | "SHORT", a: Apex, buffer: number,
+): number | null {
+  if (direction === "LONG") {
+    return a.low ? a.low.price - buffer : null;
+  }
+  return a.high ? a.high.price + buffer : null;
+}
+
 /** Most recent break of structure: [index, "up"|"down", level]. */
 export function bosEvent(
   candles: Candle[], left = 2, right = 2,
