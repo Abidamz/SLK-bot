@@ -915,8 +915,26 @@ async function main() {
   const args = process.argv.slice(2);
   let days = 60;
   let pairs = DEFAULT_PAIRS;
-  if (args.length && /^[A-Z]/.test(args[0])) { pairs = args[0].split(","); args.shift(); }
-  if (args.length && /^\d+$/.test(args[0])) days = Number(args[0]);
+  // Order-independent, and anything unrecognised is a hard error. The previous
+  // version tested only args[0] and silently fell through: an unset shell
+  // variable expands to an empty argument, which matched neither pattern, was
+  // never shifted, and swallowed the day count behind it - producing a 60-day
+  // default run from a command line that plainly said 360. A plausible-looking
+  // report from the wrong window is worse than a crash.
+  const PAIR_LIST = /^[A-Z][A-Z0-9]*(,[A-Z][A-Z0-9]*)*$/;
+  for (const a of args) {
+    if (/^\d+$/.test(a)) { days = Number(a); continue; }
+    if (PAIR_LIST.test(a)) { pairs = a.split(","); continue; }
+    console.error(
+      `Unrecognised argument: ${JSON.stringify(a)}\n` +
+      `  usage: npx tsx scripts/backtest.ts [PAIR1,PAIR2,...] [days]\n` +
+      (a === ""
+        ? `  An empty argument usually means an unset shell variable - if you\n` +
+          `  meant $UNIVERSE, run the export first, or paste the list literally.`
+        : `  Pairs are comma-separated uppercase names; days is a bare number.`),
+    );
+    process.exit(1);
+  }
 
   if (SOURCE !== "oanda") {
     console.error(
@@ -1116,6 +1134,17 @@ async function main() {
       const oos = oosReport(all, spreadAdj, { heldOutDays: OOS_DAYS, minAlerts: OOS_MIN_ALERTS });
       const sel = Number.isFinite(oos.splitTime)
         ? new Date(oos.splitTime).toISOString().slice(0, 10) : "n/a";
+      // If the held-out window is at least as long as the run, the split lands
+      // before the data starts and every trade is "held out" - the block then
+      // looks like a result while measuring nothing.
+      const selEmpty = oos.instruments.every((i) => i.selAlerts === 0);
+      if (selEmpty) {
+        console.log(
+          `\n!! OUT-OF-SAMPLE: no selection-period trades at all. BACKTEST_OOS_DAYS=${OOS_DAYS} ` +
+          `is at least as long as this run's window, so there is nothing to select on. ` +
+          `Lengthen the run or lower BACKTEST_OOS_DAYS.`,
+        );
+      }
       const L = [
         `OUT-OF-SAMPLE - picked on entries before ${sel}, judged on the ${OOS_DAYS}d after`,
         `   picking needs >= ${OOS_MIN_ALERTS} alerts and positive R/alert; the ranking never sees the held-out window`,
