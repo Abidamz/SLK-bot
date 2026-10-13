@@ -33,6 +33,11 @@ describe("deployed wrangler.jsonc", () => {
   it("keeps paper mode and the standing gates byte-identical", () => {
     for (const entry of [
       '"MODE":"paper"',
+      // Market entry. The pending limit at the retest close measured worse on
+      // both the 180d and 360d replays (31.06R vs 36.33R over 360d), and 3
+      // alerts never filled it at all. Changing this changes what subscribers
+      // are told to do, so it is pinned rather than left to a default.
+      '"EXECUTION_MODE":"market"',
       '"MIN_TP_R":"2.5"',
       '"MIN_RISK_ATR":"0.8"',
       // 100 = the legacy "return to the origin zone" retest check. Any value

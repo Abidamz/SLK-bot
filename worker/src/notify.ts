@@ -567,7 +567,14 @@ const KIND_NAMES: Record<string, string> = { A: "A-top", V: "V-bottom", OC: "Ope
 const tfmt = (ms: number) =>
   new Date(ms).toISOString().slice(11, 16); // HH:MM UTC
 
-export function formatAlert(a: Alert): string {
+/** How the subscriber is told to get in. "market" is the default: measured over
+ *  360 days the pending limit at the retest close returned 31.06R against
+ *  36.33R for a market entry at the next open, and 3 alerts never filled the
+ *  limit at all. "limit" is retained because it is the historically shipped
+ *  wording and the switch is a business decision, not a code one. */
+export type ExecutionMode = "market" | "limit";
+
+export function formatAlert(a: Alert, executionMode: ExecutionMode = "market"): string {
   const emoji = a.direction === "LONG" ? "🟢" : "🔴";
   const paper = a.alertStatus === "PAPER" ? "🧪 PAPER ALERT" : "ALERT";
   const boldPair = toBold(a.pair);
@@ -659,7 +666,9 @@ export function formatAlert(a: Alert): string {
     // historical price by the time this alert is delivered — it cannot be a
     // market entry. Say so explicitly: subscribers were previously left to infer
     // the execution mode, and market-filling changes the trade's R.
-    `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close · ${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"})`,
+    executionMode === "market"
+      ? `Entry       : ${fmtPrice(a.pair, a.entry)} (reference · retest close · MARKET on next candle open)`
+      : `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close · ${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"})`,
     `Stop        : ${fmtPrice(a.pair, a.stopLoss)} (${fmtPips(a.pair, a.entry - a.stopLoss)} · beyond sweep extreme)`,
     `Target 1    : ${fmtPrice(a.pair, a.tpInternal)} internal liquidity (${fmtPips(a.pair, a.tpInternal - a.entry)}${a.rrInternal ? ` · ${a.rrInternal}R` : ""})`,
   );
@@ -671,9 +680,11 @@ export function formatAlert(a: Alert): string {
   // pullback down to it. If price runs away the order never fills and there is
   // simply no trade — which is a legitimate outcome, not a missed alert.
   lines.push(
-    a.direction === "LONG"
-      ? `👉 EXECUTION  : Pending buy limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price pulls back to that level.`
-      : `👉 EXECUTION  : Pending sell limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price bounces back to that level.`,
+    executionMode === "market"
+      ? `👉 EXECUTION  : Market order on the next candle open. The price above is the retest close used to size the stop and targets — your fill will differ, so confirm the stop is still ~1R away before entering.`
+      : a.direction === "LONG"
+        ? `👉 EXECUTION  : Pending buy limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price pulls back to that level.`
+        : `👉 EXECUTION  : Pending sell limit at ${fmtPrice(a.pair, a.entry)} · not a market entry. Fills only if price bounces back to that level.`,
   );
   const risk = Math.abs(a.entry - a.stopLoss);
   const bePrice = a.direction === "LONG" ? a.entry + risk * 1.5 : a.entry - risk * 1.5;
@@ -861,10 +872,13 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
   const photoUrl = await getVisualAlertImageUrl(env, a);
   // Alerts routinely exceed Telegram's 1024-char caption limit. Give the chart a
   // caption that still identifies the trade on its own; the full text follows.
+  const executionMode: ExecutionMode = env.EXECUTION_MODE === "limit" ? "limit" : "market";
   const shortCaption =
     `${a.pair} · ${a.direction} · ${a.entryTf} · ` +
-    `${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"} @ ${fmtPrice(a.pair, a.entry)}`;
-  return broadcast(env, formatAlert(a), a.direction === "LONG" ? GREEN : RED, {
+    (executionMode === "market"
+      ? `${a.direction === "LONG" ? "BUY" : "SELL"} (MARKET) @ ${fmtPrice(a.pair, a.entry)}`
+      : `${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"} @ ${fmtPrice(a.pair, a.entry)}`);
+  return broadcast(env, formatAlert(a, executionMode), a.direction === "LONG" ? GREEN : RED, {
     silent: false,
     pin: true,
     sendToDm: true,

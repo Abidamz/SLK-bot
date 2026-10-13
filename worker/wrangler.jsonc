@@ -83,6 +83,13 @@
     "CHART_SNAPSHOTS": "true",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
+    // Market entry, not a pending limit at the retest close. Measured over the
+    // 360-day replay on the same alerts: pending limit 31.06R, market at the
+    // next open 36.33R (+17%), and 3 alerts never filled the limit at all, so
+    // those trades never happened. The limit order was the worst of the three
+    // entry models on both the 180d and 360d windows. Set to "limit" to restore
+    // the previous instruction without a code change.
+    "EXECUTION_MODE": "market",
     "MIN_TP_R": "2.5",
     "SL_BUFFER_ATR": "0.25",
     // Two markets per cron tick. Measured 2026-10-07 after the scheduler/store

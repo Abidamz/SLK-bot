@@ -17,6 +17,14 @@ export interface NotifyEnv {
   VIP_WATCH_NOTIFY?: string;
   CHART_SNAPSHOTS?: string;
   CHART_IMG_API_KEY?: string;
+  /**
+   * "market" (default) or "limit". Measured over 360 days the pending limit at
+   * the retest close returned 31.06R against 36.33R for a market entry at the
+   * next open - the limit is the worse of the two, and 3 alerts never filled at
+   * all, so those trades simply did not happen. Kept switchable because it
+   * changes what subscribers are instructed to do, not just what we measure.
+   */
+  EXECUTION_MODE?: string;
 }
 
 /** Row-shaped subset used when formatting outcomes and performance recaps (matches slk_alerts). */
