@@ -21,7 +21,7 @@
  *
  *  Usage:
  *    cd worker
- *    TAYO_ADMIN_KEY=... npx tsx scripts/audit_ledger.ts
+ *    ADMIN_KEY=... npx tsx scripts/audit_ledger.ts
  *    TAYO_ADMIN_KEY=... TAYO_BASE_URL=https://... npx tsx scripts/audit_ledger.ts
  */
 
@@ -30,8 +30,10 @@ import {
   type PropLimits, type Trade,
 } from "../src/replay_stats";
 
-const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
-const KEY = process.env.TAYO_ADMIN_KEY ?? "";
+import { adminKey, baseUrl, missingKeyHint } from "./audit_env";
+
+const BASE = baseUrl();
+const KEY = adminKey();
 const PROP_TARGET = Number(process.env.PROP_TARGET ?? 8);
 const PROP_DAILY = Number(process.env.PROP_DAILY ?? 3);
 const PROP_TOTAL = Number(process.env.PROP_TOTAL ?? 5);
@@ -48,7 +50,7 @@ interface Row {
 
 async function fetchAll(): Promise<Row[]> {
   if (!KEY) {
-    console.error("TAYO_ADMIN_KEY is required - /alerts is authenticated.");
+    console.error(missingKeyHint());
     process.exit(1);
   }
   const out: Row[] = [];

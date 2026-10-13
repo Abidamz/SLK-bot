@@ -18,15 +18,17 @@
  *
  * Reporting only. Nothing here changes a gate or emits anything.
  *
- * Usage:  TAYO_ADMIN_KEY=... npm run audit:shadow
+ * Usage:  ADMIN_KEY=... npm run audit:shadow   # or TAYO_ADMIN_KEY, or worker/.dev.vars
  */
 
 // The worker GitHub Actions deploys: wrangler.jsonc names it slk-alert-worker,
 // so its URL is https://slk-alert-worker.<subdomain>.workers.dev. If your
 // alerts live on the pre-rename worker instead, override with
 // TAYO_BASE_URL=https://slk-alert-worker.<subdomain>.workers.dev
-const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
-const KEY = process.env.TAYO_ADMIN_KEY ?? "";
+import { adminKey, baseUrl, missingKeyHint } from "./audit_env";
+
+const BASE = baseUrl();
+const KEY = adminKey();
 
 // The floor currently in production. MIN_TP_R in wrangler.jsonc.
 const CURRENT_FLOOR = 2.5;
@@ -41,7 +43,7 @@ interface ShadowRow {
 
 async function main(): Promise<void> {
   if (!KEY) {
-    console.error("Set TAYO_ADMIN_KEY to the owner read key ( /api/shadow-ledger is authed ).");
+    console.error(missingKeyHint());
     process.exit(1);
   }
 

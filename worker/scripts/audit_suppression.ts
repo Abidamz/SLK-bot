@@ -14,7 +14,7 @@
  *
  *  Usage:
  *    cd worker
- *    TAYO_ADMIN_KEY=... npx tsx scripts/audit_suppression.ts
+ *    ADMIN_KEY=... npx tsx scripts/audit_suppression.ts
  *    TAYO_ADMIN_KEY=... TAYO_BASE_URL=https://... npx tsx scripts/audit_suppression.ts
  *
  *  Requires the owner read key (/alerts is authed).
@@ -24,8 +24,10 @@
 // so its URL is https://slk-alert-worker.<subdomain>.workers.dev. If your
 // alerts live on the pre-rename worker instead, override with
 // TAYO_BASE_URL=https://slk-alert-worker.<subdomain>.workers.dev
-const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
-const KEY = process.env.TAYO_ADMIN_KEY ?? "";
+import { adminKey, baseUrl, missingKeyHint } from "./audit_env";
+
+const BASE = baseUrl();
+const KEY = adminKey();
 
 type Row = {
   pair?: string;
@@ -106,7 +108,7 @@ function render(title: string, buckets: Map<string, Bucket>): void {
 
 async function main(): Promise<void> {
   if (!KEY) {
-    console.error("Set TAYO_ADMIN_KEY to the owner read key ( /alerts is authed ).");
+    console.error(missingKeyHint());
     process.exit(1);
   }
   const url = `${BASE}/alerts?includeSuppressed=true&limit=200&key=${encodeURIComponent(KEY)}`;

@@ -20,7 +20,7 @@
  *
  *  Usage:
  *    cd worker
- *    TAYO_ADMIN_KEY=... npx tsx scripts/audit_coverage.ts
+ *    ADMIN_KEY=... npx tsx scripts/audit_coverage.ts
  *    TAYO_ADMIN_KEY=... TAYO_BASE_URL=https://... TAYO_AUDIT_DAYS=31 npx tsx scripts/audit_coverage.ts
  *
  *  Requires the owner key (/api/scan-audit and /alerts are both authed).
@@ -32,8 +32,10 @@ import { readFileSync } from "node:fs";
 // so its URL is https://slk-alert-worker.<subdomain>.workers.dev. If your
 // alerts live on the pre-rename worker instead, override with
 // TAYO_BASE_URL=https://slk-alert-worker.<subdomain>.workers.dev
-const BASE = process.env.TAYO_BASE_URL ?? "https://slk-alert-worker.abidogundamilola.workers.dev";
-const KEY = process.env.TAYO_ADMIN_KEY ?? "";
+import { adminKey, baseUrl, missingKeyHint } from "./audit_env";
+
+const BASE = baseUrl();
+const KEY = adminKey();
 const DAYS = process.env.TAYO_AUDIT_DAYS ?? "31";
 
 interface FunnelRow {
@@ -95,7 +97,7 @@ async function getJson(path: string): Promise<unknown> {
 
 async function main(): Promise<void> {
   if (!KEY) {
-    console.error("Set TAYO_ADMIN_KEY to the owner read key ( /api/scan-audit and /alerts are authed ).");
+    console.error(missingKeyHint());
     process.exit(1);
   }
 
