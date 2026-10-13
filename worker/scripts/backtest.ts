@@ -1130,8 +1130,15 @@ async function main() {
 
     // Out-of-sample split. Sits inside emit() so it is printed and written for
     // both the raw and the spread-adjusted pass, like the rest of the report.
-    if (OOS_DAYS > 0 && all.length) {
-      const oos = oosReport(all, spreadAdj, { heldOutDays: OOS_DAYS, minAlerts: OOS_MIN_ALERTS });
+    // Both books, not just the shipped one. The continuation shadow is where
+    // the eye-catching per-instrument numbers came from, and judging it only on
+    // the window that produced them is how a hot streak gets mistaken for an
+    // edge - XAUUSD printed +1.317R/setup over 60 days and +0.136R/setup over
+    // the year, which is the luckiest of sixteen at 2.4 sigma, a result pure
+    // chance produces 13% of the time.
+    for (const [bookName, bookRows] of [["ORIGIN", all], ["CONTINUATION", contAll]] as const) {
+      if (OOS_DAYS <= 0 || !bookRows.length) continue;
+      const oos = oosReport(bookRows, spreadAdj, { heldOutDays: OOS_DAYS, minAlerts: OOS_MIN_ALERTS });
       const sel = Number.isFinite(oos.splitTime)
         ? new Date(oos.splitTime).toISOString().slice(0, 10) : "n/a";
       // If the held-out window is at least as long as the run, the split lands
@@ -1140,13 +1147,13 @@ async function main() {
       const selEmpty = oos.instruments.every((i) => i.selAlerts === 0);
       if (selEmpty) {
         console.log(
-          `\n!! OUT-OF-SAMPLE: no selection-period trades at all. BACKTEST_OOS_DAYS=${OOS_DAYS} ` +
+          `\n!! OUT-OF-SAMPLE (${bookName}): no selection-period trades at all. BACKTEST_OOS_DAYS=${OOS_DAYS} ` +
           `is at least as long as this run's window, so there is nothing to select on. ` +
           `Lengthen the run or lower BACKTEST_OOS_DAYS.`,
         );
       }
       const L = [
-        `OUT-OF-SAMPLE - picked on entries before ${sel}, judged on the ${OOS_DAYS}d after`,
+        `OUT-OF-SAMPLE [${bookName}] - picked on entries before ${sel}, judged on the ${OOS_DAYS}d after`,
         `   picking needs >= ${OOS_MIN_ALERTS} alerts and positive R/alert; the ranking never sees the held-out window`,
         `   pair       sel alerts  sel R/alert  |  oos alerts  oos R/alert   picked`,
       ];
