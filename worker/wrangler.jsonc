@@ -83,6 +83,13 @@
     "CHART_SNAPSHOTS": "true",
     "MIN_RISK_ATR": "0.8",
     "MIN_STOP_PIPS": "10",
+    // Stop-distance CEILING in pips, FX only; unset means no ceiling. The
+    // teaching is "my highest stop loss I can go for every trade is 10 pips".
+    // Left unset until measured: with MIN_STOP_PIPS also at 10 this makes every
+    // FX stop exactly 10 pips and rejects any setup needing more, which trades
+    // alert volume for R per trade. Costs make it FX-only - a literal 10-unit
+    // stop is 0.80R of spread on JAPAN225 against 0.02R on EURUSD. Measure with
+    // BACKTEST_MAX_STOP_PIPS=10 before setting it here.
     // Market entry, not a pending limit at the retest close. Measured over the
     // 360-day replay on the same alerts: pending limit 31.06R, market at the
     // next open 36.33R (+17%), and 3 alerts never filled the limit at all, so

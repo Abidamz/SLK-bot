@@ -391,7 +391,8 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
   "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
-  "BACKTEST_MAX_TRADES_PER_DAY", "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
+  "BACKTEST_MAX_STOP_PIPS", "BACKTEST_MAX_TRADES_PER_DAY",
+  "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
   "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_TARGET_SWEEP",
   "BACKTEST_VERBOSE",
@@ -930,6 +931,9 @@ async function main() {
    * the current watchlist changes one pair out of three.
    */
   const requestedMinStop = Number(process.env.BACKTEST_MIN_STOP_PIPS ?? "");
+  /** FX stop ceiling in pips. Rejections are a volume cost, so this is an A/B
+   *  knob rather than a default: run the same window with and without it. */
+  const requestedMaxStop = Number(process.env.BACKTEST_MAX_STOP_PIPS ?? "");
   /**
    * A flipped level changed role, and the role has a direction. Off by default
    * in production, so this is how the change gets measured before it is shipped:
@@ -943,11 +947,12 @@ async function main() {
     ...(flipRaw !== undefined ? { flipDirectionAware: flipAware } : {}),
     ...(Number.isFinite(requestedMinTpR) && requestedMinTpR > 0 ? { minTpR: requestedMinTpR } : {}),
     ...(Number.isFinite(requestedMinStop) && requestedMinStop > 0 ? { minStopPips: requestedMinStop } : {}),
+    ...(Number.isFinite(requestedMaxStop) && requestedMaxStop > 0 ? { maxStopPips: requestedMaxStop } : {}),
   };
   if (flipRaw !== undefined) {
     console.log(`\n*** BACKTEST OVERRIDE: flipDirectionAware=${flipAware} (research comparison only) ***`);
   }
-  for (const [name, val] of [["minTpR", requestedMinTpR], ["minStopPips", requestedMinStop]] as const) {
+  for (const [name, val] of [["minTpR", requestedMinTpR], ["minStopPips", requestedMinStop], ["maxStopPips", requestedMaxStop]] as const) {
     if (Number.isFinite(val) && val > 0) {
       console.log(`\n*** BACKTEST OVERRIDE: ${name}=${val} (research comparison only) ***`);
     }

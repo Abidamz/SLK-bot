@@ -8,7 +8,7 @@
  *  and unique event keys). Every transition is emitted as an EngineEvent. */
 import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
-import { PARAM_VERSION, minStopDistance, pipSize, roundToTick } from "./config";
+import { PARAM_VERSION, minStopDistance, pipSize, roundToTick, stopExceedsCeiling } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import {
@@ -88,6 +88,9 @@ function shadowRiskForStop(
   let stopLoss = proposedStop;
   let risk = direction === "SHORT" ? stopLoss - entry : entry - stopLoss;
   if (risk <= 0) return null;
+  // Ceiling before floor: a structure that needs more room than the cap allows
+  // is not a trade, and clamping it would put the stop somewhere arbitrary.
+  if (stopExceedsCeiling(pair, risk, cfg.maxStopPips)) return null;
   if (cfg.minStopPips && cfg.minStopPips > 0) {
     const minDistance = minStopDistance(pair, cfg.minStopPips);
     if (risk < minDistance) {
@@ -630,6 +633,7 @@ function buildNoRetestShadow(args: {
     : args.s.invLevel - args.cfg.slBufferAtr * bosAtr;
   let risk = args.isShort ? stopLoss - entry : entry - stopLoss;
   if (!Number.isFinite(risk) || risk <= 0) return null;
+  if (stopExceedsCeiling(args.pair, risk, args.cfg.maxStopPips)) return null;
   if (args.cfg.minStopPips && args.cfg.minStopPips > 0) {
     const minDistance = minStopDistance(args.pair, args.cfg.minStopPips);
     if (risk < minDistance) {
@@ -684,6 +688,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     a.diagnostics.riskRejectReasons.nonPositiveRisk++;
     return null;
   }
+  if (stopExceedsCeiling(pair, risk, cfg.maxStopPips)) return null;
   // Enforce Option A: Minimum Stop Floor in Pips/Points (e.g. 10 pips forex, 25-30 pts indices)
   // so broker spread never prematurely tags out valid setups.
   if (cfg.minStopPips && cfg.minStopPips > 0) {

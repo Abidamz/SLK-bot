@@ -53,6 +53,21 @@ export interface StrategyConfig {
   slBufferAtr: number;
   minRiskAtr: number;
   minStopPips?: number;
+  /**
+   * Stop-distance CEILING in pips, FX only. Undefined = no ceiling.
+   *
+   * The teaching is "my highest stop loss I can go for every trade is 10 pips",
+   * which is a cap, not a floor. It is FX-only because the cap is unaffordable
+   * elsewhere: cost is charged as spread / stopDistance, so a literal 10-unit
+   * stop costs 0.80R per round trip on JAPAN225 and 0.40R on XAUUSD against the
+   * 0.02R EURUSD pays. The per-instrument floors in minStopDistance exist to
+   * stop exactly that, and this deliberately does not override them.
+   *
+   * A setup whose structure needs a wider stop is REJECTED, not clamped.
+   * Moving the stop inside the structure would put it somewhere arbitrary and
+   * get it tagged; the honest reading of a ceiling is "do not take this trade".
+   */
+  maxStopPips?: number;
   /** cap synthetic execution targets when a promoted external draw is very far */
   maxPromotedTpR: number;
   /** stop-width ceiling in entry-TF ATRs — e.g. 2.0 ⇒ stop ≤ 2× ATR(30m).
@@ -160,6 +175,7 @@ interface EnvVars {
   SYNTH_ENTRY_TFS?: string;
   RETEST_DEPTH_PCT?: string;
   FLIP_DIRECTION_AWARE?: string;
+  MAX_STOP_PIPS?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   WATCH_NOTIFY?: string;
@@ -245,6 +261,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 
   const minRiskAtr = Number(env.MIN_RISK_ATR ?? "");
   const minStopPips = Number(env.MIN_STOP_PIPS ?? "");
+  const maxStopPips = Number(env.MAX_STOP_PIPS ?? "");
   const slBufferAtr = Number(env.SL_BUFFER_ATR ?? "");
   const flipDirectionAware =
     (env.FLIP_DIRECTION_AWARE ?? "false").trim().toLowerCase() === "true";
@@ -256,6 +273,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   strategy.flipDirectionAware = flipDirectionAware;
   if (Number.isFinite(minRiskAtr) && minRiskAtr > 0) strategy.minRiskAtr = minRiskAtr;
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
+  if (Number.isFinite(maxStopPips) && maxStopPips > 0) strategy.maxStopPips = maxStopPips;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
   if (Number.isFinite(retestDepthPct) && retestDepthPct >= 1 && retestDepthPct <= 100) {
@@ -379,6 +397,28 @@ export function roundToTick(pair: string, price: number): number {
   const tick = identityTick(pair);
   if (!Number.isFinite(price) || tick <= 0) return price;
   return Number((Math.round(price / tick) * tick).toFixed(10));
+}
+
+/**
+ * Absolute stop-distance ceiling for this pair, or null when no ceiling
+ * applies. Non-FX always returns null: see maxStopPips.
+ */
+export function stopCeilingDistance(
+  pair: string, maxStopPips?: number,
+): number | null {
+  if (!maxStopPips || !(maxStopPips > 0)) return null;
+  if (!isForexPair(pair)) return null;
+  return maxStopPips * pipSize(pair);
+}
+
+/** True when this setup needs a wider stop than the ceiling allows, so it must
+ *  be rejected. Centralised because three call sites enforce the stop floor and
+ *  they would otherwise drift apart on the ceiling. */
+export function stopExceedsCeiling(
+  pair: string, riskDistance: number, maxStopPips?: number,
+): boolean {
+  const ceil = stopCeilingDistance(pair, maxStopPips);
+  return ceil !== null && Number.isFinite(riskDistance) && riskDistance > ceil;
 }
 
 /** Minimum stop loss floor in absolute price distance to prevent spread and noise stop-outs. */
