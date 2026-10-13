@@ -110,3 +110,51 @@ triple expectancy.
 
 If that work is ever done, the criterion is fixed now: same 16 instruments, same
 360 days, **gross R/alert ≥ 0.30R or stop permanently.**
+
+## Addendum: the continuation book was tested out-of-sample too
+
+The out-of-sample split originally ran on the origin book only. The
+eye-catching per-instrument numbers all came from the continuation shadow, so
+judging that model solely on the window that produced its best result was the
+one gap left. It is now split as well, and the XAUUSD question is closed.
+
+**XAUUSD continuation, split at 2026-06-15 (raw):**
+
+| period | alerts | R/alert |
+|---|---|---|
+| selection (before) | 300 | **−0.17** — not picked |
+| held out (after) | 416 | **+0.42** |
+| full year | 716 | +102.12R |
+
+It made its money in the period a selection rule would **not** have chosen it
+for, and lost money in the period the rule judged it on. The edge is not weak —
+it is unstable, and instability in both directions is worse than weakness,
+because it cannot be selected for in advance.
+
+**The mirror image in the origin book:** EURUSD scored +0.48R/alert in selection
+and −0.50R/alert held out. Same test, both books, opposite directions. Per-
+instrument performance in one eight-month window carries essentially no
+predictive content for the next four.
+
+**The selection was anti-predictive, not merely useless.** It picked UK100,
+USDCAD, GBPUSD and GBPJPY on positive selection expectancy. Held out:
+
+    UK100    sel +0.14 -> -0.22
+    USDCAD   sel +0.09 -> +0.23
+    GBPUSD   sel +0.01 -> -0.48
+    GBPJPY   sel +0.00 -> -0.39
+    picked book held out: 693 alerts, -173.3R, -0.25R/alert
+
+**The continuation book as a whole, held out:** −102.0R raw and −292.8R adjusted
+over 3,075 alerts. At market execution the full year now reads **−13.47R**; the
+previous run's +47.59R did not survive a data refresh.
+
+## Final position
+
+There is nothing to build around on XAUUSD. Not because gold is a bad
+instrument — it made +102R on the continuation model over the year — but because
+the performance does not persist in either direction, so it cannot be selected
+for in advance. A rule that picks it today would have rejected it eight months
+ago, and a rule that rejected it then would have missed the recovery.
+
+Both books, both directions, one year, sixteen instruments. This is closed.
