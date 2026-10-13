@@ -48,15 +48,29 @@ interface Row {
   rMultiple?: number | null; suppressReason?: string | null;
 }
 
+/**
+ * /alerts is guarded by readAuthed(), which returns true unconditionally -
+ * deliberate "public portfolio mode" so the portfolio can be viewed without an
+ * account. Requiring ADMIN_KEY here therefore refused to run against an
+ * endpoint that never asks for one.
+ *
+ * The key is still worth having: includeSuppressed is gated on authed(), so
+ * without it the response omits suppressed rows and the suppression audit
+ * below cannot be performed. Everything else - expectancy, drawdown, the
+ * challenge verdict - works on the delivered ledger alone, which is the part
+ * a subscriber actually trades.
+ */
 async function fetchAll(): Promise<Row[]> {
   if (!KEY) {
+    console.error("note: no admin key set. /alerts is public, so the ledger still");
+    console.error("loads, but includeSuppressed needs ADMIN_KEY - suppressed rows");
+    console.error("will be absent and the suppression audit below will be skipped.");
     console.error(missingKeyHint());
-    process.exit(1);
   }
   const out: Row[] = [];
   for (let page = 1; page <= 50; page++) {
     const url = `${BASE}/alerts?limit=200&page=${page}&order=desc&sort=candleCloseTime`;
-    const res = await fetch(url, { headers: { authorization: `Bearer ${KEY}` } });
+    const res = await fetch(url, { headers: KEY ? { authorization: `Bearer ${KEY}` } : {} });
     if (!res.ok) {
       console.error(`GET ${url} -> ${res.status} ${res.statusText}`);
       process.exit(1);
@@ -182,6 +196,11 @@ async function main(): Promise<void> {
   byBucket("by entry timeframe", (t) => t.tf, trades);
 
   const suppressed = rows.filter((r) => String(r.alertStatus ?? "").toUpperCase() === "SUPPRESSED");
+  if (!suppressed.length && !KEY) {
+    console.log("\n=== suppressed rows ===");
+    console.log("   Not audited: includeSuppressed requires ADMIN_KEY, and none is set.");
+    console.log("   Delivered-row figures above are unaffected.");
+  }
   if (suppressed.length) {
     console.log(`\n=== suppressed rows (${suppressed.length}) — reported, never added to the book ===`);
     console.log("   These are stale or gated setups. Counting them as tradeable is the");
