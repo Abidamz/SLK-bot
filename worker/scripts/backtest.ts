@@ -18,6 +18,7 @@ import { decodeJetta, fetchOandaRange } from "../src/provider";
 import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS, type StrategyConfig } from "../src/config";
 import { resampleCandles, dropIncomplete, calendarSeriesComplete } from "../src/features";
 import { biasGate, storylineTiers, type BiasEvidence, type BiasTier } from "../src/bias_gate";
+import { EMPTY_NAVIGATOR, navigatorState, type NavigatorState } from "../src/navigator";
 import { storylineSeries } from "../src/storyline";
 import { scanEntry } from "../src/engine";
 import {
@@ -297,6 +298,19 @@ const CONF_LOOKBACK = Number(process.env.BACKTEST_CONF_LOOKBACK ?? CONF_PARAMS.s
  */
 const CONF_ENABLED = (process.env.BACKTEST_CONF ?? "false") === "true";
 /**
+ * The bias navigator: the mandatory monthly → weekly → daily chain from
+ * src/navigator.ts as a hard permission filter. Entries whose direction the
+ * chain does not permit are refused after the scan, and the refusal reasons
+ * are tallied so a run shows WHY the book shrank, not just that it did.
+ *
+ * Acceptance is pre-committed, not vibe-checked: the filtered 360d book must
+ * reach 0.8 R/alert without dropping below ~5 alerts per month, AND no
+ * calendar month may close worse than -2R at 0.75% risk. Miss the first bar
+ * but clear the 0.30R gate with flat bad months and the result comes back to
+ * the owner rather than being silently relaxed.
+ */
+const NAV_ENABLED = (process.env.BACKTEST_NAVIGATOR ?? "false") === "true";
+/**
  * The breakeven instruction that ships in every alert: move the stop to entry
  * at +1.5R. evaluateSignal models it and it is on by default, so the headline
  * figures are the strategy subscribers are actually told to trade. Set
@@ -417,6 +431,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MAX_DEPTH", "BACKTEST_CONT_MIN_BODY_PCT",
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
+  "BACKTEST_NAVIGATOR",
   "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
   "BACKTEST_FLIP_IMPULSE_ATR",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
@@ -593,6 +608,8 @@ async function replay(
   let gateCache: { key: string; dir: ReturnType<typeof multiTfGate> } = { key: "", dir: null };
   const bias = emptyBias();
   let biasCache: { key: string; ev: BiasEvidence | null } = { key: "", ev: null };
+  let navCache: { key: string; st: NavigatorState } = { key: "", st: EMPTY_NAVIGATOR };
+  const nav = { ticks: 0, refused: 0, reasons: {} as Record<string, number>, dirs: {} as Record<string, number> };
   const confSeen = new Set<string>();
   const confTrades: Trade[] = [];
   /** Third-candle tallies, so the 80-90% claim gets counted rather than trusted. */
@@ -657,6 +674,19 @@ async function replay(
         };
         for (const t of tiers) bias.levels[t.tf] = t.levels.length;
       }
+      if (NAV_ENABLED) {
+        // Navigator state is a pure function of complete dailies, so it is
+        // recomputed exactly once per daily close inside this cache block —
+        // cron-shaped, never per tick.
+        const mo = calendarSeriesComplete(d1c, "M", close);
+        navCache = { key: tfKey, st: navigatorState(mo, w1t, d1t, {}) };
+      }
+    }
+    if (NAV_ENABLED) {
+      nav.ticks++;
+      nav.reasons[navCache.st.reason] = (nav.reasons[navCache.st.reason] ?? 0) + 1;
+      const pd = navCache.st.permitted ?? "none";
+      nav.dirs[pd] = (nav.dirs[pd] ?? 0) + 1;
     }
     if (CONT_ENABLED) {
       contGateSeen[gateCache.dir ?? "none"] = (contGateSeen[gateCache.dir ?? "none"] ?? 0) + 1;
@@ -698,6 +728,12 @@ async function replay(
         cfg: strategy, mode: "paper", provider: "oanda",
       });
       const alerts = res.alerts;
+      if (NAV_ENABLED && navCache.st.permitted && alerts.length) {
+        const keep = alerts.filter((a) => a.direction === navCache.st.permitted);
+        nav.refused += alerts.length - keep.length;
+        alerts.length = 0;
+        alerts.push(...keep);
+      }
       const d = res.diagnostics;
       const dRec = d as unknown as Record<string, number | undefined>;
       for (const k of ["MAP", "TOUCH", "SWEEP", "SHIFT", "RETEST"]) bump(k, dRec[k] ?? 0);
@@ -914,6 +950,12 @@ async function replay(
         ` · levels ${fmtCounts(bias.levels)}`,
     );
     console.log(`   bias conf: ${fmtCounts(bias.kinds)} · tiers ${fmtCounts(bias.pairs)}`);
+  }
+  if (NAV_ENABLED) {
+    console.log(
+      `   navigator: permitted ${fmtCounts(nav.dirs)} · reasons ${fmtCounts(nav.reasons)}` +
+        ` · refused ${nav.refused} alerts of ${nav.ticks} ticks`,
+    );
   }
   return { origin: trades, continuation: contTrades, confirmation: confTrades, bias };
 }
