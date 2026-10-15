@@ -1223,6 +1223,20 @@ export function validateAndClose(
  *  Unlike validateAndClose (which strictly drops in-progress candles so setup entries
  *  only confirm on finalized closes), outcome tracking allows real-time touch evaluation
  *  on the currently forming candle when slOnClose is false (wick-based SL/TP). */
+/** Independent second feed for cross-checking touches during outcome
+ *  resolution, so a broker-side fill the primary feed never printed still
+ *  resolves correctly without any manual correction. Deriv synthetics are
+ *  single-source by construction and get null. */
+export function secondaryProviderFor(
+  pair: string,
+  primary: ProviderName,
+): ProviderName | null {
+  if (isDerivPair(pair)) return null;
+  if (primary === "oanda") return "twelvedata";
+  if (OANDA_INSTRUMENTS[pair.toUpperCase()]) return "oanda";
+  return primary === "twelvedata" ? null : "twelvedata";
+}
+
 export function validateCandlesForOutcome(
   candles: Candle[], tfSeconds: number, now: number, slOnClose = false, minLen = 1,
 ): Candle[] {

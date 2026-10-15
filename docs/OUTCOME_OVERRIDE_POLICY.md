@@ -52,9 +52,20 @@ touch that landed within a handful of points.
 
 ## Tooling shipped alongside
 
+- **Dual-feed resolution (`DUAL_FEED_RESOLVE`, default on).** The realtime
+  resolver cross-checks every open trade against an independent second
+  provider each tick; `combineOutcomes` takes the earlier touch and breaks
+  same-candle ties conservatively (SL > BE > TP). This is the automated
+  primary mechanism — the class of dispute above now resolves itself with
+  no human in the loop. A failing secondary feed degrades to primary-only
+  with a warn.
 - `GET /admin/repair-outcomes` (dry-run default) re-resolves stuck-OPEN
   rows against up to 1000 bars of history; `notify=true` replays missed
   outcome messages.
 - `GET /admin/candles` read-only feed audit.
 - Loud warns on every formerly silent skip in the realtime resolver:
   no candles at/after entry, unusable target, empty or stale feed.
+
+Manual override (`POST /admin/set-outcome`) remains for historical rows
+and owner judgement calls only. It is not an operating model: if overrides
+become routine, the dual-feed design is what must change, not the ledger.

@@ -142,6 +142,11 @@ export interface WorkerConfig {
   derivProxyUrl?: string;
   filterHtfConflict: boolean;
   filterHtfConflictDerivOnly: boolean;
+  /** Cross-check every open trade's touches against an independent second
+   *  provider feed during realtime outcome resolution; earliest touch wins,
+   *  conservative on ties. Removes the class of dispute where a subscriber's
+   *  broker fills a target the primary feed never printed. */
+  dualFeedResolve: boolean;
   strategy: StrategyConfig;
 }
 
@@ -211,6 +216,7 @@ interface EnvVars {
   DERIV_PROXY_URL?: string;
   FILTER_HTF_CONFLICT?: string;
   FILTER_HTF_CONFLICT_DERIV_ONLY?: string;
+  DUAL_FEED_RESOLVE?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -336,6 +342,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     derivProxyUrl: env.DERIV_PROXY_URL?.trim() || undefined,
     filterHtfConflict: (env.FILTER_HTF_CONFLICT ?? "true").toLowerCase() === "true",
     filterHtfConflictDerivOnly: (env.FILTER_HTF_CONFLICT_DERIV_ONLY ?? "true").toLowerCase() === "true",
+    dualFeedResolve: (env.DUAL_FEED_RESOLVE ?? "true").toLowerCase() === "true",
     strategy,
   };
 }

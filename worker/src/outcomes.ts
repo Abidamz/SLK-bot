@@ -128,6 +128,22 @@ export function backfillOutcome(
   return { outcome, reason: null };
 }
 
+const CONSERVATISM_RANK: Record<SignalStatus, number> = {
+  SL_HIT: 0, BE_HIT: 1, TP_HIT: 2, EXPIRED: 3, OPEN: 4,
+};
+
+/** Merge two single-feed outcomes into one ledger truth: the earlier touch
+ *  wins, because that is the moment a broker limit would have filled; when
+ *  both feeds print their touch on the same candle the more conservative
+ *  status wins (SL beats BE beats TP). Nulls pass through so a missing or
+ *  failing secondary feed degrades to primary-only resolution. */
+export function combineOutcomes(a: Outcome | null, b: Outcome | null): Outcome | null {
+  if (!a) return b;
+  if (!b) return a;
+  if (a.exitTime !== b.exitTime) return a.exitTime < b.exitTime ? a : b;
+  return CONSERVATISM_RANK[a.status] <= CONSERVATISM_RANK[b.status] ? a : b;
+}
+
 /** Timestamp of the first candle whose favorable excursion reaches the
  *  trailing-BE trigger (the exact candle where BE arms), or null when it
  *  never arms. Mirrors the arming rule inside `evaluateSignal` so the live

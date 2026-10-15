@@ -20,12 +20,12 @@ import {
   type H4VantageConfluence,
 } from "./h4_context";
 import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, noteConfirmationAttempt, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
-import { evaluateSignal, beArmedTime, backfillOutcome } from "./outcomes";
+import { evaluateSignal, beArmedTime, backfillOutcome, combineOutcomes } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendEngineDisciplineDigest, parseChatIds, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
 import type { AlertRowish, OutcomeLike } from "./notify_types";
-import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, DataQualityError } from "./provider";
+import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validateAndClose, validateCandlesForOutcome, secondaryProviderFor, DataQualityError } from "./provider";
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
@@ -1108,6 +1108,7 @@ async function resolveOutcomes(
   env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
   pair: string, tf: string, candles: Candle[],
   fetchFn: typeof fetch = fetch,
+  secondary: Candle[] = [],
 ): Promise<number> {
   const open = await store.openAlerts(pair, tf);
   let resolvedCount = 0;
@@ -1139,13 +1140,28 @@ async function resolveOutcomes(
       }));
       continue;
     }
-    const oc = evaluateSignal(
+    let oc = evaluateSignal(
       rec.direction as "LONG" | "SHORT",
       Number(rec.entry), Number(rec.stop_loss), Number(rec.tp_internal),
       after, cfg.expireCandles, cfg.slOnClose,
       cfg.strategy.trailingBeTriggerR ?? 1.5,
       cfg.strategy.trailingBeEnabled ?? true,
     );
+    // Dual-feed resolution: an independent second provider cross-checks
+    // every touch, so a fill the primary feed never printed still resolves
+    // without manual correction. Earliest touch wins; ties go conservative.
+    if (secondary.length) {
+      const after2 = secondary.filter((c) => c.t >= entryTime);
+      if (after2.length) {
+        oc = combineOutcomes(oc, evaluateSignal(
+          rec.direction as "LONG" | "SHORT",
+          Number(rec.entry), Number(rec.stop_loss), tpPrice,
+          after2, cfg.expireCandles, cfg.slOnClose,
+          cfg.strategy.trailingBeTriggerR ?? 1.5,
+          cfg.strategy.trailingBeEnabled ?? true,
+        ));
+      }
+    }
     // Roadmap #6: the exact candle the paper engine arms breakeven (+1.5R
     // excursion), trail the live broker stop to entry — once per setup.
     if (cfg.mode === "live" && mt5Active(env, cfg.mode) && !isSuppressed) {
@@ -1562,8 +1578,29 @@ export async function resolveAllOpenAlerts(
           }));
         }
       }
+      let secondaryCandles: Candle[] = [];
+      if (cfg.dualFeedResolve && outcomeCandles.length) {
+        const sec = secondaryProviderFor(pair, res.provider);
+        if (sec) {
+          try {
+            const res2 = await fetchMarketData({
+              pair, tf, limit: 30,
+              tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
+              symbolMap: cfg.symbolMap,
+              providerMap: { ...cfg.providerMap, [pair]: sec },
+              fetchFn, kv,
+            });
+            secondaryCandles = validateCandlesForOutcome(res2.candles, tfSec, now, cfg.slOnClose);
+          } catch (err) {
+            console.warn(JSON.stringify({
+              level: "warn", msg: "secondary feed fetch failed; resolving on primary only",
+              pair, tf, secondary: sec, error: err instanceof Error ? err.message : String(err),
+            }));
+          }
+        }
+      }
       if (outcomeCandles.length) {
-        const count = await resolveOutcomes(env, store, cfg, pair, tf, outcomeCandles, fetchFn);
+        const count = await resolveOutcomes(env, store, cfg, pair, tf, outcomeCandles, fetchFn, secondaryCandles);
         totalResolved += count;
       }
     } catch (err) {

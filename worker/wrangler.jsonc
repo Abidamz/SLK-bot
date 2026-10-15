@@ -120,6 +120,10 @@
     "PAIR_BATCH_SIZE": "2",
     "DERIV_PROXY_URL": "https://slk-bot.vercel.app",
     "FILTER_HTF_CONFLICT": "true",
+    // Dual-feed outcome resolution: every open trade's touches are
+    // cross-checked against an independent second provider; earliest touch
+    // wins, conservative on ties. Set "false" to revert to primary-only.
+    "DUAL_FEED_RESOLVE": "true",
     // Cooldown keying. "pair_direction_tf" scopes the 240m cooldown to the
     // setup's own entry timeframe, so a delivered 30m signal no longer silences
     // a later 1h signal on the same pair. "pair_direction" restores the old
