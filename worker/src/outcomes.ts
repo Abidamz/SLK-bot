@@ -86,6 +86,48 @@ export function evaluateSignal(
   return null;
 }
 
+/** Why a stuck-OPEN row cannot be backfill-resolved from candle history.
+ *  Each reason is a distinct production failure mode: a corrupt/missing
+ *  target, a feed window that no longer reaches the entry candle, or a
+ *  history in which neither touch nor expiry has happened yet. */
+export type BackfillBlockReason =
+  | "BAD_TARGET"
+  | "NO_CANDLES_AFTER_ENTRY"
+  | "UNRESOLVED";
+
+/** Same evaluation the realtime path runs, but against whatever history the
+ *  caller supplies, and with an explicit reason instead of a silent null so
+ *  the admin repair endpoint can report WHY a row is stuck rather than
+ *  skipping it the way the per-minute resolver historically did. */
+export function backfillOutcome(
+  direction: Direction,
+  entry: number,
+  stop: number,
+  tp: number,
+  entryTime: number,
+  candles: Candle[],
+  expireAfter = 120,
+  slOnClose = false,
+  trailingBeTriggerR = 1.5,
+  trailingBeEnabled = true,
+): { outcome: Outcome; reason: null } | { outcome: null; reason: BackfillBlockReason } {
+  if (!Number.isFinite(entry) || !Number.isFinite(stop) || !Number.isFinite(tp) || tp <= 0) {
+    return { outcome: null, reason: "BAD_TARGET" };
+  }
+  // mirror evaluateSignal's corrupt-target guard so the reason is explicit
+  if (direction === "SHORT" ? tp >= entry : tp <= entry) {
+    return { outcome: null, reason: "BAD_TARGET" };
+  }
+  const after = candles.filter((c) => c.t >= entryTime);
+  if (!after.length) return { outcome: null, reason: "NO_CANDLES_AFTER_ENTRY" };
+  const outcome = evaluateSignal(
+    direction, entry, stop, tp, after, expireAfter, slOnClose,
+    trailingBeTriggerR, trailingBeEnabled,
+  );
+  if (!outcome) return { outcome: null, reason: "UNRESOLVED" };
+  return { outcome, reason: null };
+}
+
 /** Timestamp of the first candle whose favorable excursion reaches the
  *  trailing-BE trigger (the exact candle where BE arms), or null when it
  *  never arms. Mirrors the arming rule inside `evaluateSignal` so the live

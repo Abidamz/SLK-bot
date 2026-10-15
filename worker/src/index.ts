@@ -20,7 +20,7 @@ import {
   type H4VantageConfluence,
 } from "./h4_context";
 import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, noteConfirmationAttempt, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
-import { evaluateSignal, beArmedTime } from "./outcomes";
+import { evaluateSignal, beArmedTime, backfillOutcome } from "./outcomes";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendEngineDisciplineDigest, parseChatIds, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
@@ -1115,7 +1115,30 @@ async function resolveOutcomes(
     const isSuppressed = rec.alert_status === "SUPPRESSED";
     const entryTime = Date.parse(rec.candle_close_time as string);
     const after = candles.filter((c) => c.t >= entryTime);
-    if (!after.length) continue;
+    if (!after.length) {
+      // Historically a silent `continue`: once a trade aged past the fetch
+      // window (30 bars realtime) or the feed stopped advancing past the
+      // entry, the row stayed OPEN forever with nothing in the logs.
+      console.warn(JSON.stringify({
+        level: "warn", msg: "outcome resolution skipped: no candles at/after entry (trade older than fetch window, or feed stale)",
+        pair, tf, setupId: rec.setup_id, entryTime: rec.candle_close_time,
+        oldestCandle: candles.length ? new Date(candles[0].t).toISOString() : null,
+        newestCandle: candles.length ? new Date(candles[candles.length - 1].t).toISOString() : null,
+      }));
+      continue;
+    }
+    const tpPrice = Number(rec.tp_internal);
+    const entryPrice = Number(rec.entry);
+    if (!Number.isFinite(tpPrice) || tpPrice <= 0
+      || (rec.direction === "SHORT" ? tpPrice >= entryPrice : tpPrice <= entryPrice)) {
+      // evaluateSignal would return null forever on such a row; say why once
+      // per tick instead of leaving the row silently unresolvable.
+      console.warn(JSON.stringify({
+        level: "warn", msg: "outcome resolution skipped: row target unusable (null/zero/wrong side of entry); row can never resolve",
+        pair, tf, setupId: rec.setup_id, direction: rec.direction, tp_internal: rec.tp_internal, entry: rec.entry,
+      }));
+      continue;
+    }
     const oc = evaluateSignal(
       rec.direction as "LONG" | "SHORT",
       Number(rec.entry), Number(rec.stop_loss), Number(rec.tp_internal),
@@ -1521,6 +1544,24 @@ export async function resolveAllOpenAlerts(
         symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
       });
       const outcomeCandles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
+      if (!outcomeCandles.length) {
+        console.warn(JSON.stringify({
+          level: "warn", msg: "realtime outcome resolution: provider returned no valid candles; open rows for this group stay unresolved",
+          pair, tf, rawCandles: Array.isArray(res.candles) ? res.candles.length : 0,
+        }));
+      } else {
+        const newest = outcomeCandles[outcomeCandles.length - 1].t;
+        if (now - newest > 3 * tfSec * 1000) {
+          // validateCandlesForOutcome checks shape, not freshness: a feed that
+          // stopped advancing passes validation and every touch since its last
+          // candle is invisible to evaluateSignal. Log it instead of looking
+          // like a trade that never closes.
+          console.warn(JSON.stringify({
+            level: "warn", msg: "realtime outcome resolution: feed stale (newest candle older than 3 bars); touches since then are invisible",
+            pair, tf, newestCandle: new Date(newest).toISOString(), now: new Date(now).toISOString(),
+          }));
+        }
+      }
       if (outcomeCandles.length) {
         const count = await resolveOutcomes(env, store, cfg, pair, tf, outcomeCandles, fetchFn);
         totalResolved += count;
@@ -1534,6 +1575,91 @@ export async function resolveAllOpenAlerts(
   }
 
   return totalResolved;
+}
+
+/** Admin repair for stuck-OPEN alerts: re-resolve every open row against as
+ *  much candle history as the provider will return, using the same
+ *  evaluateSignal the realtime path uses. Dry-run by default so a repair is
+ *  always two deliberate steps (look, then apply). `notify` replays the
+ *  missed Telegram outcome messages for rows that resolve, so subscribers
+ *  finally see the TP/SL alert the pipeline dropped. */
+export async function repairOpenOutcomes(
+  env: Env, store: Store, cfg: ReturnType<typeof loadConfig>,
+  opts: { dryRun: boolean; notify: boolean; fetchFn?: typeof fetch },
+): Promise<{ dryRun: boolean; notify: boolean; openRows: number; report: Record<string, unknown>[] }> {
+  const fetchFn = opts.fetchFn ?? fetch;
+  const open = await store.openAlerts();
+  const report: Record<string, unknown>[] = [];
+  if (!open || !open.length) return { dryRun: opts.dryRun, notify: opts.notify, openRows: 0, report };
+
+  const groups = new Map<string, { pair: string; tf: string }>();
+  for (const rec of open) {
+    const key = `${rec.canonical_symbol}:${rec.entry_timeframe}`;
+    if (!groups.has(key)) groups.set(key, { pair: String(rec.canonical_symbol), tf: String(rec.entry_timeframe) });
+  }
+
+  const apiKey = env.TWELVEDATA_API_KEY ?? "";
+  const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
+  const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
+  const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
+  const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
+  const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
+  const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
+
+  const now = Date.now();
+  for (const { pair, tf } of groups.values()) {
+    const tfSec = TF_SECONDS[tf] ?? 1800;
+    let candles: Candle[] = [];
+    try {
+      const res = await fetchMarketData({
+        pair, tf, limit: 1000,
+        tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
+        symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
+      });
+      candles = validateCandlesForOutcome(res.candles, tfSec, now, cfg.slOnClose);
+    } catch (err) {
+      report.push({ pair, tf, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    const rows = open.filter((r) => String(r.canonical_symbol) === pair && String(r.entry_timeframe) === tf);
+    for (const rec of rows) {
+      const r = backfillOutcome(
+        rec.direction as "LONG" | "SHORT",
+        Number(rec.entry), Number(rec.stop_loss), Number(rec.tp_internal),
+        Date.parse(String(rec.candle_close_time)),
+        candles, cfg.expireCandles, cfg.slOnClose,
+        cfg.strategy.trailingBeTriggerR ?? 1.5,
+        cfg.strategy.trailingBeEnabled ?? true,
+      );
+      if (!r.outcome) {
+        report.push({ setupId: rec.setup_id, pair, tf, blocked: r.reason, tp_internal: rec.tp_internal });
+        continue;
+      }
+      const applied = !opts.dryRun;
+      if (applied) {
+        await store.recordOutcome(String(rec.setup_id), r.outcome);
+        if (opts.notify && cfg.notifyOutcomes && rec.alert_status !== "SUPPRESSED") {
+          const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+          const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+          const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+          const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
+          const deliveryResults = await notifyOutcome(
+            { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId },
+            rec, r.outcome,
+          );
+          await persistNotificationDeliveryResults(store, "final_outcome", {
+            pair, timeframe: tf, setupId: String(rec.setup_id),
+          }, deliveryResults);
+        }
+      }
+      report.push({
+        setupId: rec.setup_id, pair, tf,
+        status: r.outcome.status, r: r.outcome.rMultiple,
+        exitTime: new Date(r.outcome.exitTime).toISOString(), applied,
+      });
+    }
+  }
+  return { dryRun: opts.dryRun, notify: opts.notify, openRows: open.length, report };
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1678,6 +1804,17 @@ export default {
         mt5BridgeActive: mt5Active(env, cfg.mode), // live+enabled+configured; paper ⇒ always false
         time: new Date().toISOString(),
       });
+    }
+
+    if (url.pathname === "/admin/repair-outcomes" && request.method === "GET") {
+      const cfg = loadConfig(env);
+      const store = makeStore(env.DB);
+      // Dry-run unless the caller explicitly opts into writing: the first
+      // look at a repair must never mutate the ledger or message anyone.
+      const dryRun = url.searchParams.get("dryRun") !== "false";
+      const notify = url.searchParams.get("notify") === "true";
+      const result = await repairOpenOutcomes(env, store, cfg, { dryRun, notify });
+      return json(result);
     }
 
     if ((url.pathname === "/" || url.pathname === "/journal" || url.pathname === "/dashboard") && request.method === "GET") {
