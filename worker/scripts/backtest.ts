@@ -37,7 +37,7 @@ import {
   corrMatrix, dailyRByPair, dropRedundant, maxPair, meanPairwiseCorrelation,
 } from "../src/portfolio";
 import {
-  SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, entryTfGroups, f,
+  SPREAD_EST, capPerDay, challengeVerdict, dailyRisk, directionGroups, entryTfGroups, f,
   limitShadowRows, marketShadowRows, monthlyBuckets, oosReport, riskForLimit, stats,
   type Trade,
 } from "../src/replay_stats";
@@ -1070,6 +1070,36 @@ async function main() {
       }
       block.push("", ...tfBlock);
     }
+
+    // Per direction. Live delivery looked one-sided, and the replay is the only
+    // place with enough trades to say whether that is the market's regime over
+    // the window or a defect in how direction is chosen. Same columns as the
+    // per-timeframe table so the two can be read against each other.
+    {
+      console.log("");
+      const dirRows = directionGroups(all);
+      const dirBlock = [
+        `| direction | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`,
+        `|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
+      ];
+      const named = all.filter((t2) => t2.dir === "LONG" || t2.dir === "SHORT").length;
+      const header = `DIRECTION SPLIT — ${all.length} alerts total`;
+      console.log(header);
+      for (const [dirName, rows] of dirRows) {
+        const s3 = stats(rows, spreadAdj);
+        // Share of the labelled book, not of all alerts, so an UNKNOWN group
+        // cannot quietly shrink both sides and make the split look closer.
+        const share = named > 0 && dirName !== "UNKNOWN"
+          ? `${f((rows.length / named) * 100, 1)}%` : "n/a";
+        const line = [`${dirName} ${share}`, String(s3.alerts), String(s3.tp), String(s3.sl), String(s3.be),
+          String(s3.expired), String(s3.open), f(s3.winrate, 1), f(s3.finalR, 1), f(s3.avgR), f(s3.pf),
+          f(s3.maxDD), String(s3.lossStreak)];
+        console.log(line.map((c) => c.padStart(11)).join(""));
+        dirBlock.push(`| ${line.join(" | ")} |`);
+      }
+      block.push("", "```", header, "```", "", ...dirBlock);
+    }
+
     const riskNote = `max drawdown **${f(t.maxDD)}R** (${t.ddFrom} → ${t.ddTo} UTC) · ` +
       `≈${f(t.maxDD, 1)}% at 1% risk/trade · longest losing streak **${t.lossStreak}** ` +
       `· longest win streak ${t.winStreak} · breakeven scratches **${t.be}** ` +

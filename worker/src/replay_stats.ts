@@ -63,6 +63,34 @@ export function entryTfGroups(rows: Trade[], order: string[]): [string, Trade[]]
 }
 
 /**
+ * Groups trade rows by setup direction.
+ *
+ * Direction has been carried on every origin row since the bias-gate work, but
+ * nothing ever grouped by it, so the replay could not answer the most basic
+ * question about the book: is it trading both sides? Live delivery looked
+ * one-sided, and the only way to tell a regime from a defect is to measure the
+ * same quantity over a long window.
+ *
+ * `dir` is optional on Trade, so a missing direction is reported as its own
+ * "UNKNOWN" group rather than dropped. Dropping it would let a book that is
+ * actually 60% SHORT / 40% unlabelled read as a clean 100% SHORT, which is the
+ * exact failure mode the breakdown exists to rule out. Both directions are
+ * always emitted, even empty, so an all-short book cannot be mistaken for a
+ * book where the other side was merely unmeasured.
+ */
+export function directionGroups(rows: Trade[]): [string, Trade[]][] {
+  const long = rows.filter((t) => t.dir === "LONG");
+  const short = rows.filter((t) => t.dir === "SHORT");
+  const unknown = rows.filter((t) => t.dir !== "LONG" && t.dir !== "SHORT");
+  const out: [string, Trade[]][] = [
+    ["LONG", long],
+    ["SHORT", short],
+  ];
+  if (unknown.length) out.push(["UNKNOWN", unknown]);
+  return out;
+}
+
+/**
  * Daily risk profile — the constraint subscribers are actually funded against.
  *
  * maxDD above is a whole-window, closed-trade figure. A prop firm enforces two
