@@ -16,7 +16,7 @@ import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
 import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS, type StrategyConfig } from "../src/config";
-import { resampleCandles, dropIncomplete, calendarSeriesComplete } from "../src/features";
+import { resampleCandles, dropIncomplete, calendarSeriesComplete, keyLevels } from "../src/features";
 import { biasGate, storylineTiers, type BiasEvidence, type BiasTier } from "../src/bias_gate";
 import { EMPTY_NAVIGATOR, navigatorState, type NavigatorState } from "../src/navigator";
 import { storylineSeries } from "../src/storyline";
@@ -610,6 +610,10 @@ async function replay(
   let biasCache: { key: string; ev: BiasEvidence | null } = { key: "", ev: null };
   let navCache: { key: string; st: NavigatorState } = { key: "", st: EMPTY_NAVIGATOR };
   const nav = { ticks: 0, refused: 0, reasons: {} as Record<string, number>, dirs: {} as Record<string, number> };
+  // Setups whose FIRST emission the chain refused. Alerts re-emit on every
+  // tick their pending limit lives, so a refused setup must stay refused or
+  // it resurrects on a later permitted tick.
+  const navRejected = new Set<string>();
   const confSeen = new Set<string>();
   const confTrades: Trade[] = [];
   /** Third-candle tallies, so the 80-90% claim gets counted rather than trusted. */
@@ -677,9 +681,14 @@ async function replay(
       if (NAV_ENABLED) {
         // Navigator state is a pure function of complete dailies, so it is
         // recomputed exactly once per daily close inside this cache block —
-        // cron-shaped, never per tick.
+        // cron-shaped, never per tick. Daily key levels enable the third
+        // confirmation form (disrespected level tapped and closed through);
+        // without them the chain would sit out more than the teaching does.
         const mo = calendarSeriesComplete(d1c, "M", close);
-        navCache = { key: tfKey, st: navigatorState(mo, w1t, d1t, {}) };
+        navCache = {
+          key: tfKey,
+          st: navigatorState(mo, w1t, d1t, { levels: keyLevels(d1t, strategy) }),
+        };
       }
     }
     if (NAV_ENABLED) {
@@ -728,9 +737,20 @@ async function replay(
         cfg: strategy, mode: "paper", provider: "oanda",
       });
       const alerts = res.alerts;
-      if (NAV_ENABLED && navCache.st.permitted && alerts.length) {
-        const keep = alerts.filter((a) => a.direction === navCache.st.permitted);
-        nav.refused += alerts.length - keep.length;
+      if (NAV_ENABLED && alerts.length) {
+        // The sit-out switch gates a setup at its FIRST emission: an
+        // unconfirmed chain refuses everything, a confirmed chain refuses
+        // the opposite direction. Later re-emissions of a refused setup
+        // stay refused via navRejected.
+        const perm = navCache.st.permitted;
+        const keep: typeof alerts = [];
+        for (const a of alerts) {
+          const id = a.setupId;
+          if (navRejected.has(id)) continue;
+          if (perm && a.direction === perm) { keep.push(a); continue; }
+          if (!seen.has(id)) nav.refused++;
+          navRejected.add(id);
+        }
         alerts.length = 0;
         alerts.push(...keep);
       }
