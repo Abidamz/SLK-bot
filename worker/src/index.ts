@@ -1846,6 +1846,86 @@ export default {
       }
     }
 
+    if (url.pathname === "/admin/set-outcome" && request.method === "POST") {
+      // Owner-sanctioned manual outcome correction: the bridge for evidenced
+      // broker-feed disputes (a subscriber's broker filled a target the
+      // engine feed never printed). Admin-gated, fully validated, and every
+      // call writes an audit note into the scan log. The automatic resolver
+      // keeps its single-feed truth; this endpoint is the deliberate,
+      // recorded exception, never the default path.
+      const cfg = loadConfig(env);
+      const store = makeStore(env.DB);
+      let body: Record<string, unknown>;
+      try {
+        body = (await request.json()) as Record<string, unknown>;
+      } catch {
+        return json({ error: "invalid JSON body" }, 400);
+      }
+      const setupId = String(body.setupId ?? "");
+      const status = String(body.status ?? "");
+      if (!setupId) return json({ error: "setupId is required" }, 400);
+      if (!["TP_HIT", "SL_HIT", "BE_HIT", "EXPIRED"].includes(status)) {
+        return json({ error: "status must be one of TP_HIT, SL_HIT, BE_HIT, EXPIRED" }, 400);
+      }
+      const rec = await store.getAlertBySetupId(setupId);
+      if (!rec) return json({ error: "no alert row with that setupId" }, 404);
+      const direction = rec.direction === "LONG" ? "LONG" : "SHORT";
+      const entry = Number(rec.entry);
+      const stop = Number(rec.stop_loss);
+      const risk = Math.abs(entry - stop);
+      if (risk <= 0) return json({ error: "row entry/stop unusable for R computation" }, 400);
+      const exitPrice = body.exitPrice !== undefined ? Number(body.exitPrice) : Number(rec.exit_price);
+      const exitTimeMs = body.exitTime !== undefined
+        ? Date.parse(String(body.exitTime))
+        : Date.parse(String(rec.exit_time ?? rec.candle_close_time));
+      if (!Number.isFinite(exitPrice)) return json({ error: "exitPrice is not a finite number" }, 400);
+      if (!Number.isFinite(exitTimeMs)) return json({ error: "exitTime is not a parseable date" }, 400);
+      const sign = direction === "LONG" ? 1 : -1;
+      const rMultiple = body.rMultiple !== undefined
+        ? Number(body.rMultiple)
+        : (sign * (exitPrice - entry)) / risk;
+      if (!Number.isFinite(rMultiple)) return json({ error: "rMultiple is not a finite number" }, 400);
+      const oc = {
+        status: status as "TP_HIT" | "SL_HIT" | "BE_HIT" | "EXPIRED",
+        exitPrice, exitTime: exitTimeMs, rMultiple,
+        fillConfirmed: null, fillTime: null,
+      };
+      const previous = {
+        status: rec.status, exit_price: rec.exit_price,
+        exit_time: rec.exit_time, r_multiple: rec.r_multiple,
+      };
+      const applied = await store.applyManualOutcome(setupId, oc);
+      try {
+        await store.insertScanLog({
+          ts: new Date().toISOString(), timeframes: "", pairs: String(rec.canonical_symbol),
+          alerts: 0, events: 0, errors: "", durationMs: 0,
+          note: `MANUAL OUTCOME OVERRIDE setup=${setupId} ${String(previous.status)}->${status} r=${rMultiple.toFixed(2)} reason=${String(body.reason ?? "unspecified")}`,
+        });
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: "manual override audit note failed", setupId, error: String(err) }));
+      }
+      let notified = false;
+      if (applied && body.notify === true && cfg.notifyOutcomes && rec.alert_status !== "SUPPRESSED") {
+        const fetchFn = fetch;
+        const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+        const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
+        const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+        const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
+        const deliveryResults = await notifyOutcome(
+          { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_FREE_CHAT_ID: freeChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId },
+          rec, oc,
+        );
+        await persistNotificationDeliveryResults(store, "final_outcome", {
+          pair: String(rec.canonical_symbol), timeframe: String(rec.entry_timeframe), setupId,
+        }, deliveryResults);
+        notified = true;
+      }
+      return json({
+        applied, notified, setupId, previous,
+        now: { status, exitPrice, exitTime: new Date(exitTimeMs).toISOString(), rMultiple },
+      });
+    }
+
     if ((url.pathname === "/" || url.pathname === "/journal" || url.pathname === "/dashboard") && request.method === "GET") {
       const { DASHBOARD_HTML } = await import("./dashboard_html");
       return new Response(DASHBOARD_HTML, {

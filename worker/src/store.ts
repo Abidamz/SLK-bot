@@ -88,6 +88,14 @@ export interface Store {
     originTimeMs: number | undefined | null, excludeSetupId: string, excludeTf: string,
   ): Promise<number | null>;
   recordOutcome(setupId: string, oc: Outcome): Promise<void>;
+  /** One alert row by setup id regardless of its status. Read path for the
+   *  admin manual-override endpoint. */
+  getAlertBySetupId(setupId: string): Promise<AlertRow | null>;
+  /** Status-agnostic outcome write for owner-sanctioned manual corrections
+   *  (e.g. a broker feed filled a target the engine feed never printed).
+   *  Deliberately bypasses recordOutcome's OPEN gate; returns false when no
+   *  row matches. Every call site must write an audit note. */
+  applyManualOutcome(setupId: string, oc: Outcome): Promise<boolean>;
   getKv(key: string): Promise<string | null>;
   setKv(key: string, value: string): Promise<void>;
   /** Every key/value pair under `prefix`, in one round-trip. Used by the scan
@@ -733,6 +741,19 @@ export class D1Store implements Store {
         }));
       }
     }
+  }
+  async getAlertBySetupId(setupId: string): Promise<AlertRow | null> {
+    const res = await this.db
+      .prepare("SELECT * FROM slk_alerts WHERE setup_id=?")
+      .bind(setupId).all();
+    return (res.results as AlertRow[])[0] ?? null;
+  }
+  async applyManualOutcome(setupId: string, oc: Outcome): Promise<boolean> {
+    const run = await this.db
+      .prepare("UPDATE slk_alerts SET status=?, exit_price=?, exit_time=?, r_multiple=? WHERE setup_id=?")
+      .bind(oc.status, oc.exitPrice, iso(oc.exitTime), oc.rMultiple, setupId)
+      .run();
+    return (run.meta?.changes ?? 0) > 0;
   }
 
   async getKv(key: string): Promise<string | null> {
@@ -1585,6 +1606,18 @@ export class MemStore implements Store {
     return rows.length ? Math.max(...rows) : null;
   }
 
+  async getAlertBySetupId(setupId: string): Promise<AlertRow | null> {
+    return this.alerts.get(setupId) ?? null;
+  }
+  async applyManualOutcome(setupId: string, oc: Outcome): Promise<boolean> {
+    const row = this.alerts.get(setupId);
+    if (!row) return false;
+    row.status = oc.status;
+    row.exit_price = oc.exitPrice;
+    row.exit_time = iso(oc.exitTime);
+    row.r_multiple = oc.rMultiple;
+    return true;
+  }
   async recordOutcome(setupId: string, oc: Outcome): Promise<void> {
     const row = this.alerts.get(setupId);
     if (row && row.status === "OPEN") {
