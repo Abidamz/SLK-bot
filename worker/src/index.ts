@@ -1817,6 +1817,35 @@ export default {
       return json(result);
     }
 
+    if (url.pathname === "/admin/candles" && request.method === "GET") {
+      // Read-only feed audit: the exact candles the outcome resolver sees,
+      // so any TP/SL/BE dispute can be checked against the engine's own
+      // view of price instead of a different broker's chart.
+      const cfg = loadConfig(env);
+      const store = makeStore(env.DB);
+      const pair = url.searchParams.get("pair");
+      const tf = url.searchParams.get("tf");
+      const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "300") || 300, 1), 1000);
+      if (!pair || !tf) return json({ error: "pair and tf query params are required" }, 400);
+      const apiKey = env.TWELVEDATA_API_KEY ?? "";
+      const kvOandaToken = (await store.getKv("oanda_api_token")) || "";
+      const oandaToken = env.OANDA_API_KEY || env.OANDA_API_TOKEN || kvOandaToken;
+      const oandaEnv = ((await store.getKv("oanda_environment")) as "practice" | "live" | "auto") || "auto";
+      const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
+      const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || cfg.derivProxyUrl || undefined;
+      const kv = { get: (k: string) => store.getKv(k), set: (k: string, v: string) => store.setKv(k, v) };
+      try {
+        const res = await fetchMarketData({
+          pair, tf, limit,
+          tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl,
+          symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn: fetch, kv,
+        });
+        return json({ pair, tf, provider: res.provider, count: res.candles.length, candles: res.candles });
+      } catch (err) {
+        return json({ pair, tf, error: err instanceof Error ? err.message : String(err) }, 502);
+      }
+    }
+
     if ((url.pathname === "/" || url.pathname === "/journal" || url.pathname === "/dashboard") && request.method === "GET") {
       const { DASHBOARD_HTML } = await import("./dashboard_html");
       return new Response(DASHBOARD_HTML, {
