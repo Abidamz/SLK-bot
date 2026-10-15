@@ -111,3 +111,44 @@ three windows inverted. The current gate has no stable content; the HTF bias
 chain rebuild (fidelity organ #1) carries the long-side evidence above as
 its justification: counter-trend longs are exactly what a real monthly →
 weekly navigator exists to refuse.
+
+## Addendum 2 — navigator verdict: FAILED its bars, stayed off
+
+_Run: `BACKTEST_NAVIGATOR=true` 360d, commit a031f8c (first-emission gating,
+all three confirmation forms including daily key levels)._
+
+**Bars, all three missed:**
+- Filtered book: 50 alerts, −0.01 R/alert raw, **−0.11 adjusted** (bar: ≥ 0.8).
+- Frequency: ~3.8 alerts/month (bar: ~5).
+- Weather: three months worse than −2R at 0.75% (Mar −2.2, Jul −2.5, Aug −2.4).
+
+**The diagnostic that matters: the chain inverted the book.** Unfiltered
+direction mix was 50.7/49.3 with shorts carrying the edge (+0.37 adj). The
+filtered book is **78% LONG** — JAPAN225 and NAS100 permitted LONG on nearly
+every confirmed tick and never SHORT — and both sides lost (LONG −0.10 adj,
+SHORT −0.13 adj). The sit-out switch sat out the profitable shorts and kept
+the losing longs. JAPAN225's chain said LONG all year (zero
+WEEKLY_MISALIGNED ticks) through a year in which its longs printed 15% win
+and −0.42 R/alert.
+
+**Reading: the carrier is wrong, not the concept.** Three direction-context
+filters have now been measured on this engine — the old bias gate (vacuous,
+sign-flipping), the HTF conflict gate (inert), and this navigator (selective,
+strict, and value-destroying). None separates winners from losers. The
+monthly tier as taught is about key levels and liquidity posture subjected
+to structure; this implementation carried bias as BOS direction, which lags
+regime flips (it permitted longs through the bear quarter) and excludes the
+tape geometry where the engine's actual edge lives. Adding the pre-declared
+4H rung is NOT applied: that rung was pre-committed for a confirmation-rate
+collapse, and what collapsed was the quality of permitted trades, not the
+confirmation rate (ALIGNED_CONFIRMED reached ~36% of ticks once the third
+confirmation form was wired). Extending a failed carrier one tier lower
+would be tuning toward a dead hypothesis.
+
+**Disposition:** navigator stays default-off; no production wiring; no
+outcome-tuning. Fidelity-program priority redirects to the entry side —
+route C retrace-and-reject geometry, V-level stops, inducement and ordinal
+internal/external sequence — because every persistent asymmetry in every
+dataset measured so far is entry-side (shorts vs longs, 1h vs 15m), never
+context-side. The navigator may be reborn later on a key-level/liquidity
+carrier once the LIQUIDITY_SPEC organs exist to supply it.
