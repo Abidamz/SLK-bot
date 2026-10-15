@@ -319,8 +319,11 @@ const BE_TRIGGER_R = Number(process.env.BACKTEST_BE_TRIGGER_R ?? 1.5);
  * scans three timeframes below that. The per-entry-TF table in the report is
  * what settles whether the difference matters.
  *
- * 15m is deliberately not offered here: the tick loop walks 30m boundaries, so
- * a 15m arm would need the loop itself moved to m15, not just another series.
+ * 15m moves the tick loop itself: with 15m requested, every 15m close becomes a
+ * production tick (double the ticks of a 30m walk), the 15m arm reads the tick
+ * window directly, the 30m arm reads a pointer-truncated 30m window, and the
+ * higher arms resample from the 15m base - mirroring production, which scans
+ * 15m as its finest entry timeframe.
  */
 const ENTRY_TFS = (process.env.BACKTEST_ENTRY_TFS ?? "30m,1h")
   .split(",").map((x) => x.trim()).filter(Boolean);
@@ -388,8 +391,8 @@ const TARGET_SWEEP = (process.env.BACKTEST_TARGET_SWEEP ?? "")
 const sweepAcc = new Map<number, SweepBucket>();
 for (const rr of TARGET_SWEEP) sweepAcc.set(rr, emptyBucket());
 for (const tf of ENTRY_TFS) {
-  if (tf !== "30m" && tf !== "1h" && tf !== "2h") {
-    throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 30m, 1h, 2h`);
+  if (tf !== "15m" && tf !== "30m" && tf !== "1h" && tf !== "2h") {
+    throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 15m, 30m, 1h, 2h`);
   }
 }
 
@@ -556,6 +559,7 @@ async function replay(
     return { origin: [], continuation: [], confirmation: [], bias: emptyBias() };
   }
 
+  const m15 = resampleCandles(m1, TF_SECONDS["15m"]);
   const m30 = resampleCandles(m1, TF_SECONDS["30m"]);
   const h1 = resampleCandles(m1, TF_SECONDS["1h"]);
   const h2 = resampleCandles(m1, TF_SECONDS["2h"]);
@@ -563,7 +567,7 @@ async function replay(
   // from a detection time. This replaces a `tf === "1h" ? h1 : m30` ternary
   // that appeared three times and would have silently handed a 2H scan the 30m
   // series instead of the 2H one.
-  const entrySeries: Record<string, Candle[]> = { "30m": m30, "1h": h1, "2h": h2 };
+  const entrySeries: Record<string, Candle[]> = { "15m": m15, "30m": m30, "1h": h1, "2h": h2 };
   // The weekly and monthly series are built inside the tick loop, from the
   // daily bars that had actually closed by then. Building them once from the
   // full daily load — as the weekly series used to be — hands the gate the
@@ -594,15 +598,28 @@ async function replay(
   /** Third-candle tallies, so the 80-90% claim gets counted rather than trusted. */
   const confThird: Record<string, number> = {};
   const bump = (k: string, n?: number) => { fun[k] = (fun[k] ?? 0) + (n ?? 0); };
-  // every 30m candle close in the scan window is a production tick
-  for (let i = 0; i < m30.length; i++) {
-    const close = m30[i].t + 1_800_000;
+  // Every close of the finest requested entry timeframe in the scan window is
+  // a production tick: 30m by default, 15m when the 15m arm is requested —
+  // production scans 15m, so a replay without it understates the live book.
+  const tick15 = ENTRY_TFS.includes("15m");
+  const tickSeries = tick15 ? m15 : m30;
+  const tickStep = tick15 ? 900_000 : 1_800_000;
+  let m30Ptr = 0;
+  for (let i = 0; i < tickSeries.length; i++) {
+    const close = tickSeries[i].t + tickStep;
     if (close < scanStart || close > now.getTime()) { skip.window++; continue; }
 
-    // m30 is sorted and this loop is chronological; slicing avoids rescanning
-    // the entire history for every production tick.
+    // The tick series is sorted and this loop is chronological; slicing avoids
+    // rescanning the entire history for every production tick.
     const end = i + 1;
-    const base = m30.slice(Math.max(0, end - 1010), end); // prod: baseCandlesLimit
+    const base = tickSeries.slice(Math.max(0, end - 1010), end); // prod: baseCandlesLimit
+    // On 15m ticks the 30m arm needs its own truncated window: a pointer
+    // advanced to the 30m candles closed by this tick, same 1010-candle shape.
+    let base30 = base;
+    if (tick15) {
+      while (m30Ptr < m30.length && m30[m30Ptr].t + 1_800_000 <= close) m30Ptr++;
+      base30 = m30.slice(Math.max(0, m30Ptr - 1010), m30Ptr);
+    }
     ticks++;
     if (base.length < 40) { skip.base++; continue; }                          // prod: minCandles
     const h4 = dropIncomplete(resampleCandles(base, TF_SECONDS["4h"]), TF_SECONDS["4h"], close);
@@ -661,13 +678,16 @@ async function replay(
       bias.agree[k] = (bias.agree[k] ?? 0) + 1;
     }
 
-    // The 30m arm keeps using `base` directly rather than a resample of it, so
-    // the default run stays identical to every result recorded before this knob
-    // existed. Every other arm is resampled from `base` and truncated to the
+    // The finest arm reads the tick window directly rather than a resample of
+    // it, so the default run stays identical to every result recorded before
+    // this knob existed. On 15m ticks the 30m arm reads its pointer-truncated
+    // window. Every coarser arm is resampled from `base` and truncated to the
     // candles that had closed by `close` - the same split the 1h arm used.
-    const tfs: [string, Candle[], number][] = ENTRY_TFS.includes("30m") ? [["30m", base, close]] : [];
+    const tfs: [string, Candle[], number][] = [];
+    if (ENTRY_TFS.includes("15m") && tick15) tfs.push(["15m", base, close]);
+    if (ENTRY_TFS.includes("30m")) tfs.push(["30m", base30, close]);
     for (const tf of ENTRY_TFS) {
-      if (tf === "30m") continue;
+      if (tf === "30m" || tf === "15m") continue;
       const secs = TF_SECONDS[tf];
       if (close % (secs * 1000) !== 0) continue;                              // no candle closed on this tf yet
       tfs.push([tf, dropIncomplete(resampleCandles(base, secs), secs, close), close]);
