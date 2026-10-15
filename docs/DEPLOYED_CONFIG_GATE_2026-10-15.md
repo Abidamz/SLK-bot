@@ -61,3 +61,53 @@ Max risk the limits allow: 0.47–0.50% (3% daily), 0.17–0.22% (5% overall).
 - Quarterly kill rule and XAUUSD keep-under-rule vs cut (unchanged).
 - Live-shadow market-entry continuation metric (reporting-only).
 - First organ of the fidelity program (unchanged).
+
+## Addendum — matched-window run (52d, 2026-08-24 → 2026-10-15)
+
+_Run: same config, 52 days — the exact span of the live ledger._
+
+**1. Regime vs drift: REGIME CONFIRMED, drift closed.** The pre-committed
+test: if the replay over the live window reproduces the live short skew, the
+skew is the market. It reproduces it: replay 26 SHORT / 12 LONG (68.4% short)
+versus live 14/5 (74% short) — within noise of each other. The engine given
+the same recent tape offers the same book subscribers received. No
+production defect; the "shorts only" experience is the tape.
+
+**2. The long side is the broken organ, and it is current.** In-window longs:
+12 alerts, 0 TP, 10 SL, 2 BE — win 0.0%, −10.9R adjusted. Over 360d: longs
+−0.23 R/alert adjusted (21.8% win) versus shorts +0.36 (36.0%). Two windows,
+same sign, 150+ long alerts: the method's measurable edge is short-side;
+long entries are the weakest component in the machine. Not a config change
+(direction selection on performance is the same trap as pair selection) —
+a fidelity target, and forward-adjudicated: the live census already prints
+the direction split; if delivered longs stay below −0.2 R/alert at n≥30, a
+long-suppression knob gets proposed with the evidence attached.
+
+**3. The 52d gross figure (+0.36 R/alert) does NOT reopen the gate.** The
+gate was pre-committed at 360d on the deployed config: +0.14, failed. A 52-day
+slice above the bar is the best-slice-of-the-year pattern in a new hat — the
+same error as projecting from the best two of thirteen months. Recorded,
+not used. Likewise the continuation shadow's +175.7R adjusted (PF 3.09) in
+this window, of which XAUUSD alone is +212.7R at PF 16.31: third appearance
+of a huge recent-window continuation number, now visibly concentrated in one
+instrument in one gold-trend regime. Quarantine stands; any forward test of
+continuation must be pair-diverse or an explicit single-instrument hypothesis.
+
+**4. Live +0.94 vs replay +0.06 reconciled as composition, not conflict.**
+On the identical window the replay prints +0.29 R/alert adjusted on the four
+current pairs. The live +0.94 book additionally contains pre-cut-era pairs
+(GER40 2/2, synthetics) the replay cannot see, and the manually corrected
+NAS100 TP (+3.0R). Window recency, universe breadth, and the correction
+explain the gap; neither measurement was lying, they were measuring
+different books.
+
+**5. 15m nuance.** In-window 15m is neutral (+0.02 R/alert adjusted, 17
+alerts); its 360d damage (−0.14) sits outside the recent window. The cut
+case rests on the year, not the fortnight; owner decision unchanged.
+
+**6. Bias gate inverted again** (agrees −5.91R / opposes +13.91R adjusted),
+matching the 360d run and contradicting the older 16-instrument run. Two of
+three windows inverted. The current gate has no stable content; the HTF bias
+chain rebuild (fidelity organ #1) carries the long-side evidence above as
+its justification: counter-trend longs are exactly what a real monthly →
+weekly navigator exists to refuse.
