@@ -167,6 +167,71 @@ export function simulate(cfg: SimConfig): SimResult {
  * E = winRate*T - lossRate for T makes the simulation reproduce the book's own
  * expectancy by construction, which is the check that the mix is faithful.
  */
+/** One cell of the prop-challenge verdict grid. Rates are percent, matching
+ *  simulate()'s convention. lo/hi are the 90% bootstrap interval on pass% —
+ *  the uncertainty the closed-trade sample size alone imposes. */
+export interface PropVerdictCell {
+  targetPct: number; dailyPct: number; riskPct: number;
+  pass: number; blown: number; neither: number; avgTrades: number;
+  lo: number; hi: number;
+}
+export type PropVerdict =
+  | { ok: true; n: number; spanDays: number; alertsPerMonth: number; mix: AlertMix; grid: PropVerdictCell[] }
+  | { ok: false; error: "INSUFFICIENT_HISTORY"; closedTrades: number };
+
+const VERDICT_RULES: PropRules[] = [
+  { targetPct: 8, dailyPct: 3, overallPct: 5, tradingDays: 21 },
+  { targetPct: 5, dailyPct: 3, overallPct: 5, tradingDays: 21 },
+  { targetPct: 8, dailyPct: 5, overallPct: 5, tradingDays: 21 },
+];
+const VERDICT_RISKS = [0.5, 0.75, 1.0];
+
+/** Pass/blown probabilities if a subscriber trades every alert at a fixed
+ *  risk against standard challenge rules, computed from the live closed
+ *  ledger rather than any backtest. Seeded, so the same ledger always
+ *  renders the same verdict. */
+export function propVerdictGrid(
+  rows: Trade[], spanDays: number,
+  opts: { trials?: number; bootstraps?: number; bootTrials?: number; seed?: number } = {},
+): PropVerdict {
+  if (rows.length < 5) return { ok: false, error: "INSUFFICIENT_HISTORY", closedTrades: rows.length };
+  const trials = opts.trials ?? 1500;
+  const bootstraps = opts.bootstraps ?? 80;
+  const bootTrials = opts.bootTrials ?? 600;
+  const seed = opts.seed ?? 20261015;
+  const mix = alertMix(rows, true);
+  const alertsPerMonth = spanDays > 0 ? rows.length / (spanDays / 30.44) : 0;
+  const rand = makeRng(seed + 7);
+  const grid: PropVerdictCell[] = [];
+  for (const rules of VERDICT_RULES) {
+    for (const riskPct of VERDICT_RISKS) {
+      const base = simulate({
+        mix, rules, instruments: 1, alertsPerMonthPerInstrument: alertsPerMonth,
+        riskPct, correlation: 0, dailyLossCap: 0, trials, seed,
+      });
+      const passes: number[] = [];
+      for (let b = 0; b < bootstraps; b++) {
+        const resampled = rows.map(() => rows[Math.floor(rand() * rows.length) % rows.length]);
+        const r = simulate({
+          mix: alertMix(resampled, true), rules, instruments: 1,
+          alertsPerMonthPerInstrument: alertsPerMonth,
+          riskPct, correlation: 0, dailyLossCap: 0, trials: bootTrials, seed: seed + b + 1,
+        });
+        passes.push(r.passRate);
+      }
+      passes.sort((a, b) => a - b);
+      grid.push({
+        targetPct: rules.targetPct, dailyPct: rules.dailyPct, riskPct,
+        pass: base.passRate, blown: base.blownRate, neither: base.neitherRate,
+        avgTrades: base.avgTrades,
+        lo: passes[Math.floor(0.05 * passes.length)],
+        hi: passes[Math.min(passes.length - 1, Math.floor(0.95 * passes.length) - 1)],
+      });
+    }
+  }
+  return { ok: true, n: rows.length, spanDays, alertsPerMonth, mix, grid };
+}
+
 export function alertMix(rows: Trade[], spreadAdj: boolean): AlertMix {
   const s = stats(rows, spreadAdj);
   const n = s.alerts;

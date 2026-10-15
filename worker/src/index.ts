@@ -21,6 +21,7 @@ import {
 } from "./h4_context";
 import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, noteConfirmationAttempt, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime, backfillOutcome, combineOutcomes } from "./outcomes";
+import { propVerdictGrid } from "./prop_sim";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendEngineDisciplineDigest, parseChatIds, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
@@ -1804,6 +1805,7 @@ export default {
     const isPublicApi =
       (url.pathname === "/api/waitlist" && request.method === "POST") ||
       url.pathname === "/api/monte-carlo" ||
+      url.pathname === "/api/prop-verdict" ||
       url.pathname === "/api/recent-events" ||
       url.pathname === "/api/engine-pulse" ||
       url.pathname === "/api/whop-webhook";
@@ -2291,6 +2293,32 @@ export default {
       }
       const result = runMonteCarlo({ rSeries, iterations, horizon, riskPct, seed });
       return json({ ok: true, ...result });
+    }
+
+    if (url.pathname === "/api/prop-verdict" && request.method === "GET") {
+      // Prop-challenge verdict on the live closed ledger: the same question
+      // scripts/prop_live.ts answers from census constants, computed here
+      // from the stored rows so the dashboard number updates itself as the
+      // book grows. Reporting-only; public like /api/monte-carlo.
+      const store = makeStore(env.DB);
+      const rows = (await store.recentAlerts(1000))
+        .filter((r) => String(r.alert_status ?? "").toUpperCase() !== "SUPPRESSED")
+        .filter((r) => ["TP_HIT", "SL_HIT", "BE_HIT", "EXPIRED"].includes(String(r.status)) && Number.isFinite(Number(r.r_multiple)));
+      rows.sort((a, b) => Date.parse(String(a.exit_time ?? a.candle_close_time)) - Date.parse(String(b.exit_time ?? b.candle_close_time)));
+      const trades = rows.map((r) => ({
+        pair: String(r.canonical_symbol), tf: String(r.entry_timeframe), setupId: String(r.setup_id),
+        entryTime: String(r.candle_close_time), entry: Number(r.entry), stop: Number(r.stop_loss), tp: NaN,
+        status: String(r.status), exit: NaN, exitTime: "-", r: Number(r.r_multiple),
+        limitStatus: "OPEN", limitEntry: NaN, limitExitTime: "-", limitR: NaN,
+        marketStatus: "OPEN", marketEntry: NaN, marketExitTime: "-", marketR: NaN,
+        dir: (r.direction === "LONG" || r.direction === "SHORT" ? r.direction : undefined) as "LONG" | "SHORT" | undefined,
+      }));
+      const exits = rows.map((r) => Date.parse(String(r.exit_time ?? r.candle_close_time))).filter((t) => Number.isFinite(t));
+      const entries = rows.map((r) => Date.parse(String(r.candle_close_time))).filter((t) => Number.isFinite(t));
+      const spanDays = exits.length && entries.length
+        ? (Math.max(...exits) - Math.min(...entries)) / 86_400_000
+        : 0;
+      return json(propVerdictGrid(trades, spanDays));
     }
 
     if (url.pathname === "/api/recent-events" && request.method === "GET") {
