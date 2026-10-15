@@ -1312,6 +1312,29 @@ function renderMcFan(d) {
 
 if ($('mcRun')) $('mcRun').addEventListener('click', runMonteCarloUI);
 
+// ── Prop challenge verdict on the live mixture ───────────────────────────
+async function loadPropVerdict() {
+  const wrap = $('pvWrap');
+  if (!wrap) return;
+  try {
+    const d = await api('/api/prop-verdict');
+    if (!d.ok) {
+      wrap.innerHTML = '<p class="muted-copy">Not enough closed trades yet (' + (d.closedTrades ?? 0) + ' of 5). The verdict appears once the ledger has a sample worth simulating.</p>';
+      return;
+    }
+    const body = d.grid.map(c =>
+      '<tr><td>' + c.targetPct + '% / ' + c.dailyPct + '%</td><td>' + c.riskPct.toFixed(2) + '%</td><td><strong>' + c.pass.toFixed(1) + '%</strong></td><td>' + c.blown.toFixed(1) + '%</td><td>' + c.lo.toFixed(0) + '% – ' + c.hi.toFixed(0) + '%</td></tr>'
+    ).join('');
+    wrap.innerHTML =
+      '<p class="muted-copy">Sample: ' + d.n + ' closed alerts over ' + d.spanDays.toFixed(0) + ' days (' + d.alertsPerMonth.toFixed(1) + ' alerts/month service-wide). Mixture: ' +
+      (d.mix.winRate * 100).toFixed(0) + '% win / ' + (d.mix.lossRate * 100).toFixed(0) + '% loss / ' + (d.mix.scratchRate * 100).toFixed(0) + '% scratch, winner ' + d.mix.targetR.toFixed(2) + 'R adjusted.</p>' +
+      '<table class="lifecycle-table"><thead><tr><th>Target / daily limit</th><th>Risk per trade</th><th>Pass</th><th>Blown</th><th>Pass 90% interval</th></tr></thead><tbody>' + body + '</tbody></table>';
+  } catch (e) {
+    wrap.innerHTML = '<p class="muted-copy">Verdict unavailable: ' + (e && e.message ? e.message : e) + '</p>';
+  }
+}
+loadPropVerdict();
+
 // ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
 // The tape starts at the LIVE EDGE: the first poll asks for the newest rows
 // (`tail=1`) and adopts their max id as the cursor, so /api/recent-events
