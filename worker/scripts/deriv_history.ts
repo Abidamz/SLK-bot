@@ -456,10 +456,13 @@ export async function fetchDerivHistoryRange(
       options.onProgress?.({ pair: pairKey, symbol, pages, bars: candles.length });
 
       const oldestEpoch = decoded.oldestEpoch;
-      if (oldestEpoch === null || oldestEpoch <= fromEpoch) break;
-      if (oldestEpoch >= endEpoch) {
-        throw new Error(`Deriv pagination made no progress for ${pairKey} at ${new Date(oldestEpoch * 1000).toISOString()}`);
+      if (oldestEpoch === null) break;
+      if (oldestEpoch > endEpoch) {
+        throw new Error(
+          `Deriv pagination made no progress for ${pairKey}: requested end ${new Date(endEpoch * 1000).toISOString()}, but the page's oldest candle is ${new Date(oldestEpoch * 1000).toISOString()} (${raw.length} candles on page ${pages})`,
+        );
       }
+      if (oldestEpoch <= fromEpoch) break;
       endEpoch = oldestEpoch - 1;
       if (pageDelayMs > 0) await sleep(pageDelayMs);
     }

@@ -98,6 +98,21 @@ describe("Deriv historical candle paging", () => {
     expect(sockets[0].sent.every((request) => request.count === 2)).toBe(true);
   });
 
+  it("continues backward when a candle epoch exactly equals the requested end", async () => {
+    const rows = [history[1], history[2]];
+    const result = await fetchDerivHistoryRange("V75", 60, 120_000, 241_000, {
+      pageSize: 1,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+      })),
+    });
+
+    expect(result.candles.map((c) => c.t)).toEqual([180_000, 240_000]);
+    expect(result.pages).toBe(3);
+  });
+
   it("skips an isolated off-grid candle without shifting it and reports the omission", async () => {
     const shiftedCandle = { epoch: 135, open: 10.5, high: 12, low: 10, close: 11.5 };
     const rows = [history[0], shiftedCandle, ...history.slice(1)];
