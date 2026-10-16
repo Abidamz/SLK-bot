@@ -21,6 +21,7 @@ const faviconPath = fileURLToPath(new URL("../../dashboard/favicon.png", import.
 const appleTouchIconPath = fileURLToPath(new URL("../../dashboard/apple-touch-icon.png", import.meta.url));
 const stylesCss = read("../../dashboard/styles.css");
 const embedded = read("../src/dashboard_html.ts");
+const notifySource = read("../src/notify.ts");
 
 /** The <article> element whose panel-head contains the given <h2> title. */
 function panelOpeningTagFor(title: string): string {
@@ -53,6 +54,17 @@ describe("dashboard view modes", () => {
     expect(html).not.toContain("TAYO Radar");
     expect(html).toContain("The Deriv synthetic-markets watchlist is for observation only");
     expect(html).toContain("live Deriv trade alerts and automated order execution are not active");
+  });
+
+  it.each([
+    ["Pages dashboard", indexHtml],
+    ["Pages terms", termsHtml],
+    ["Worker dashboard", embedded],
+    ["Worker terms", embeddedTerms],
+    ["Worker notifications", notifySource],
+  ])("%s uses the current DEO Edge Whop checkout URL", (_name, html) => {
+    expect(html).toContain("https://whop.com/slk-radar/deo-edge-vip-signals/");
+    expect(html).not.toContain("https://whop.com/slk-radar/slk-radar-vip-signals");
   });
 
   it("hides every .operator-only panel unless operator mode is active", () => {

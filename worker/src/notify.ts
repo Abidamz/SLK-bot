@@ -735,7 +735,7 @@ export function formatFreeConfirmedEntryTeaser(a: Alert): string {
     "Research notice only. No order was placed; this is not an entry instruction.",
     "Exact entry, stop, target, and invalidation prices are shared in the VIP channel.",
     "",
-    "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+    "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/deo-edge-vip-signals/",
     "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
   ].join("\n");
 }
@@ -759,7 +759,7 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
     ``,
     `VIP members received this live alert with exact entry, stop floor, and targets.`,
     ``,
-    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+    `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/deo-edge-vip-signals/`,
     `👉 Live Verified Journal: https://deoedge.pages.dev`,
   ].join("\n");
 }
@@ -991,7 +991,7 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
       ``,
       `────────────────────────`,
       `👑 VIP receives any separate engine-confirmed entry alert. This is not one.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/deo-edge-vip-signals/`,
     );
   }
   return lines.join("\n");
@@ -1065,7 +1065,7 @@ export function formatBiasCard(
       ``,
       `────────────────────────`,
       `👑 VIP members receive exact entry alerts, stop loss, and 1:2.5R–4.0R target execution.`,
-      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
+      `👉 Join VIP ($100/mo · $49 with code FOUNDING20): https://whop.com/slk-radar/deo-edge-vip-signals/`,
     );
   }
 
@@ -1310,7 +1310,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     `${sign(stats.allTimeNetR)} · ${allTimeWinRateStr} decided win rate (${stats.allTimeTp} TP · ${stats.allTimeSl} SL)`,
     `🔗 Verified on the public ledger: ${ledgerUrl}`,
     "",
-    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
+    "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/deo-edge-vip-signals/ ($100/mo · $49 w/ code FOUNDING20)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
     "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",
