@@ -16,6 +16,7 @@ const read = (path: string): string => readFileSync(new URL(path, import.meta.ur
 
 const indexHtml = read("../../dashboard/index.html");
 const termsHtml = read("../../dashboard/terms.html");
+const embeddedTerms = read("../src/terms_html.ts");
 const faviconPath = fileURLToPath(new URL("../../dashboard/favicon.png", import.meta.url));
 const appleTouchIconPath = fileURLToPath(new URL("../../dashboard/apple-touch-icon.png", import.meta.url));
 const stylesCss = read("../../dashboard/styles.css");
@@ -42,6 +43,16 @@ describe("dashboard view modes", () => {
     expect(statSync(faviconPath).size).toBeGreaterThan(4_000);
     expect(existsSync(appleTouchIconPath)).toBe(true);
     expect(statSync(appleTouchIconPath).size).toBeGreaterThan(8_000);
+  });
+
+  it.each([
+    ["Pages", termsHtml],
+    ["Worker", embeddedTerms],
+  ])("%s terms use DEO Edge branding and clarify Deriv is watchlist-only", (_name, html) => {
+    expect(html).toContain("<strong>DEO Edge</strong>");
+    expect(html).not.toContain("TAYO Radar");
+    expect(html).toContain("The Deriv synthetic-markets watchlist is for observation only");
+    expect(html).toContain("live Deriv trade alerts and automated order execution are not active");
   });
 
   it("hides every .operator-only panel unless operator mode is active", () => {
