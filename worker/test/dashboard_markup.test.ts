@@ -8,14 +8,16 @@
  *  card. These assertions pin the markup and both copies of the visibility
  *  rules so that cannot regress.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
 
 const indexHtml = read("../../dashboard/index.html");
 const termsHtml = read("../../dashboard/terms.html");
-const faviconSvg = read("../../dashboard/favicon.svg");
+const faviconPath = fileURLToPath(new URL("../../dashboard/favicon.png", import.meta.url));
+const appleTouchIconPath = fileURLToPath(new URL("../../dashboard/apple-touch-icon.png", import.meta.url));
 const stylesCss = read("../../dashboard/styles.css");
 const embedded = read("../src/dashboard_html.ts");
 
@@ -29,12 +31,17 @@ function panelOpeningTagFor(title: string): string {
 }
 
 describe("dashboard view modes", () => {
-  it("declares the DEO Edge favicon on the Pages home and terms pages", () => {
-    const iconLink = '<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">';
+  it("declares the Telegram brand favicon on the Pages home and terms pages", () => {
+    const iconLink = '<link rel="icon" type="image/png" sizes="128x128" href="/favicon.png?v=2">';
+    const touchIconLink = '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2">';
     expect(indexHtml).toContain(iconLink);
+    expect(indexHtml).toContain(touchIconLink);
     expect(termsHtml).toContain(iconLink);
-    expect(faviconSvg).toContain('aria-label="DEO Edge"');
-    expect(faviconSvg).toContain(">DEO</text>");
+    expect(termsHtml).toContain(touchIconLink);
+    expect(existsSync(faviconPath)).toBe(true);
+    expect(statSync(faviconPath).size).toBeGreaterThan(4_000);
+    expect(existsSync(appleTouchIconPath)).toBe(true);
+    expect(statSync(appleTouchIconPath).size).toBeGreaterThan(8_000);
   });
 
   it("hides every .operator-only panel unless operator mode is active", () => {
