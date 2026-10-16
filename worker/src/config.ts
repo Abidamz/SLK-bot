@@ -155,6 +155,11 @@ export interface WorkerConfig {
    *  conservative on ties. Removes the class of dispute where a subscriber's
    *  broker fills a target the primary feed never printed. */
   dualFeedResolve: boolean;
+  /** TP touch tolerance in multiples of the pair's stored spread estimate.
+   *  Feeds quote about a spread apart and subscriber limits fill on their
+   *  broker's touch; 1 lets a near-miss within one spread resolve as a TP.
+   *  Targets only — stops never get a tolerance. 0 disables. */
+  tpTouchSpreads: number;
   strategy: StrategyConfig;
 }
 
@@ -227,6 +232,7 @@ interface EnvVars {
   FILTER_HTF_CONFLICT?: string;
   FILTER_HTF_CONFLICT_DERIV_ONLY?: string;
   DUAL_FEED_RESOLVE?: string;
+  TP_TOUCH_SPREADS?: string;
   REQUIRE_REJECTION_CLOSE?: string;
   REQUIRE_INDUCEMENT?: string;
 }
@@ -357,6 +363,10 @@ export function loadConfig(env: EnvVars): WorkerConfig {
     filterHtfConflict: (env.FILTER_HTF_CONFLICT ?? "true").toLowerCase() === "true",
     filterHtfConflictDerivOnly: (env.FILTER_HTF_CONFLICT_DERIV_ONLY ?? "true").toLowerCase() === "true",
     dualFeedResolve: (env.DUAL_FEED_RESOLVE ?? "true").toLowerCase() === "true",
+    tpTouchSpreads: (() => {
+      const v = Number(env.TP_TOUCH_SPREADS ?? "1");
+      return Number.isFinite(v) && v >= 0 ? v : 1;
+    })(),
     strategy,
   };
 }

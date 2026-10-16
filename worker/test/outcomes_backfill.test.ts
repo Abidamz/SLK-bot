@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backfillOutcome } from "../src/outcomes";
+import { backfillOutcome, evaluateSignal } from "../src/outcomes";
 import type { Candle } from "../src/types";
 
 const T0 = Date.parse("2026-10-15T09:00:00Z");
@@ -68,5 +68,27 @@ describe("backfillOutcome", () => {
     ]);
     expect(r2.outcome).toBeNull();
     expect(r2.reason).toBe("UNRESOLVED");
+  });
+});
+
+describe("touch tolerance", () => {
+  const candle = (h: number, l: number, c: number): Candle => ({ t: T0, o: l + 0.1, h, l, c });
+  it("counts a TP touch within tolerance that the raw feed missed", () => {
+    const near = [candle(102.6, 99.5, 100.5)]; // high stops 0.4 short of tp 103
+    expect(evaluateSignal("LONG", 100, 99, 103, near, 120, false, 1.5, true, 0)).toBeNull();
+    const oc = evaluateSignal("LONG", 100, 99, 103, near, 120, false, 1.5, true, 0.5);
+    expect(oc?.status).toBe("TP_HIT");
+  });
+  it("never loosens the stop side", () => {
+    const nearStop = [candle(100.95, 98, 100.2)]; // high 0.05 short of stop 101
+    expect(evaluateSignal("SHORT", 100, 101, 97, nearStop, 120, false, 1.5, true, 0.5)).toBeNull();
+    const hit = [candle(101.05, 98, 100.2)];
+    expect(evaluateSignal("SHORT", 100, 101, 97, hit, 120, false, 1.5, true, 0.5)?.status).toBe("SL_HIT");
+  });
+  it("backfill carries the same tolerance", () => {
+    const near = [candle(102.6, 99.5, 100.5)];
+    expect(backfillOutcome("LONG", 100, 99, 103, T0, near, 120, false, 1.5, true, 0).reason).toBe("UNRESOLVED");
+    const done = backfillOutcome("LONG", 100, 99, 103, T0, near, 120, false, 1.5, true, 0.5);
+    expect(done.outcome?.status).toBe("TP_HIT");
   });
 });

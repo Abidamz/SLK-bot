@@ -22,6 +22,7 @@ import {
 import { addReplayDiagnostics, buildEnginePulse, countTransition, emptyScanDiagnostics, noteConfirmationAttempt, type EnginePulseRow, type ScanDiagnostics } from "./diagnostics";
 import { evaluateSignal, beArmedTime, backfillOutcome, combineOutcomes } from "./outcomes";
 import { propVerdictGrid } from "./prop_sim";
+import { SPREAD_EST } from "./replay_stats";
 import { runMonteCarlo } from "./montecarlo";
 import { dispatchMt5Trade, dispatchMt5Breakeven, mt5Active } from "./mt5";
 import { notifyAlert, notifyOutcome, notifyWatch, notifyBias, sendPerformanceRecap, computeRecapStats, formatPerformanceRecap, formatEngineDisciplineDigest, sendEngineDisciplineDigest, parseChatIds, createTelegramInviteLink, kickTelegramMember, verifyWhopWebhookSignature } from "./notify";
@@ -1141,12 +1142,16 @@ async function resolveOutcomes(
       }));
       continue;
     }
+    // One stored spread of touch tolerance on targets: feeds quote about a
+    // spread apart and subscriber limits fill on their broker's touch.
+    const tpTol = (cfg.tpTouchSpreads ?? 1) * (SPREAD_EST[pair] ?? 0);
     let oc = evaluateSignal(
       rec.direction as "LONG" | "SHORT",
       Number(rec.entry), Number(rec.stop_loss), Number(rec.tp_internal),
       after, cfg.expireCandles, cfg.slOnClose,
       cfg.strategy.trailingBeTriggerR ?? 1.5,
       cfg.strategy.trailingBeEnabled ?? true,
+      tpTol,
     );
     // Dual-feed resolution: an independent second provider cross-checks
     // every touch, so a fill the primary feed never printed still resolves
@@ -1160,6 +1165,7 @@ async function resolveOutcomes(
           after2, cfg.expireCandles, cfg.slOnClose,
           cfg.strategy.trailingBeTriggerR ?? 1.5,
           cfg.strategy.trailingBeEnabled ?? true,
+          tpTol,
         ));
       }
     }
@@ -1668,6 +1674,7 @@ export async function repairOpenOutcomes(
         candles, cfg.expireCandles, cfg.slOnClose,
         cfg.strategy.trailingBeTriggerR ?? 1.5,
         cfg.strategy.trailingBeEnabled ?? true,
+        (cfg.tpTouchSpreads ?? 1) * (SPREAD_EST[pair] ?? 0),
       );
       if (!r.outcome) {
         report.push({ setupId: rec.setup_id, pair, tf, blocked: r.reason, tp_internal: rec.tp_internal });

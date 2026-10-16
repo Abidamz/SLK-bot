@@ -17,6 +17,13 @@ export function evaluateSignal(
   slOnClose = false,
   trailingBeTriggerR = 1.5,
   trailingBeEnabled = true,
+  /** Extra distance, in price units, within which a TP touch counts. Feeds
+   *  legitimately quote a given instrument about one spread apart, and a
+   *  subscriber's limit order fills on THEIR broker's touch; without this,
+   *  a touch that every broker printed but our feeds missed by half a
+   *  spread leaves the row open and the outcome message unsent. Applies to
+   *  targets only — stops stay strictly conservative. */
+  touchTolerance = 0,
 ): Outcome | null {
   const risk = Math.abs(entry - stop);
   if (risk <= 0) return null;
@@ -43,7 +50,7 @@ export function evaluateSignal(
     let beHit = false;
 
     if (direction === "LONG") {
-      tpHit = c.h >= tp;
+      tpHit = c.h >= tp - touchTolerance;
       // Buy limit fills when price trades down to entry.
       if (fillConfirmed === null && c.l <= entry) { fillConfirmed = true; fillTime = c.t; }
       if (beArmed) {
@@ -52,7 +59,7 @@ export function evaluateSignal(
         slHit = slOnClose ? c.c < stop : c.l <= stop;
       }
     } else {
-      tpHit = c.l <= tp;
+      tpHit = c.l <= tp + touchTolerance;
       // Sell limit fills when price trades up to entry.
       if (fillConfirmed === null && c.h >= entry) { fillConfirmed = true; fillTime = c.t; }
       if (beArmed) {
@@ -110,6 +117,7 @@ export function backfillOutcome(
   slOnClose = false,
   trailingBeTriggerR = 1.5,
   trailingBeEnabled = true,
+  touchTolerance = 0,
 ): { outcome: Outcome; reason: null } | { outcome: null; reason: BackfillBlockReason } {
   if (!Number.isFinite(entry) || !Number.isFinite(stop) || !Number.isFinite(tp) || tp <= 0) {
     return { outcome: null, reason: "BAD_TARGET" };
@@ -122,7 +130,7 @@ export function backfillOutcome(
   if (!after.length) return { outcome: null, reason: "NO_CANDLES_AFTER_ENTRY" };
   const outcome = evaluateSignal(
     direction, entry, stop, tp, after, expireAfter, slOnClose,
-    trailingBeTriggerR, trailingBeEnabled,
+    trailingBeTriggerR, trailingBeEnabled, touchTolerance,
   );
   if (!outcome) return { outcome: null, reason: "UNRESOLVED" };
   return { outcome, reason: null };

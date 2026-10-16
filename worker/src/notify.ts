@@ -799,6 +799,26 @@ export interface BroadcastOptions {
 
 /** Fan out to every configured channel; a failing channel is logged and
  *  skipped and never blocks the others. Returns per-channel status. */
+/** One retry after a short pause. Telegram hiccups (429s, 5xx, transient
+ *  network failures) are usually gone a second later, and a dropped outcome
+ *  message is exactly the failure subscribers notice and lose trust over.
+ *  A duplicate risk does not exist here: this only retries a send that
+ *  threw before completing. */
+async function sendTelegramWithRetry(
+  env: NotifyEnv, text: string, options: TelegramSendOptions,
+): Promise<void> {
+  try {
+    await sendTelegram(env, text, options);
+  } catch (err) {
+    console.warn(JSON.stringify({
+      level: "warn", msg: "telegram send failed, retrying once",
+      error: err instanceof Error ? err.message : String(err),
+    }));
+    await new Promise((r) => setTimeout(r, 1500));
+    await sendTelegram(env, text, options);
+  }
+}
+
 export async function broadcast(
   env: NotifyEnv,
   text: string,
@@ -820,7 +840,7 @@ export async function broadcast(
   if (telegramAllowed && env.TELEGRAM_BOT_TOKEN && targetChannelIds.length > 0) {
     for (const chatId of targetChannelIds) {
       try {
-        await sendTelegram(env, text, { ...options, chatId });
+        await sendTelegramWithRetry(env, text, { ...options, chatId });
         recordDeliveryStatus(results, "telegram", "ok");
       } catch (err) {
         const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
@@ -838,7 +858,7 @@ export async function broadcast(
     for (const dmId of dmIds) {
       if (channelIds.includes(dmId)) continue; // Don't duplicate if DM ID is already in target channel
       try {
-        await sendTelegram(env, text, { silent: false, pin: false, chatId: dmId });
+        await sendTelegramWithRetry(env, text, { silent: false, pin: false, chatId: dmId });
         recordDeliveryStatus(results, "telegram_dm", "ok");
       } catch (err) {
         const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
