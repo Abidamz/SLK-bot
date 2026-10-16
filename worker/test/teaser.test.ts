@@ -3,7 +3,7 @@
  * never entry, stop, or target levels. Levels stay VIP-only.
  */
 import { describe, expect, it } from "vitest";
-import { formatFreeTpTeaser, toBold } from "../src/notify";
+import { formatFreeConfirmedEntryTeaser, formatFreeTpTeaser, toBold } from "../src/notify";
 import type { AlertRowish, OutcomeLike } from "../src/notify_types";
 
 const rec: AlertRowish = {
@@ -20,12 +20,49 @@ const rec: AlertRowish = {
 
 const oc: OutcomeLike = { status: "TP_HIT", exitPrice: 1.0831, exitTime: Date.parse("2026-09-30T14:00:00.000Z"), rMultiple: 2.57 };
 
+describe("free-channel confirmed-entry notice", () => {
+  const alert = {
+    pair: "EURUSD",
+    direction: "SHORT",
+    entryTf: "30m",
+    alertStatus: "PAPER",
+    entry: 1.08525,
+    stopLoss: 1.0861,
+    tpInternal: 1.0831,
+    tpExternal: 1.0800,
+    invalidationLevel: 1.0863,
+  } as any;
+
+  it("is branded and identifies the setup without exposing trade levels", () => {
+    const text = formatFreeConfirmedEntryTeaser(alert);
+    expect(text).toContain("DEO EDGE — CONFIRMED SIGNAL");
+    expect(text).toContain("FOREX / INDEX / METALS");
+    expect(text).toContain(toBold("EURUSD"));
+    expect(text).toContain("SHORT");
+    expect(text).toContain("30m");
+    expect(text).toContain("Exact entry, stop, target, and invalidation prices are shared in the VIP channel.");
+    expect(text).toContain("No order was placed");
+    for (const level of ["1.08525", "1.0861", "1.0831", "1.0800", "1.0863"]) {
+      expect(text).not.toContain(level);
+      expect(text).not.toContain(toBold(level));
+    }
+    expect(text).not.toContain("ACTION REQUIRED");
+  });
+
+  it("labels a Deriv notice separately", () => {
+    const text = formatFreeConfirmedEntryTeaser({ ...alert, pair: "V75" } as any);
+    expect(text).toContain("DERIV SYNTHETIC");
+    expect(text).toContain(toBold("V75"));
+    expect(text).not.toContain("FOREX / INDEX");
+  });
+});
+
 describe("free-channel TP1 teaser", () => {
   it("uses the exact level-free layout (pair / timeframe / result only)", () => {
     const boldPair = toBold("EURUSD");
     const text = formatFreeTpTeaser(rec, oc);
     expect(text).toBe([
-      `🎯 TP1 HIT — 🌟【 ${boldPair} 】🌟 SHORT (+2.57R)`,
+      `🎯 DEO EDGE — TP1 HIT — 🌟【 ${boldPair} 】🌟 SHORT (+2.57R)`,
       "",
       `📍 Pair      : 🌟【 ${boldPair} 】🌟`,
       "• Timeframe : 30m",

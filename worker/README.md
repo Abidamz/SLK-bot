@@ -61,6 +61,10 @@ that display does not add them to production alert routing or enable execution.
   stops wider than **3.5× entry-TF ATR** are rejected (`maxStopAtr` — on
   EURUSD/30m ≈ 10–14 pips today; indices self-scale). No universal pip
   constants: everything stays volatility-normalized per instrument.
+- **Free confirmed-entry notices**: each delivered setup sends a branded,
+  level-free DEO Edge notice to every configured free channel. Exact entry,
+  stop, targets, and invalidation remain VIP-only. Each notice labels its
+  market family so Deriv stays distinct from non-Deriv instruments.
 - **Boot gate**: the first-ever scan per pair+TF records transitions but
   delivers nothing (mirrors the Python `alert_on_boot=false`).
 - **Pre-entry watch cards** (`WATCH_NOTIFY`, default off): if enabled, at most

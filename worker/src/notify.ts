@@ -721,6 +721,25 @@ export function formatAlert(a: Alert, executionMode: ExecutionMode = "market"): 
   return lines.join("\n");
 }
 
+/** Confirmed-entry notice for free channels. It identifies the setup but
+ *  deliberately omits every exact execution price; full levels remain VIP-only. */
+export function formatFreeConfirmedEntryTeaser(a: Alert): string {
+  const boldPair = toBold(a.pair);
+  const emoji = a.direction === "LONG" ? "🟢" : "🔴";
+  const marketLabel = isDerivPair(a.pair) ? "DERIV SYNTHETIC" : "FOREX / INDEX / METALS";
+  return [
+    "🔔 DEO EDGE — CONFIRMED SIGNAL",
+    `${marketLabel} · 🌟【 ${boldPair} 】🌟 · ${a.direction} ${emoji} · ${a.entryTf}`,
+    "",
+    "A setup completed the SLK confirmation steps.",
+    "Research notice only. No order was placed; this is not an entry instruction.",
+    "Exact entry, stop, target, and invalidation prices are shared in the VIP channel.",
+    "",
+    "👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals",
+    "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
+  ].join("\n");
+}
+
 export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
   const pair = String(rec.canonical_symbol);
   const boldPair = toBold(pair);
@@ -731,7 +750,7 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
   // Free-channel teaser: pair / timeframe / result only — no entry, stop or
   // target levels. Exact levels stay VIP-only (see formatAlert / VIP cards).
   return [
-    `🎯 TP1 HIT — 🌟【 ${boldPair} 】🌟 ${dir} (+${r.toFixed(2)}R)`,
+    `🎯 DEO EDGE — TP1 HIT — 🌟【 ${boldPair} 】🌟 ${dir} (+${r.toFixed(2)}R)`,
     ``,
     `📍 Pair      : 🌟【 ${boldPair} 】🌟`,
     `• Timeframe : ${rec.entry_timeframe}`,
@@ -885,11 +904,9 @@ export async function broadcast(
   return results;
 }
 
-/** Confirmed entry alerts fan out to every configured channel. The alert
- * includes the candidate entry, stop-loss, internal/external targets, and
- * invalidation level; it is still research-only and places no order.
- * Entry alerts are sent LOUD and auto-pinned to prevent missing execution,
- * and simultaneously sent to personal private DM so it cannot be missed. */
+/** Full confirmed-entry cards (with price levels) go to configured VIP, private
+ * DM, and Discord routes. Every configured free Telegram channel receives a
+ * branded teaser without execution levels. This remains paper research only. */
 export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<string, string>> {
   const photoUrl = await getVisualAlertImageUrl(env, a);
   // Alerts routinely exceed Telegram's 1024-char caption limit. Give the chart a
@@ -900,7 +917,7 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
     (executionMode === "market"
       ? `${a.direction === "LONG" ? "BUY" : "SELL"} (MARKET) @ ${fmtPrice(a.pair, a.entry)}`
       : `${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"} @ ${fmtPrice(a.pair, a.entry)}`);
-  return broadcast(env, formatAlert(a, executionMode), a.direction === "LONG" ? GREEN : RED, {
+  const results = await broadcast(env, formatAlert(a, executionMode), a.direction === "LONG" ? GREEN : RED, {
     silent: false,
     pin: true,
     sendToDm: true,
@@ -908,6 +925,34 @@ export async function notifyAlert(env: NotifyEnv, a: Alert): Promise<Record<stri
     photoUrl,
     shortCaption,
   });
+
+  // Send a branded, level-free notice to every configured free channel. The
+  // message labels Deriv separately so cross-channel delivery does not blur
+  // the two market lanes. Never send this teaser to a VIP or private-DM chat.
+  const vipChatIds = new Set([
+    ...parseChatIds(env.TELEGRAM_CHAT_ID),
+    ...parseChatIds(env.TELEGRAM_DERIV_CHAT_ID),
+    ...parseChatIds(env.TELEGRAM_DM_CHAT_ID),
+  ]);
+  const freeChatIds = [...new Set([
+    ...parseChatIds(env.TELEGRAM_FREE_CHAT_ID),
+    ...parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID),
+  ])].filter((chatId) => !vipChatIds.has(chatId));
+  if (env.TELEGRAM_BOT_TOKEN && freeChatIds.length > 0) {
+    const teaser = formatFreeConfirmedEntryTeaser(a);
+    for (const freeId of freeChatIds) {
+      try {
+        await sendTelegramWithRetry(env, teaser, { silent: false, pin: false, chatId: freeId });
+        recordDeliveryStatus(results, "telegram_free_confirmed_entry", "ok");
+      } catch (err) {
+        const failure = `error: ${err instanceof Error ? err.message : String(err)}`;
+        recordDeliveryStatus(results, "telegram_free_confirmed_entry", failure);
+        console.warn(JSON.stringify({ level: "warn", msg: "telegram free confirmed-entry teaser failed", freeId, error: failure }));
+      }
+    }
+  }
+
+  return results;
 }
 
 /** Optional pre-entry context card. Production sends only SHIFT when enabled;
@@ -922,8 +967,9 @@ export function formatWatch(ev: EngineEvent, entryTf: string, options?: { isFree
   const originKind = parts[3] ?? "";
   const originPrice = parts[4] ? Number(parts[4]) : null;
   const stateEmoji = ev.state === "SWEEP" ? "🌊" : ev.state === "SHIFT" ? "⚡" : "👆";
+  const watchTitle = options?.isFreeChannel ? "👀 DEO EDGE WATCH" : "👀 WATCH";
   const lines = [
-    `👀 WATCH — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
+    `${watchTitle} — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟 · ${entryTf} · ${direction} ${direction === "LONG" ? "🔼" : "🔽"}`,
     `📍 Pair     : 🌟【 ${boldPair} 】🌟`,
     `State      : ${stateEmoji} ${ev.state}`,
     `Detail     : ${ev.reason}`,

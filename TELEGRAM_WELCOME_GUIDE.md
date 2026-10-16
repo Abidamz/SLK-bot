@@ -31,6 +31,8 @@ Every signal we issue enforces a strict minimum 1:2.5R to 1:4.0R reward asymmetr
 ──────────────────────────────────────────────
 Your VIP channel is a zero-noise, high-conviction execution feed. You will ONLY receive alerts when a confirmed entry candle closes:
 
+All configured free Telegram channels also receive a short DEO Edge confirmed-signal notice, with its market family labeled. It omits entry, stop, target, and invalidation prices and is not an instruction to place an order; the full confirmed-entry card remains VIP-only.
+
 🚨🚨🚨 [ACTION REQUIRED] — DEO EDGE CONFIRMED ENTRY
 PAIR: XAUUSD (Gold)
 TIMEFRAME: 30m

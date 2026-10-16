@@ -218,7 +218,7 @@ describe("scheduled scan cycle", () => {
       storeOverride: new MemStore(),
     });
     expect(summary.alerts).toBe(0); // the RETEST/entry has not happened yet
-    const watch = calls.telegram.filter((message) => message.startsWith("👀 WATCH"));
+    const watch = calls.telegram.filter((message) => message.startsWith("👀 DEO EDGE WATCH"));
     expect(watch).toHaveLength(1);
     expect(watch[0]).toContain("State      : ⚡ SHIFT");
     expect(watch[0]).toContain("NOT AN ENTRY");
@@ -443,7 +443,7 @@ describe("scheduled scan cycle", () => {
     expect(dmWatch).toBeUndefined();
   });
 
-  it("limits VIP and synthetic channels to confirmed entry alerts only while keeping free channel armed with watch alerts", async () => {
+  it("sends branded level-free signal notices to every configured free channel", async () => {
     const rawBodies: { url: string; body: any }[] = [];
     const testFetch: typeof fetch = async (input, init) => {
       const url = String(input);
@@ -520,16 +520,37 @@ describe("scheduled scan cycle", () => {
       phase: "EXPANSION",
       htfAlignment: "ALIGNED",
     };
-    await notifyAlert(notifyEnv, fakeAlert as any);
+    await notifyAlert({
+      ...notifyEnv,
+      TELEGRAM_FREE_CHAT_ID: "-100_FREE_RADAR,-100_FREE_RADAR_BACKUP,-100_VIP_INSTITUTIONAL,-100_FREE_RADAR",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100_FREE_SYNTHETICS,-100_FREE_RADAR_BACKUP,-100_VIP_SYNTHETICS",
+    }, fakeAlert as any);
 
     // VIP Institutional receives the loud confirmed alert
     const vipAlert = rawBodies.find((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL" && b.url.includes("/sendMessage"));
     expect(vipAlert).toBeDefined();
     expect(vipAlert?.body.text).toContain("DEO EDGE CONFIRMED ENTRY");
+    expect(vipAlert?.body.text).not.toContain("DEO EDGE — CONFIRMED SIGNAL");
+    expect(rawBodies.filter((b) => b.body.chat_id === "-100_VIP_INSTITUTIONAL" && b.url.includes("/sendMessage"))).toHaveLength(1);
+    expect(rawBodies.filter((b) => b.body.chat_id === "-100_VIP_SYNTHETICS" && b.url.includes("/sendMessage"))).toHaveLength(0);
 
-    // Free channel does NOT receive the confirmed alert (VIP exclusive)
-    const freeAlert = rawBodies.find((b) => b.body.chat_id === "-100_FREE_RADAR" && b.url.includes("/sendMessage"));
-    expect(freeAlert).toBeUndefined();
+    // Free channels receive the branded notice, but never the VIP price levels.
+    const freeAlerts = rawBodies.filter((b) =>
+      ["-100_FREE_RADAR", "-100_FREE_RADAR_BACKUP", "-100_FREE_SYNTHETICS"].includes(b.body.chat_id)
+      && b.url.includes("/sendMessage"),
+    );
+    expect(freeAlerts).toHaveLength(3);
+    for (const freeAlert of freeAlerts) {
+      expect(freeAlert.body.text).toContain("DEO EDGE — CONFIRMED SIGNAL");
+      expect(freeAlert.body.text).toContain("FOREX / INDEX / METALS");
+      expect(freeAlert.body.text).toContain("SHORT");
+      expect(freeAlert.body.text).toContain("15m");
+      expect(freeAlert.body.text).not.toContain("4316.0");
+      expect(freeAlert.body.text).not.toContain("4322.2");
+      expect(freeAlert.body.text).not.toContain("4298.0");
+      expect(freeAlert.body.text).not.toContain("Entry       :");
+      expect(freeAlert.body.text).not.toContain("Stop Loss  :");
+    }
 
     // 4. Dedicated Synthetics Free Channel routing when TELEGRAM_DERIV_FREE_CHAT_ID is configured
     rawBodies.length = 0;
@@ -565,6 +586,41 @@ describe("scheduled scan cycle", () => {
     expect(instFreeWatches[0].body.text).toContain("EURUSD");
     expect(derivFreeWatches).toHaveLength(1);
     expect(derivFreeWatches[0].body.text).toContain("V75");
+
+    // Confirmed Deriv teasers reach all configured free channels with a clear market label.
+    rawBodies.length = 0;
+    const derivAlert = {
+      ...fakeAlert,
+      pair: "V75",
+      direction: "LONG" as const,
+      keyLevelBounds: [44900, 45000] as [number, number],
+      entry: 45000,
+      stopLoss: 44700,
+      tpInternal: 45900,
+      tpExternal: 46500,
+      invalidationLevel: 44700,
+      setupId: "test-deriv-entry",
+    };
+    await notifyAlert(splitFreeEnv, derivAlert as any);
+
+    const derivFreeTeaser = rawBodies.find((b) =>
+      b.body.chat_id === "-100_FREE_SYNTHETICS"
+      && b.url.includes("/sendMessage")
+      && b.body.text?.includes("DEO EDGE — CONFIRMED SIGNAL"),
+    );
+    expect(derivFreeTeaser).toBeDefined();
+    expect(derivFreeTeaser?.body.text).toContain("DERIV SYNTHETIC");
+    expect(derivFreeTeaser?.body.text).not.toContain("45000");
+    expect(derivFreeTeaser?.body.text).not.toContain("44700");
+    expect(derivFreeTeaser?.body.text).not.toContain("45900");
+    const otherFreeTeaser = rawBodies.find((b) =>
+      b.body.chat_id === "-100_FREE_INSTITUTIONAL"
+      && b.url.includes("/sendMessage")
+      && b.body.text?.includes("DEO EDGE — CONFIRMED SIGNAL"),
+    );
+    expect(otherFreeTeaser).toBeDefined();
+    expect(otherFreeTeaser?.body.text).toContain("DERIV SYNTHETIC");
+    expect(otherFreeTeaser?.body.text).not.toContain("45000");
   });
 
   it("interleaves institutional and synthetic pairs in round-robin batches so neither starves", async () => {
