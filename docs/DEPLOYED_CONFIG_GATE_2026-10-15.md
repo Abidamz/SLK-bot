@@ -101,12 +101,25 @@ NAS100 TP (+3.0R). Window recency, universe breadth, and the correction
 explain the gap; neither measurement was lying, they were measuring
 different books.
 
-_2026-10-16 update: a second NAS100 correction (+3.00R, TP_HIT, logged in
-`docs/OUTCOME_OVERRIDE_POLICY.md`) landed after this census. The live book
-is now 20 resolved alerts (TP 10 / SL 8 / BE 2 expected) and every figure
-in this paragraph plus the mixture constants in `scripts/prop_live.ts`
-(N=19, TP 9) are stale until the census is re-run. Do not quote +0.94
-forward without re-censusing._
+_2026-10-16 update — re-censused after the second NAS100 correction
+(+3.00R, TP_HIT, logged in `docs/OUTCOME_OVERRIDE_POLICY.md`). The live
+book is now **20 delivered alerts** (2026-08-25T13:00Z → 2026-10-16T09:30Z,
+51.9 days, 11.7 alerts/month): TP 10 / SL 8 / BE 2, win 55.6% (10 of 18 decided), **+22.5R raw
+(+1.13/alert) and +20.7R adjusted (+1.04/alert)**. Direction adjusted:
+LONG 5 alerts +1.51 (3/1/1), SHORT 15 alerts +0.88 (7/7/1). Entry TF
+adjusted: 15m 8 alerts +1.13, 30m 5 at +1.04, 1h 7 at +0.93. NAS100 4
+alerts +1.94 including both corrections. `scripts/prop_live.ts` now runs
+on this census: at 0.75% risk the challenge passes 59.9% (8% target) /
+80.6% (5% target), blown 0.4%; the categorical bootstrap's 90% intervals
+are 20–88% and 40–97% respectively. This is a small-sample scenario model,
+not a promise; it resamples outcome counts and holds the adjusted win-size
+equivalent fixed. The live dashboard's verdict resamples full ledger rows.
+Two live slices now point the
+opposite way from the 360d replay (15m best live TF, longs positive);
+both are n≤8 and neither overturns the year, but they are exactly the
+slices the standing forward adjudications watch: longs stay unsuppressed
+until delivered longs sit below −0.2 R/alert at n≥30, and the 15m cut
+stays an owner decision on the year, not the fortnight._
 
 **5. 15m nuance.** In-window 15m is neutral (+0.02 R/alert adjusted, 17
 alerts); its 360d damage (−0.14) sits outside the recent window. The cut

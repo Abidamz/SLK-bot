@@ -1,64 +1,73 @@
 /** Prop-challenge verdict on the LIVE forward mixture (past events), not the
- *  backtest's. Source: the 2026-10-15 live direction census — 19 delivered
- *  alerts, 2026-08-25 → 2026-10-15, spread-adjusted.
+ *  backtest's. Source: the 2026-10-16 live direction census — 20 delivered
+ *  alerts, 2026-08-25 → 2026-10-16, spread-adjusted. The ledger contains two
+ *  owner-corrected NAS100 TPs (docs/OUTCOME_OVERRIDE_POLICY.md); the mixture
+ *  inherits that mix and says so.
  *
  *  Mixture reconstruction (documented, not fitted):
- *    TP 9, SL 8, BE 2  → shares 0.4737 / 0.4211 / 0.1053
- *    mean winner raw R  = (9.0 + 18.5) / 9 = 3.056   (LONG net 8.0 + 1 SL,
- *                                                     SHORT net 11.5 + 7 SL)
- *    mean spread cost   = (19.5 raw - 17.8 adj) / 19 = 0.0895 per alert
- *    targetR (adj)      = 3.056 - 0.0895 = 2.966
- *    expectancy check   = .4737*2.966 - .4211*1.0895 = +0.946 R/alert ✓
- *  Scratches carry a small cost the simulator books as 0; the bias is
- *  ~0.01 R/alert and is deliberately left visible rather than hidden.
+ *    TP 10, SL 8, BE 2  → shares 0.50 / 0.40 / 0.10
+ *    mean winner raw R  = (22.5 raw net + 8.0 lost R) / 10 = 3.05
+ *    adjusted winner-equivalent = (20.7 adjusted net + 8.0 lost R) / 10 = 2.87
+ *    expectancy           = .50*2.87 - .40*1.00 = +1.035 R/alert
+ *    measured adjusted    = 20.7 / 20 = +1.035 R/alert ✓
+ *  The simulator has one R value for every win/loss and no per-trade cost
+ *  field, so 2.87 is an expectancy-preserving win equivalent, NOT the mean
+ *  broker fill. It folds all measured spread cost into the win outcome.
  *
- *  Frequency: 19 alerts over 50.9 days ≈ 11.4 per calendar month across the
- *  whole service, so instruments=1 at 11.4 alerts/month. Measured mean
+ *  Frequency: 20 alerts over 51.9 days ≈ 11.7 per calendar month across the
+ *  whole service, so instruments=1 at 11.8 alerts/month. Measured mean
  *  pairwise correlation 0.004 → correlation 0; a 0.2 stress column is printed
  *  beside it because same-day macro shocks are not literally zero.
  *
- *  Bootstrap: resample the 19 alerts with replacement, rebuild the mixture,
- *  re-simulate — the spread of pass rates IS the uncertainty n=19 imposes.
- *  Usage: npx tsx scripts/prop_live.ts            (no network access needed)
+ *  Bootstrap: resample TP/SL/BE categories at alert granularity with a fixed
+ *  adjusted win-equivalent. The interval captures outcome-mix uncertainty,
+ *  not variation in individual winner sizes. The dashboard verdict bootstraps
+ *  full ledger rows. Usage: npx tsx scripts/prop_live.ts (no network access)
  *
- *  STALE AS OF 2026-10-16: the census below is the 2026-10-15 ledger. A
- *  second owner override (NAS100 OC 30003, OPEN -> TP_HIT +3.00R, logged in
- *  docs/OUTCOME_OVERRIDE_POLICY.md) resolved after it, so the live book is
- *  now 20 alerts. Refresh the constants from a fresh live_direction.ts run
- *  before using the output; the script prints the same warning.
+ *  Refresh discipline: the constants below ARE the census. When the ledger
+ *  moves (new resolutions or overrides), re-run
+ *  `npx tsx scripts/live_direction.ts --from 2026-08-25` and update N/TP/SL/BE
+ *  and the raw/adj sums before quoting anything this prints.
  */
 import { simulate, type AlertMix, type PropRules } from "../src/prop_sim";
 
-const N = 19;
-const TP = 9, SL = 8, BE = 2;
-const MEAN_WIN_RAW = (9.0 + 18.5) / TP;
-const MEAN_COST = (19.5 - 17.8) / N;
-const ALERTS_PER_MONTH = 19 / (50.9 / 30.44);
+const N = 20;
+const TP = 10, SL = 8, BE = 2;
+const RAW_NET_R = 22.5;
+const ADJUSTED_NET_R = 20.7;
+const MEAN_WIN_RAW = (RAW_NET_R + SL) / TP;
+// Equivalent reward that makes the simulator's -1R loss and 0R scratch
+// reproduce the measured adjusted net: (20.7 + 8 losses) / 10 wins.
+const ADJUSTED_WIN_EQ = (ADJUSTED_NET_R + SL) / TP;
+const WINDOW_START_MS = Date.parse("2026-08-25T13:00:00.000Z");
+const WINDOW_END_MS = Date.parse("2026-10-16T09:30:00.000Z");
+const SPAN_DAYS = (WINDOW_END_MS - WINDOW_START_MS) / 86_400_000;
+const ALERTS_PER_MONTH = N / (SPAN_DAYS / 30.44);
 
 const liveMix = (): AlertMix => ({
   winRate: TP / N,
   lossRate: SL / N,
   scratchRate: BE / N,
-  targetR: MEAN_WIN_RAW - MEAN_COST,
+  targetR: ADJUSTED_WIN_EQ,
 });
 
-/** Resample the 19 observed alerts (9 win, 8 loss, 2 scratch) with replacement
+/** Resample the 20 observed alerts (10 win, 8 loss, 2 scratch) with replacement
  *  and rebuild the mixture — the bootstrap, at alert granularity. */
 function bootstrapMix(rand: () => number): AlertMix {
   const bag: ("W" | "L" | "S")[] = [
     ...Array(TP).fill("W"), ...Array(SL).fill("L"), ...Array(BE).fill("S"),
   ];
-  let w = 0, l = 0, s = 0, winR = 0;
+  let w = 0, l = 0, s = 0;
   for (let i = 0; i < N; i++) {
     const draw = bag[Math.floor(rand() * N) % N];
-    if (draw === "W") { w++; winR += MEAN_WIN_RAW; }
+    if (draw === "W") w++;
     else if (draw === "L") l++;
     else s++;
   }
-  if (w === 0) return { winRate: 0, lossRate: l / N, scratchRate: s / N, targetR: 1 };
   return {
     winRate: w / N, lossRate: l / N, scratchRate: s / N,
-    targetR: winR / w - MEAN_COST,
+    // Keep each bootstrap mix on the calibrated adjusted expectancy scale.
+    targetR: ADJUSTED_WIN_EQ,
   };
 }
 
@@ -80,11 +89,10 @@ const RULES: PropRules[] = [
 ];
 const RISKS = [0.5, 0.75, 1.0];
 
-console.log("PROP CHALLENGE ON LIVE FORWARD MIXTURE (19 alerts, 2026-08-25 → 2026-10-15)");
-console.log("!! CENSUS STALE: a second NAS100 override (+3.00R) landed 2026-10-16.");
-console.log("!! Re-run `npx tsx scripts/live_direction.ts --from 2026-08-25` and update");
-console.log("!! N/TP/SL/BE/MEAN_* below before quoting any number this prints.");
-console.log(`mix: win ${(TP / N * 100).toFixed(1)}% loss ${(SL / N * 100).toFixed(1)}% scratch ${(BE / N * 100).toFixed(1)}% | winner ${(MEAN_WIN_RAW - MEAN_COST).toFixed(2)}R adj | ${(ALERTS_PER_MONTH).toFixed(1)} alerts/month service-wide`);
+console.log("PROP CHALLENGE ON LIVE FORWARD MIXTURE (20 alerts, 2026-08-25 → 2026-10-16)");
+console.log("ledger includes 2 owner-corrected NAS100 TPs - docs/OUTCOME_OVERRIDE_POLICY.md");
+console.log(`mix: win ${(TP / N * 100).toFixed(1)}% loss ${(SL / N * 100).toFixed(1)}% scratch ${(BE / N * 100).toFixed(1)}% | win ${MEAN_WIN_RAW.toFixed(2)}R raw / ${ADJUSTED_WIN_EQ.toFixed(2)}R adjusted-equivalent | ${(ALERTS_PER_MONTH).toFixed(1)} alerts/month service-wide`);
+console.log(`measured expectancy: +${(ADJUSTED_NET_R / N).toFixed(3)} adjusted R/alert`);
 console.log("rules: 21 trading days, overall blow at -5%; subscriber envelope 0.5-1% risk\n");
 console.log("target daily  risk%   pass%   blown%  neither%  avgTrades  [bootstrap 90% interval on pass%]");
 

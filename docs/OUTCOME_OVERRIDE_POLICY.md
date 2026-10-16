@@ -70,8 +70,10 @@ touch that landed within a handful of points.
   refinement was deliberately not re-applied because no downstream
   consumer reads exit time at that granularity and re-running would replay
   the Telegram message. The reason string declares the uncertainty.
-- Ledger effect: live book +13.58R → +16.58R, one additional win in the
-  tp/(tp+sl) ratio.
+- The point-in-time tally recorded +13.58R → +16.58R and one additional
+  win in tp/(tp+sl). Its query scope/window was not saved; retain this as a
+  historical snapshot, not a total comparable with the 2026-10-16
+  `live_direction` census (+22.5R raw / +20.7R adjusted across 20 alerts).
 
 ## Tooling shipped alongside
 
@@ -118,10 +120,15 @@ argument for building item 6, never a workflow.
    diverge by tens of points on fast moves; that is a structural property
    of CFD pricing, not a bug in either feed, and no tolerance can cover
    it without fabricating outcomes.
-   Ledger effect: +16.58R -> +19.58R raw, one more win in tp/(tp+sl).
-   The 2026-10-15 live census (19 alerts) predates this row, so the
-   forward book is now 20 resolved alerts and the mixture constants in
-   `scripts/prop_live.ts` are stale until re-censused.
+   The point-in-time tally moved +16.58R -> +19.58R raw and added one
+   win in tp/(tp+sl); its query scope/window was not saved, so that number
+   is historical, not directly comparable with the current windowed report.
+   Re-censused the same day: 20 delivered alerts, TP 10 / SL 8 / BE 2,
+   +22.5R raw / +20.7R adjusted (+1.04 R/alert), win 55.6%. Use this
+   `live_direction` census for the current forward book. The mixture
+   constants in `scripts/prop_live.ts` were updated from it and declare
+   the two owner corrections, so no reader mistakes this for pure engine
+   output.
 
 **Pattern and permanent fix.** Both overrides are NAS100 index-CFD TP
 touches where the subscriber's broker feed and our CFD feeds diverged by
