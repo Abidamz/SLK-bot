@@ -43,6 +43,40 @@ export function inducementPresent(
   return isShort ? highs.some((s) => s.price < zoneLo) : lows.some((s) => s.price > zoneHi);
 }
 
+export interface SingleCandleVLevelPlan {
+  stopLoss: number;
+  target: number;
+}
+
+/** Research candidate from the single-candle V-level lesson. The reference is
+ *  the confirmed pivot candle whose liquidity was swept: stop just beyond that
+ *  candle's far wick (using the existing ATR buffer) and target its opposite
+ *  edge. This only describes the candidate geometry; `buildAlert` still checks
+ *  stop/target direction and the normal risk and reward floors. */
+export function singleCandleVLevelPlan(args: {
+  candles: Candle[];
+  sweptCandleIndex: number;
+  direction: Direction;
+  entry: number;
+  atr: number;
+  slBufferAtr: number;
+}): SingleCandleVLevelPlan | null {
+  const candle = args.candles[args.sweptCandleIndex];
+  if (
+    !Number.isInteger(args.sweptCandleIndex) || args.sweptCandleIndex < 0
+    || !candle || !Number.isFinite(args.entry)
+    || !Number.isFinite(args.atr) || args.atr < 0
+    || !Number.isFinite(args.slBufferAtr) || args.slBufferAtr < 0
+    || !Number.isFinite(candle.h) || !Number.isFinite(candle.l) || candle.h < candle.l
+  ) return null;
+
+  const buffer = args.atr * args.slBufferAtr;
+  const stopLoss = args.direction === "LONG" ? candle.l - buffer : candle.h + buffer;
+  const target = args.direction === "LONG" ? candle.h : candle.l;
+  if (!Number.isFinite(stopLoss) || !Number.isFinite(target)) return null;
+  return { stopLoss, target };
+}
+
 export interface ScanEntryArgs {
   pair: string;
   entryTf: string;
@@ -713,20 +747,39 @@ function buildNoRetestShadow(args: {
 function buildAlert(a: BuildAlertArgs): Alert | null {
   const { pair, entryTf, closeTime, c, s, isShort, atrE, cfg, mode, standing, provider, h4Context } = a;
   const entry = c.c;
+  const vLevelPlan = cfg.vLevelStopsTargets
+    ? singleCandleVLevelPlan({
+      candles: a.candles, sweptCandleIndex: s.sweptPoolIndex,
+      direction: s.direction, entry, atr: atrE, slBufferAtr: cfg.slBufferAtr,
+    })
+    : null;
+  if (cfg.vLevelStopsTargets && !vLevelPlan) {
+    // No confirmed swept candle means there is no Rule 4 plan. Never substitute
+    // the current stop/target plan in the research arm.
+    a.diagnostics.riskRejects++;
+    return null;
+  }
+
   const buf = cfg.slBufferAtr * atrE;
-  let sl = isShort ? s.invLevel + buf : s.invLevel - buf;
+  let sl = vLevelPlan?.stopLoss ?? (isShort ? s.invLevel + buf : s.invLevel - buf);
   let risk = isShort ? sl - entry : entry - sl;
-  if (risk <= 0) {
+  if (risk <= 0 || (vLevelPlan !== null && !Number.isFinite(risk))) {
     a.diagnostics.riskRejects++;
     a.diagnostics.riskRejectReasons.nonPositiveRisk++;
     return null;
   }
   if (stopExceedsCeiling(pair, risk, cfg.maxStopPips)) return null;
   // Enforce Option A: Minimum Stop Floor in Pips/Points (e.g. 10 pips forex, 25-30 pts indices)
-  // so broker spread never prematurely tags out valid setups.
+  // so broker spread never prematurely tags out valid setups. The V-level
+  // candidate cannot be widened without moving the stop inside its reference
+  // candle, so an undersized candidate is rejected instead.
   if (cfg.minStopPips && cfg.minStopPips > 0) {
     const minDistance = minStopDistance(pair, cfg.minStopPips);
     if (risk < minDistance) {
+      if (vLevelPlan) {
+        a.diagnostics.riskRejects++;
+        return null;
+      }
       sl = isShort ? entry + minDistance : entry - minDistance;
       risk = minDistance;
     }
@@ -744,30 +797,47 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     return null;
   }
 
-  // targets: internal liquidity first, then the nearest external target
-  const targets = selectTargets({
-    isShort, entry, risk, minTpR: cfg.minTpR, maxPromotedTpR: cfg.maxPromotedTpR,
-    internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
-  });
-  if (!targets) {
-    a.diagnostics.targetRejects++;
-    // The live floor remains cfg.minTpR (2.5R in production). As a separate
-    // counterfactual, record every rejection that still has a measurable
-    // opposing draw: the row stores the nearest draw and the R available to it
-    // (see buildTargetFloorShadow). This branch never returns an Alert and
-    // never emits an event or notification.
-    try {
-      const shadow = buildTargetFloorShadow({
-        pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
-        h4Context: a.h4Context, triggerTime: c.t,
-      });
-      if (shadow) a.shadowTrades.push(shadow);
-    } catch (err) {
-      console.warn(JSON.stringify({ level: "warn", msg: "shadow TARGET_FLOOR capture failed", setupId: s.setupId, error: String(err) }));
+  let tp1: number;
+  let tp2: number | null;
+  if (vLevelPlan) {
+    // Rule 4 keeps the candle's far edge as the target; it does not promote,
+    // cap, or replace that level with the baseline liquidity target. The
+    // existing minimum reward:risk floor still applies.
+    const reward = isShort ? entry - vLevelPlan.target : vLevelPlan.target - entry;
+    const candidateR = reward / risk;
+    if (!Number.isFinite(reward) || reward <= 0 || !Number.isFinite(candidateR) || candidateR < cfg.minTpR) {
+      a.diagnostics.targetRejects++;
+      return null;
     }
-    return null;
+    tp1 = vLevelPlan.target;
+    tp2 = null;
+  } else {
+    // Baseline: internal liquidity first, then the nearest external target.
+    const targets = selectTargets({
+      isShort, entry, risk, minTpR: cfg.minTpR, maxPromotedTpR: cfg.maxPromotedTpR,
+      internalPools: s.internalPools, nearestExternalTarget: s.nearestExternalTarget,
+    });
+    if (!targets) {
+      a.diagnostics.targetRejects++;
+      // The live floor remains cfg.minTpR (2.5R in production). As a separate
+      // counterfactual, record every rejection that still has a measurable
+      // opposing draw: the row stores the nearest draw and the R available to it
+      // (see buildTargetFloorShadow). This branch never returns an Alert and
+      // never emits an event or notification.
+      try {
+        const shadow = buildTargetFloorShadow({
+          pair, entryTf, closeTime, entry, stopLoss: sl, risk, isShort, s, cfg,
+          h4Context: a.h4Context, triggerTime: c.t,
+        });
+        if (shadow) a.shadowTrades.push(shadow);
+      } catch (err) {
+        console.warn(JSON.stringify({ level: "warn", msg: "shadow TARGET_FLOOR capture failed", setupId: s.setupId, error: String(err) }));
+      }
+      return null;
+    }
+    tp1 = targets.tp1;
+    tp2 = targets.tp2;
   }
-  const { tp1, tp2 } = targets;
 
   let sess: string | null = null;
   if (cfg.sessionsAllowlist.length) sess = F.sessionFor(closeTime, cfg.sessionsAllowlist);
@@ -826,7 +896,7 @@ function buildAlert(a: BuildAlertArgs): Alert | null {
     parameterVersion: PARAM_VERSION,
     alertStatus: status, suppressReason, session: sess,
     atrEntry: atrE, rrInternal: Math.round((Math.abs(tp1 - entry) / risk) * 100) / 100,
-    cycleStage: "entry_alert", entryMode: "confirmation",
+    cycleStage: "entry_alert", entryMode: vLevelPlan ? "confirmation_vlevel" : "confirmation",
     shadowClassification: shadowDiagnostics.classification,
     directionalBias: shadowDiagnostics,
     // Diagnostics only — never read by any gate, delivery, or outcome rule.

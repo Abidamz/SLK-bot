@@ -659,6 +659,8 @@ export function formatAlert(a: Alert, executionMode: ExecutionMode = "market"): 
     ];
     lines.push(`Entry Qual. : ${eqParts.join(" · ")}`);
   }
+  const stopAnchor = a.entryMode === "confirmation_vlevel" ? "beyond swept candle" : "beyond sweep extreme";
+  const targetAnchor = a.entryMode === "confirmation_vlevel" ? "swept candle's opposite edge" : "internal liquidity";
   lines.push(
     `Story       : ${a.environment} · ${a.phase} · ${a.htfAlignment}`,
     `Key level   : ${kl}`,
@@ -669,8 +671,8 @@ export function formatAlert(a: Alert, executionMode: ExecutionMode = "market"): 
     executionMode === "market"
       ? `Entry       : ${fmtPrice(a.pair, a.entry)} (reference · retest close · MARKET on next candle open)`
       : `Entry       : ${fmtPrice(a.pair, a.entry)} (retest close · ${a.direction === "LONG" ? "BUY LIMIT" : "SELL LIMIT"})`,
-    `Stop        : ${fmtPrice(a.pair, a.stopLoss)} (${fmtPips(a.pair, a.entry - a.stopLoss)} · beyond sweep extreme)`,
-    `Target 1    : ${fmtPrice(a.pair, a.tpInternal)} internal liquidity (${fmtPips(a.pair, a.tpInternal - a.entry)}${a.rrInternal ? ` · ${a.rrInternal}R` : ""})`,
+    `Stop        : ${fmtPrice(a.pair, a.stopLoss)} (${fmtPips(a.pair, a.entry - a.stopLoss)} · ${stopAnchor})`,
+    `Target 1    : ${fmtPrice(a.pair, a.tpInternal)} ${targetAnchor} (${fmtPips(a.pair, a.tpInternal - a.entry)}${a.rrInternal ? ` · ${a.rrInternal}R` : ""})`,
   );
   if (a.tpExternal !== null)
     lines.push(

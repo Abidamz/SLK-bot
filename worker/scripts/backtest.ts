@@ -1,16 +1,18 @@
-/** Walk-forward replay of the LIVE TAYO alert engine on real Dukascopy
- *  minute data — the same candles the production worker consumes. Nothing is
- *  fabricated or synthesised; statistics come from the replay alone. (The
- *  model spec bans invented backtest/performance numbers; this script is how
- *  you produce real ones yourself.)
+/** Walk-forward replay of the LIVE TAYO alert engine on real OANDA
+ *  minute data. Nothing is fabricated or synthesised; statistics come from
+ *  the replay alone. (The model spec bans invented backtest/performance
+ *  numbers; this script is how you produce real ones yourself.)
  *
  *  Usage (Codespaces terminal):
  *    cd /workspaces/SLK-bot/worker
  *    npm i -D tsx                      # one-time
- *    npx tsx scripts/backtest.ts                 # all 7 pairs, 60 days
+ *    npx tsx scripts/backtest.ts                 # default watchlist, 60 days (baseline)
  *    npx tsx scripts/backtest.ts US30 30         # one pair, 30 days
+ *    BACKTEST_VLEVEL_STOPS_TARGETS=true npx tsx scripts/backtest.ts
+ *                                                # Rule 4 candidate; compare against baseline
  *
- *  Report also lands in backtest-report-<date>.md (gitignored).
+ *  Baseline report: backtest-report-<date>.md; Rule 4 report:
+ *  backtest-report-<date>-vlevel.md. Both are gitignored.
  */
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -319,6 +321,10 @@ const NAV_ENABLED = (process.env.BACKTEST_NAVIGATOR ?? "false") === "true";
  */
 const BE_ENABLED = (process.env.BACKTEST_BE ?? "true") !== "false";
 const BE_TRIGGER_R = Number(process.env.BACKTEST_BE_TRIGGER_R ?? 1.5);
+/** Research-only Rule 4 arm: compare the swept pivot candle's stop/target
+ *  against the normal invalidation stop and liquidity targets. Default off;
+ *  this flag is read only by the backtest, never by live Worker config. */
+const VLEVEL_STOPS_TARGETS = (process.env.BACKTEST_VLEVEL_STOPS_TARGETS ?? "false").trim().toLowerCase() === "true";
 
 /**
  * Which timeframes the replay scans for entries.
@@ -441,7 +447,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
   "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_TARGET_SWEEP",
-  "BACKTEST_VERBOSE",
+  "BACKTEST_VERBOSE", "BACKTEST_VLEVEL_STOPS_TARGETS",
 ] as const;
 
 const unknownBacktestVars = Object.keys(process.env)
@@ -1034,6 +1040,7 @@ async function main() {
   }
   console.log(`source: ${SOURCE}`);
   console.log(`entry tfs : ${ENTRY_TFS.join(", ")}`);
+  console.log(`stop/target plan : ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}`);
   console.log(`breakeven : ${BE_ENABLED ? `armed at +${f(BE_TRIGGER_R, 2)}R (as the alert instructs)` : "OFF — fixed stop"}`);
   if (BIAS_ENABLED && BIAS_KIND_IGNORED.length) {
     console.log(`!! BACKTEST_BIAS_LEVEL_KINDS: ignoring unknown kind(s) ${BIAS_KIND_IGNORED.join(", ")} ` +
@@ -1076,6 +1083,7 @@ async function main() {
   const flipImpulse = Number(process.env.BACKTEST_FLIP_IMPULSE_ATR ?? "");
   const strategy: StrategyConfig = {
     ...defaultStrategy(),
+    vLevelStopsTargets: VLEVEL_STOPS_TARGETS,
     requireRejectionClose: (process.env.BACKTEST_REJECT_CLOSE ?? "false") === "true",
     requireInducement: (process.env.BACKTEST_INDUCEMENT ?? "false") === "true",
     ...(flipRaw !== undefined ? { flipDirectionAware: flipAware } : {}),
@@ -1117,7 +1125,8 @@ async function main() {
 
   const cols = ["pair", "alerts", "TP", "SL", "BE", "EXP", "open", "win%", "netR", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
-  let lines = `# TAYO walk-forward replay — last ${days} days (real Dukascopy data, live-engine gates)\n\n`;
+  let lines = `# TAYO walk-forward replay — last ${days} days (real OANDA data, live-engine gates)\n\n` +
+    `- Stop/target plan: ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}\n\n`;
   const emit = (spreadAdj: boolean) => {
     const block: string[] = [];
     block.push(`| pair | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`);
@@ -1588,7 +1597,8 @@ async function main() {
     lines += `\n## Target sweep\n\n\`\`\`\n${sw}\n\`\`\`\n`;
   }
 
-  const name = `backtest-report-${new Date().toISOString().slice(0, 10)}.md`;
+  const planSuffix = VLEVEL_STOPS_TARGETS ? "-vlevel" : "";
+  const name = `backtest-report-${new Date().toISOString().slice(0, 10)}${planSuffix}.md`;
   writeFileSync(name, lines);
   console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|)`);
 }

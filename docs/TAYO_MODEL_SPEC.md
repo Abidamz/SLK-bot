@@ -139,6 +139,26 @@ never there.
 - **Direct key-level entry** (no sweep/BOS/retest) may exist but stays
   disabled by default.
 
+### Rule 4 — V-level stop/target research comparison
+
+The bullets above remain the current baseline. A separate, default-off replay
+arm tests the documented single-candle V-level plan without changing live
+signals:
+
+- Long: use the confirmed swept-pivot candle's low (plus the existing ATR
+  buffer) as the stop and that candle's high as the target. Short: use its high
+  plus the buffer as the stop and its low as the target.
+- The candidate must have the correct stop and target sides and pass the
+  existing stop-width, ATR-risk, and minimum reward:risk checks. If the stop
+  floor would force the stop inside the reference candle, or the target is
+  invalid/too close, reject the candidate. Do not substitute the baseline
+  stop or target.
+- Run once with the normal replay for the baseline, then with
+  `BACKTEST_VLEVEL_STOPS_TARGETS=true` for the candidate, using the same window.
+  The replay cache lets both runs use the same downloaded candles.
+- The switch is read only by `worker/scripts/backtest.ts`; live Worker config
+  does not expose it. No production setting or live alert behavior changes.
+
 ## Engineering defaults (NOT creator-issued rules)
 
 | Parameter | Default |

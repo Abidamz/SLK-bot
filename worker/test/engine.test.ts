@@ -2,7 +2,7 @@
  *  tests (tests/test_engine.py). Synthetic fixtures verify logic only. */
 import { describe, expect, it } from "vitest";
 import { defaultStrategy, loadConfig, minStopDistance, type StrategyConfig } from "../src/config";
-import { scanEntry, selectTargets } from "../src/engine";
+import { scanEntry, selectTargets, singleCandleVLevelPlan } from "../src/engine";
 import { PARAM_VERSION } from "../src/config";
 import {
   BASE, LONG_ROWS, LONG_STORY, SHORT_ROWS, SHORT_STORY, mkCandles, snapsFor,
@@ -36,6 +36,130 @@ function runShortWithStory(story: typeof SHORT_STORY, rows = SHORT_ROWS, extra =
     cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
   });
 }
+
+function runLong(rows = LONG_ROWS, extra = {}) {
+  return scanEntry({
+    pair: "EURUSD", entryTf: "30m", tfSeconds: 1800,
+    candles: mkCandles(rows, 30), snaps: snapsFor(LONG_STORY),
+    cfg: { ...cfg, ...extra }, mode: "paper", provider: "test",
+  });
+}
+
+function mirrorLongStoryToShort() {
+  const reflect = (price: number) => 200 - price;
+  const flipSide = (side: "buyside" | "sellside"): "buyside" | "sellside" =>
+    side === "buyside" ? "sellside" : "buyside";
+  const origin = LONG_STORY.origin;
+  return {
+    ...LONG_STORY,
+    direction: "SHORT" as const,
+    environment: "bearish",
+    htfAlignment: "M:? W:↓ D:↓ H4:↓",
+    origin: origin ? {
+      ...origin,
+      originPrice: reflect(origin.originPrice),
+      zoneLo: reflect(origin.zoneHi),
+      zoneHi: reflect(origin.zoneLo),
+    } : null,
+    drawOnLiquidity: LONG_STORY.drawOnLiquidity === null ? null : reflect(LONG_STORY.drawOnLiquidity),
+    nearestExternalTarget: LONG_STORY.nearestExternalTarget === null
+      ? null : reflect(LONG_STORY.nearestExternalTarget),
+    internalPools: LONG_STORY.internalPools.map((pool) => ({
+      ...pool, price: reflect(pool.price), side: flipSide(pool.side),
+    })),
+    externalPools: LONG_STORY.externalPools.map((pool) => ({
+      ...pool, price: reflect(pool.price), side: flipSide(pool.side),
+    })),
+    mapClose: reflect(LONG_STORY.mapClose),
+  };
+}
+
+function mirrorLongRowsToShort(rows = LONG_ROWS): [number, number, number, number][] {
+  return rows.map(([o, h, l, c]) => [200 - o, 200 - l, 200 - h, 200 - c] as [number, number, number, number]);
+}
+
+describe("Rule 4 V-level stops and targets (research-only)", () => {
+  it("stays off in the live/default configuration", () => {
+    expect(defaultStrategy().vLevelStopsTargets).toBe(false);
+    expect(loadConfig({}).strategy.vLevelStopsTargets).toBe(false);
+  });
+
+  it("builds the matching candle-edge plan symmetrically", () => {
+    const candles = [{ t: BASE, o: 105, h: 110, l: 100, c: 106 }];
+    expect(singleCandleVLevelPlan({
+      candles, sweptCandleIndex: 0, direction: "LONG", entry: 103, atr: 2, slBufferAtr: 0.1,
+    })).toEqual({ stopLoss: 99.8, target: 110 });
+    expect(singleCandleVLevelPlan({
+      candles, sweptCandleIndex: 0, direction: "SHORT", entry: 107, atr: 2, slBufferAtr: 0.1,
+    })).toEqual({ stopLoss: 110.2, target: 100 });
+  });
+
+  it("rejects missing or malformed swept-candle data", () => {
+    const candles = [{ t: BASE, o: 105, h: 110, l: 100, c: 106 }];
+    expect(singleCandleVLevelPlan({
+      candles, sweptCandleIndex: 1, direction: "LONG", entry: 103, atr: 2, slBufferAtr: 0.1,
+    })).toBeNull();
+    expect(singleCandleVLevelPlan({
+      candles, sweptCandleIndex: 0, direction: "LONG", entry: 103, atr: -1, slBufferAtr: 0.1,
+    })).toBeNull();
+    expect(singleCandleVLevelPlan({
+      candles: [{ ...candles[0], h: 99 }], sweptCandleIndex: 0,
+      direction: "LONG", entry: 103, atr: 2, slBufferAtr: 0.1,
+    })).toBeNull();
+  });
+
+  it("uses the swept pivot candle's stop and opposite edge for long and short alerts", () => {
+    const longCandles = mkCandles(LONG_ROWS, 30);
+    const long = runLong(LONG_ROWS, { vLevelStopsTargets: true }).alerts[0];
+    expect(long).toBeDefined();
+    expect(long.entryMode).toBe("confirmation_vlevel");
+    expect(long.stopLoss).toBeCloseTo(longCandles[4].l - long.atrEntry * cfg.slBufferAtr, 8);
+    expect(long.stopLoss).toBeLessThan(longCandles[4].l);
+    expect(long.tpInternal).toBe(longCandles[4].h);
+    expect(long.tpExternal).toBeNull();
+
+    const mirroredStory = mirrorLongStoryToShort();
+    const mirroredRows = mirrorLongRowsToShort();
+    const shortCandles = mkCandles(mirroredRows, 30);
+    const short = runShortWithStory(mirroredStory, mirroredRows, { vLevelStopsTargets: true }).alerts[0];
+    expect(short).toBeDefined();
+    expect(short.entryMode).toBe("confirmation_vlevel");
+    expect(short.stopLoss).toBeCloseTo(shortCandles[4].h + short.atrEntry * cfg.slBufferAtr, 8);
+    expect(short.stopLoss).toBeGreaterThan(shortCandles[4].h);
+    expect(short.tpInternal).toBe(shortCandles[4].l);
+    expect(short.tpExternal).toBeNull();
+  });
+
+  it("does not fall back when the candidate stop or target is on the wrong side", () => {
+    const shortBaseline = runShort();
+    const invalidShort = runShort(SHORT_ROWS, { vLevelStopsTargets: true });
+    expect(shortBaseline.alerts).toHaveLength(1);
+    expect(invalidShort.alerts).toHaveLength(0);
+    expect(invalidShort.diagnostics.riskRejects).toBeGreaterThan(0);
+
+    const wrongTargetRows = [...LONG_ROWS];
+    wrongTargetRows[4] = [97.6, 97.9, 97.45, 97.5];
+    const longBaseline = runLong(wrongTargetRows);
+    const invalidTarget = runLong(wrongTargetRows, { vLevelStopsTargets: true });
+    expect(longBaseline.alerts).toHaveLength(1);
+    expect(invalidTarget.alerts).toHaveLength(0);
+    expect(invalidTarget.diagnostics.targetRejects).toBeGreaterThan(0);
+  });
+
+  it("keeps the minimum stop-width and reward:risk checks without moving the V-level anchor", () => {
+    const wideFloorBaseline = runLong(LONG_ROWS, { minStopPips: 10000 });
+    const tooTightForFloor = runLong(LONG_ROWS, { vLevelStopsTargets: true, minStopPips: 10000 });
+    expect(wideFloorBaseline.alerts).toHaveLength(1);
+    expect(tooTightForFloor.alerts).toHaveLength(0);
+    expect(tooTightForFloor.diagnostics.riskRejects).toBeGreaterThan(0);
+
+    const baselineAtThreeR = runLong(LONG_ROWS, { minTpR: 3 });
+    const candidateBelowThreeR = runLong(LONG_ROWS, { vLevelStopsTargets: true, minTpR: 3 });
+    expect(baselineAtThreeR.alerts).toHaveLength(1);
+    expect(candidateBelowThreeR.alerts).toHaveLength(0);
+    expect(candidateBelowThreeR.diagnostics.targetRejects).toBeGreaterThan(0);
+  });
+});
 
 describe("RETEST_DEPTH_PCT compatibility and FVG penetration", () => {
   it("defaults to 100 and is byte-identical to the legacy config without the flag", () => {

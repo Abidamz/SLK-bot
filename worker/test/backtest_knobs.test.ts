@@ -49,6 +49,7 @@ describe("backtest knobs — the allowlist must match the reads", () => {
     // agreeing on an empty set.
     expect(reads().length).toBeGreaterThan(20);
     expect(reads()).toContain("BACKTEST_ENTRY_TFS");
+    expect(reads()).toContain("BACKTEST_VLEVEL_STOPS_TARGETS");
   });
 
   it("refuses an unknown variable rather than ignoring it", () => {
@@ -60,5 +61,9 @@ describe("backtest knobs — the allowlist must match the reads", () => {
 
   it("records the entry timeframes in the run header, so a dropped request is visible in the log", () => {
     expect(src).toContain("entry tfs : ${ENTRY_TFS.join");
+  });
+
+  it("writes the V-level candidate to a separate report instead of overwriting baseline results", () => {
+    expect(src).toContain('const planSuffix = VLEVEL_STOPS_TARGETS ? "-vlevel" : "";');
   });
 });

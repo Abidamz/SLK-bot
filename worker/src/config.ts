@@ -96,6 +96,9 @@ export interface StrategyConfig {
    *  index's own volatility (no universal pip constant across markets). */
   maxStopAtr: number;
   minTpR: number; // minimum reward:risk to the selected target (1:3 ⇒ 3.0)
+  /** Research-only Rule 4 comparison. The live config never enables this; the
+   *  backtest script sets it from BACKTEST_VLEVEL_STOPS_TARGETS. */
+  vLevelStopsTargets?: boolean;
   cooldownMinutes: number;
   /** What the cooldown is keyed on.
    *  - "pair_direction_tf"  (default, fixed): a signal only blocks repeats on
@@ -193,6 +196,7 @@ export function defaultStrategy(): StrategyConfig {
     maxPromotedTpR: 3.0, // far external liquidity remains context, not TP1
     maxStopAtr: 3.5, // never alert a stop wider than 3.5× entry-TF ATR (≈10-14 pips on EURUSD/30m)
     minTpR: 2.5,     // 1:2.5 minimum reward:risk
+    vLevelStopsTargets: false, // Rule 4 is research-only until a separate approval
     cooldownMinutes: 240,
     cooldownScope: "pair_direction_tf",
     sessionsAllowlist: [],
