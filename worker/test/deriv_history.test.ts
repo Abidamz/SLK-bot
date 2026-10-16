@@ -130,7 +130,25 @@ describe("Deriv historical candle paging", () => {
         req_id: request.req_id,
         candles: rows.filter((c) => c.epoch <= request.end),
       })),
-    })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted page/);
+    })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted dataset/);
+  });
+
+  it("detects repeated off-grid data even when each page contains one bar", async () => {
+    const rows = [135, 195, 255, 315].map((epoch) => ({
+      epoch,
+      open: 10,
+      high: 11,
+      low: 9,
+      close: 10.5,
+    }));
+    await expect(fetchDerivHistoryRange("V75", 60, 60_000, 400_000, {
+      pageSize: 1,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+      })),
+    })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted dataset/);
   });
 
   it("reports OHLC fields when a candle range is malformed", async () => {

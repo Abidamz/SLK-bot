@@ -10,7 +10,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_HISTORY_REQUEST_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 15_000;
-const MAX_OFF_GRID_FRACTION_PER_PAGE = 0.01;
+const MAX_OFF_GRID_FRACTION = 0.01;
 const MAX_OFF_GRID_SAMPLES = 5;
 
 interface DerivCandle {
@@ -406,6 +406,7 @@ export async function fetchDerivHistoryRange(
   const maxPages = Math.ceil((endEpoch - fromEpoch + 1) / (granularitySeconds * pageSize)) + 3;
   const candles: Candle[] = [];
   let pages = 0;
+  let downloadedCandles = 0;
   let skippedMisalignedCandles = 0;
   const skippedMisalignedSamples: number[] = [];
   try {
@@ -431,15 +432,22 @@ export async function fetchDerivHistoryRange(
       pages++;
       if (raw.length === 0) break;
       const decoded = decodeCandles(raw, granularitySeconds);
-      const offGridLimit = Math.max(1, Math.floor(raw.length * MAX_OFF_GRID_FRACTION_PER_PAGE));
-      if (decoded.skippedMisalignedCandles > offGridLimit) {
+      const nextDownloadedCandles = downloadedCandles + raw.length;
+      const nextSkippedMisalignedCandles = skippedMisalignedCandles + decoded.skippedMisalignedCandles;
+      const offGridLimit = Math.max(1, Math.floor(raw.length * MAX_OFF_GRID_FRACTION));
+      const overallOffGridLimit = Math.max(1, Math.floor(nextDownloadedCandles * MAX_OFF_GRID_FRACTION));
+      if (
+        decoded.skippedMisalignedCandles > offGridLimit
+        || nextSkippedMisalignedCandles > overallOffGridLimit
+      ) {
         const samples = decoded.misalignedSamples
           .map((epoch) => new Date(epoch * 1000).toISOString()).join(", ");
         throw new Error(
-          `Deriv returned ${decoded.skippedMisalignedCandles}/${raw.length} candle timestamps off the ${granularitySeconds}s grid for ${pairKey}; refusing a likely shifted page. Sample UTC timestamps: ${samples}`,
+          `Deriv returned ${decoded.skippedMisalignedCandles}/${raw.length} candle timestamps off the ${granularitySeconds}s grid on the current page and ${nextSkippedMisalignedCandles}/${nextDownloadedCandles} overall for ${pairKey}; refusing a likely shifted dataset. Sample UTC timestamps: ${samples}`,
         );
       }
-      skippedMisalignedCandles += decoded.skippedMisalignedCandles;
+      downloadedCandles = nextDownloadedCandles;
+      skippedMisalignedCandles = nextSkippedMisalignedCandles;
       for (const epoch of decoded.misalignedSamples) {
         if (skippedMisalignedSamples.length >= MAX_OFF_GRID_SAMPLES) break;
         skippedMisalignedSamples.push(epoch);
