@@ -1,4 +1,4 @@
-"""State-machine tests for the TAYO XYZ execution engine.
+"""State-machine tests for the DEO Edge SLK execution engine.
 
 Synthetic fixtures only — these verify the MAP→TOUCH→SWEEP→SHIFT→RETEST
 transition logic, invalidation, and alert field population. They are NOT
@@ -10,8 +10,8 @@ import pytest
 
 from tayo_bot.config import StrategyConfig
 from tayo_bot.models import Direction
-from tayo_bot.tayo.engine import PARAM_VERSION, scan_entry
-from tayo_bot.tayo.types import KeyLevel, LiquidityPool, Storyline
+from tayo_bot.slk.engine import PARAM_VERSION, scan_entry
+from tayo_bot.slk.types import KeyLevel, LiquidityPool, Storyline
 
 from helpers import BASE, mk_candles
 

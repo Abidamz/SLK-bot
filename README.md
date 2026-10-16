@@ -1,8 +1,8 @@
-# TAYO-bot
+# DEO Edge
 
-A forex/indices **alert bot** for the **TAYO model — Structure, Liquidity, Key
-levels**. It watches markets around the clock, and when price completes your
-TAYO confirmation sequence it pushes an alert to **Telegram and Discord** —
+A forex/indices **alert system** for the **SLK method — Structure, Liquidity, Key
+Levels**. It watches configured markets and sends DEO Edge research alerts to
+**Telegram and Discord** —
 then tracks every alert to target/stop so you can review the model's hit rate.
 
 ```
@@ -20,7 +20,7 @@ H1/30m (entry) ─┴─▶ XYZ execution:  MAP → TOUCH → SWEEP → SHIFT �
 engineering defaults distilled from research into your source material
 (see [`docs/TAYO_MODEL_SPEC.md`](docs/TAYO_MODEL_SPEC.md)) — they are not
 creator-issued and no profitability is claimed. Your own chart examples remain
-the authority; if a rule here disagrees with how *you* trade TAYO, say so and
+the authority; if a rule here disagrees with how *you* apply the SLK method, say so and
 the engine gets adjusted — every rule is one small pure function.
 
 ## The model as implemented
@@ -70,7 +70,7 @@ state-machine audit trail.
 ## Quick start
 
 ```bash
-git clone <this repo> && cd TAYO-bot
+git clone <this repo> && cd SLK-bot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -123,6 +123,8 @@ Dukascopy index feed, and Deriv synthetic relay.
 | **Dukascopy** | Public feed | Index-CFD fallback where a supported instrument mapping exists |
 | **Deriv** | Relay configuration | Synthetic-index candles through the Worker relay |
 
+The dashboard also shows a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only: it does not add those symbols to production alert routing or enable order execution.
+
 The Python runner fetches 1h (resampled to 4h) + entry TFs at every cycle and
 the daily context once per UTC day — roughly **3 credits/pair/hour** on a
 30m/1h stack. Adding 15m execution roughly doubles that; trim `pairs:` or
@@ -140,7 +142,7 @@ Any always-on box works — small VPS, Raspberry Pi, NAS. Example systemd unit
 
 ```ini
 [Unit]
-Description=TAYO alert bot
+Description=DEO Edge alert bot
 After=network-online.target
 
 [Service]
@@ -162,7 +164,7 @@ tayo_bot/
 ├── config.py              # YAML + env configuration
 ├── models.py              # Candle / Direction / price helpers
 ├── data/                  # Twelve Data provider and closed-candle hygiene
-├── slk/                   # ← THE TAYO MODEL LIVES HERE
+├── slk/                   # ← SLK method implementation
 │   ├── features.py        #   pivots, environment, phase, BOS, liquidity pools,
 │   │                      #   A/V/OC/DECISION key levels + flips, FVGs, resampling
 │   ├── storyline.py       #   Layer 1: ABC storyline (point-in-time snapshots)

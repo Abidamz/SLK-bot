@@ -1,4 +1,4 @@
-# TAYO Model Specification (working document)
+# SLK Method Specification for DEO Edge (working document)
 
 Distilled from the research handoff (`TAYO_CONTINUATION_SUMMARY_LATEST`, Manus
 project `slk-price-action-research`, checkpoint 44f99d8c). That research
@@ -8,7 +8,7 @@ thread, and the JhayFx top-down note. Four video pages were blocked by an
 automated-traffic challenge, so their contents were reviewed via AI-assisted
 analysis rather than verbatim transcript — **this limitation stands**.
 
-> **TAYO = Structure, Liquidity, Key Levels.** The recurring architecture is
+> **SLK = Structure, Liquidity, Key Levels.** The recurring architecture is
 > **"Expectation / ABC storyline first, then Execution / XYZ entry"** — the
 > entry is never evaluated until the storyline conditions have passed.
 

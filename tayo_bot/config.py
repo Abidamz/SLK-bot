@@ -39,7 +39,7 @@ CONTEXT_TF = "1d"             # bias context (weekly/monthly derived from this)
 
 @dataclass
 class StrategyConfig:
-    """Tunables for the TAYO engine (structure / liquidity / key levels).
+    """Tunables for the SLK method (structure / liquidity / key levels).
 
     All volatility-derived thresholds are ATR-normalized per symbol and per
     timeframe from live data — no universal pip/ATR constants are applied

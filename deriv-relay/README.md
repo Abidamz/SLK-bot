@@ -1,6 +1,6 @@
-# TAYO Deriv Relay (Ultra-Lightweight Synthetic Candle Proxy)
+# DEO Edge Deriv Relay (Ultra-Lightweight Synthetic Candle Proxy)
 
-This micro-service runs outside Cloudflare (on Render, Railway, or Fly.io) to provide continuous, unblocked Deriv synthetic market data (`R_75`, `R_100`, etc.) to the TAYO-bot Cloudflare Worker via standard HTTP `GET /candles`.
+This micro-service runs outside Cloudflare (on Render, Railway, or Fly.io) to provide continuous, unblocked Deriv synthetic market data (`R_75`, `R_100`, etc.) to the DEO Edge Cloudflare Worker via standard HTTP `GET /candles`.
 
 ## 🚀 2-Minute Free Deployment on Render.com
 

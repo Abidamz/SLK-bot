@@ -17,7 +17,7 @@ class DiscordNotifier:
 
     def send_message(self, text: str, color: int | None = None) -> None:
         payload = {
-            "username": "TAYO Bot",
+            "username": "DEO Edge",
             "embeds": [
                 {
                     "description": text,

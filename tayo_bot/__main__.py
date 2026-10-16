@@ -21,7 +21,7 @@ from .tracking import format_stats
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="tayo_bot",
-        description="TAYO (Structure · Liquidity · Key levels) forex alert bot",
+        description="DEO Edge forex alert bot using the SLK method",
     )
     p.add_argument("--config", default=None, help="path to config.yaml")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging")
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             alert=not args.no_alert,
         )
         if not alerts:
-            print("No new TAYO setups completed (check `events` / logs).")
+            print("No new DEO Edge setups completed (check `events` / logs).")
         else:
             print(f"\n{len(alerts)} new alert(s) recorded:\n")
             for a in alerts:
@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "test-notify":
         bot.notifier.broadcast(
-            "✅ TAYO bot test — notification channels are wired up correctly."
+            "✅ DEO Edge test — notification channels are wired up correctly."
         )
         print("test message sent (check Telegram / Discord).")
         return 0

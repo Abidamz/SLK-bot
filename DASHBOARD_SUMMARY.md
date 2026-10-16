@@ -1,10 +1,12 @@
-# TAYO Dashboard Summary
+# DEO Edge Dashboard Summary
 
 ## Purpose
 
-Create a lightweight, read-only dashboard for the TAYO alert Worker. The dashboard should make the signal lifecycle, evidence, paper outcomes, and data health easy to inspect without implying that alerts are executed trades.
+Create a lightweight, read-only dashboard for the DEO Edge alert Worker. The dashboard should make the signal lifecycle, evidence, paper outcomes, and data health easy to inspect without implying that alerts are executed trades.
 
 The dashboard improves observability and trust; it does **not** imply higher profitability or replace the replay and paper-validation process.
+
+The public dashboard also shows a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only and does not add Deriv symbols to production alert routing or enable execution.
 
 ## Current system state
 

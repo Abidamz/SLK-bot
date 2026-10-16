@@ -1,7 +1,7 @@
-/** TAYO alert worker — Cloudflare Workers entrypoint.
+/** DEO Edge alert worker — Cloudflare Workers entrypoint.
  *
  *  scheduled()  cron tick (every minute) → scan timeframes whose candle just
- *               closed, statelessly replay the TAYO engine, dedupe in D1,
+ *               closed, statelessly replay the SLK engine, dedupe in D1,
  *               deliver Telegram/Discord alerts, resolve open alert outcomes.
  *  GET /health            basic health check (runbook: expect ok:true)
  *  GET /alerts?limit=50   sanitized recent alert history  (Bearer ADMIN_KEY)
@@ -3296,7 +3296,7 @@ export default {
         ok: true,
         targetFreeChatId: freeChatId,
         results,
-        message: "Test Bias Confirmation sent! Check VIP channel and Free channel (@TAYO_radar).",
+        message: "Test Bias Confirmation sent! Check the VIP channel and Free Telegram channel (@TAYO_radar).",
       });
     }
 

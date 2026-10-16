@@ -95,7 +95,7 @@ def test_full_pipeline(tmp_path, monkeypatch):
     assert a.alert_status == "PAPER"
     assert len(channel.sent) == 1
     text, _ = channel.sent[0]
-    assert "PAPER" in text and "TAYO SHORT — EURUSD" in text
+    assert "PAPER" in text and "DEO Edge SHORT — EURUSD" in text
     assert "bearish" in text and "pullback" in text
 
     rows = bot.tracker.recent_events(50)

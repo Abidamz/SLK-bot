@@ -1,4 +1,4 @@
-"""TAYOBot — orchestrates data, the TAYO engine, notifications and tracking.
+"""TAYOBot — runs DEO Edge alerts with the SLK method, notifications and tracking.
 
 Per scan cycle:
     1. fetch context (D1, cached per UTC day) and map-source (1h → resampled
@@ -20,8 +20,8 @@ from .data import build_provider, drop_incomplete
 from .models import Direction
 from .notify import NotifierManager
 from .slk import scan_entry, storyline_series
-from .tayo.features import resample_candles
-from .tayo.types import Alert
+from .slk.features import resample_candles
+from .slk.types import Alert
 from .tracking import Tracker, evaluate_signal
 
 log = logging.getLogger("tayo_bot")
@@ -189,7 +189,7 @@ class TAYOBot:
         actually closed (plus the map/context feeds)."""
         cfg = self.cfg
         log.info(
-            "TAYO bot starting — mode=%s provider=%s pairs=%s entry_tfs=%s "
+            "DEO Edge scanner starting — mode=%s provider=%s pairs=%s entry_tfs=%s "
             "map=%s(%s) ctx=%s db=%s",
             cfg.mode, self.provider.name, ",".join(cfg.pairs),
             ",".join(cfg.entry_timeframes), cfg.map_timeframe,
@@ -197,7 +197,7 @@ class TAYOBot:
         )
         if cfg.notify.send_startup:
             self.notifier.broadcast(
-                f"🤖 TAYO bot online ({'🧪 PAPER mode' if cfg.mode == 'paper' else 'live mode'})\n"
+                f"🤖 DEO Edge online ({'🧪 PAPER mode' if cfg.mode == 'paper' else 'live mode'})\n"
                 f"Provider   : {self.provider.name}\n"
                 f"Pairs      : {', '.join(cfg.pairs)}\n"
                 f"Entry TFs  : {', '.join(cfg.entry_timeframes)}\n"

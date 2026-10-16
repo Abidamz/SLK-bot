@@ -1,10 +1,10 @@
 """
-TAYO Model — MetaTrader 5 (MT5) Auto-Execution Webhook Bridge
+DEO Edge — MetaTrader 5 (MT5) Auto-Execution Webhook Bridge
 =============================================================
 Lightweight FastAPI execution service designed to run on a Windows VPS
 alongside the MetaTrader 5 desktop terminal.
 
-Receives authenticated live trade webhooks from the TAYO Cloudflare Alert Worker,
+Receives authenticated trade webhooks from the DEO Edge Cloudflare Worker,
 calculates dynamic lot sizing based on account equity and risk parameters, and
 submits institutional execution orders directly to MT5 brokers (FTMO, IC Markets,
 FundedNext, Pepperstone, etc.).
@@ -64,7 +64,7 @@ SYMBOL_MAP = {
 }
 
 app = FastAPI(
-    title="TAYO Radar MT5 Bridge",
+    title="DEO Edge MT5 Bridge",
     description="Automated Institutional Execution Bridge between Cloudflare Worker and MetaTrader 5",
     version="1.0.0",
 )
@@ -89,7 +89,7 @@ class BreakevenPayload(BaseModel):
 
 
 def verify_signature(body_bytes: bytes, signature_header: Optional[str]) -> bool:
-    """Verifies HMAC-SHA256 signature from TAYO Alert Worker."""
+    """Verifies HMAC-SHA256 signature from the DEO Edge alert Worker."""
     if not WEBHOOK_SECRET or WEBHOOK_SECRET == "disabled":
         return True
     if not signature_header:

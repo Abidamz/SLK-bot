@@ -1,25 +1,28 @@
-# TAYO Radar — Institutional Marketing & Growth Playbook ($100/mo MRR Funnel)
+# DEO Edge — Institutional Marketing & Growth Playbook ($100/mo MRR Funnel)
 
-> **Product:** TAYO Radar VIP Trading Signals & Institutional Orderflow Engine  
-> **Target Subscription:** $100 / month (USD) via Whop  
-> **Core Assets:** 
+> **Product:** DEO Edge VIP Trading Signals & Institutional Orderflow Engine
+> **Target Subscription:** $100 / month (USD) via Whop
+> **Core Assets:**
 > - Public Performance Journal & Proof Ledger: `https://slk-radar.pages.dev`
 > - Official Terms & Legal Disclaimer: `https://slk-radar.pages.dev/terms`
 > - VIP Signal Telegram Delivery (Automated Whop Bot Integration)
+>
+> **Current market-scope note:** The dashboard lists a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only and does not enable production alerts or order execution. Keep existing Telegram handles and URLs until an owner changes them.
+> **Before publishing:** Recheck pricing, performance, and other marketing claims against current product facts.
 
 ---
 
 ## 1. Executive Summary & Value Proposition
 
-### What Makes TAYO Radar Worth $100/Month?
-Most retail signal channels fail because they are anonymous admins taking random impulsive trades with poor risk management (e.g., risking 50 pips to gain 10 pips). 
+### What Makes DEO Edge Worth $100/Month?
+Most retail signal channels fail because they are anonymous admins taking random impulsive trades with poor risk management (e.g., risking 50 pips to gain 10 pips).
 
-**TAYO Radar is an algorithmic, quantitative execution system:**
-1. **Zero Guesswork / 100% Rule-Based:** Built on pure institutional orderflow mechanics (ICT/SMC): 
+**DEO Edge is an alert and research system built around the SLK method (Structure, Liquidity, Key Levels):**
+1. **Rule-based confirmation:** The workflow follows the SLK sequence:
    `Higher-Timeframe Liquidity Sweep → Market Structure Shift (BOS) → FVG Imbalance Retest`.
 2. **Asymmetric Risk:Reward ($\ge$ 1:2.5R to 1:4R):** Every trade enforces a mathematically sound risk floor. Even with a 40–50% win rate, subscribers compound capital.
 3. **Radical Transparency (The Unfair Advantage):** Every single alert, stop loss, and outcome is logged publicly in real time on `slk-radar.pages.dev`. There is zero manual editing or hiding losses.
-4. **Zero-Fatigue Alerts:** 
+4. **Zero-Fatigue Alerts:**
    - Background market bias & sweeps are delivered silently.
    - High-conviction entry alerts arrive **LOUD (`🚨 [ACTION REQUIRED]`)** and **auto-pinned** to the top of Telegram so members never miss an execution.
 
@@ -36,8 +39,8 @@ Most retail signal channels fail because they are anonymous admins taking random
 ### Persona B: The Busy Professional Trader
 * **Profile:** Full-time job, unable to stare at TradingView for 8 hours during London or New York sessions.
 * **Pain Point:** Sees setups after they’ve already moved 150 points.
-* **Why They Buy:** TAYO Radar monitors 10 high-volatility markets 24/7 in the cloud and pings their phone with exact entry, stop, and target levels only when execution is imminent.
-* **Pitch Angle:** *"You don't need to stare at charts all day. Let algorithmic cloud scanners monitor the liquidity sweeps and deliver verified entries directly to your pocket."*
+* **Why They Buy:** DEO Edge provides paper alerts for currently configured production instruments and shows Deriv synthetics in a separate, display-only 10-symbol watchlist. The Deriv list is not an active signal or execution feed.
+* **Pitch Angle:** *"You don't need to stare at charts all day. Let the DEO Edge scanner monitor configured markets and send SLK-method research alerts directly to your pocket."*
 
 ---
 
@@ -63,7 +66,7 @@ Most retail signal channels fail because they are anonymous admins taking random
                                      ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │ STAGE 2: MIDDLE-OF-FUNNEL (FREE TELEGRAM COMMUNITY)                    │
-│ • "TAYO Market Radar — Free Trading Hub"                                │
+│ • "DEO Edge Market Radar — Free Trading Hub"                                │
 │ • Receives: Daily Bias Cards, Educational Sweeps, Teaser Wins          │
 │ • "NAS100 Short hit TP1 (+2.7R) for VIPs. Full entry posted 4h ago."   │
 └────────────────────────────────────┬───────────────────────────────────┘
@@ -81,7 +84,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 ## 5. Whop Storefront High-Converting Copy
 
 ### Product Title
-**TAYO Radar VIP — Institutional Orderflow & Algorithmic Trade Signals**
+**DEO Edge VIP — Institutional Orderflow & Algorithmic Trade Signals**
 
 ### Subtitle / Tagline
 *Stop guessing. Start executing mechanical 1:2.5R+ setups powered by 24/7 institutional liquidity algorithms.*
@@ -90,9 +93,9 @@ Most retail signal channels fail because they are anonymous admins taking random
 ```markdown
 Most retail traders lose money because they trade blind: chasing lagging indicators, entering late, and risking 50 pips to make 10.
 
-**TAYO Radar is different.** 
+**DEO Edge is different.**
 
-Our proprietary algorithmic engine scans 10 high-liquidity markets (NAS100, US30, GER40, Gold, GBPJPY, and Major Forex pairs) 24 hours a day on institutional cloud infrastructure. It filters out 90% of market noise and alerts you ONLY when institutional criteria align:
+The dashboard separates currently configured production instruments from a 10-symbol Deriv synthetic watchlist for 24/7 observation. The Deriv list is display-only and does not activate production alerts or execution:
 
 ✅ Higher Timeframe Liquidity Sweep (External Liquidity Purged)
 ✅ Market Structure Shift (BOS Displacement on 15m/30m/1H)
@@ -100,10 +103,10 @@ Our proprietary algorithmic engine scans 10 high-liquidity markets (NAS100, US30
 ✅ Minimum 1:2.5 Risk-to-Reward Ratio (Strict Invalidation Floor)
 
 ### What You Get As A VIP Member:
-1. 🎯 **Real-Time Telegram Execution Signals:** Clear Entry, Stop Loss, Target 1, Target 2, and live invalidation levels.
+1. 🎯 **Telegram research alerts:** Entry reference, Stop Loss, Target 1, Target 2, and invalidation levels for subscriber review and their own trading decisions.
 2. 🚨 **High-Priority Auto-Pinned Alerts:** Trade signals ring loud and pin to the chat header so you never miss an execution.
 3. 🧭 **Daily Directional Bias Cards:** 4H structure status, 1H vantage point, and armed retracement zones.
-4. 📊 **Public Verified Performance Journal:** Audit our complete history 24/7 live at slk-radar.pages.dev.
+4. 📊 **Public Paper-Alert Journal:** Review recorded alert outcomes at slk-radar.pages.dev; do not present paper results as independently verified live-trading performance.
 5. 🛡️ **Built for Prop Firm Traders:** Asymmetric payouts designed to pass and retain FTMO, FundedNext, and Topstep accounts.
 
 Join the private desk today and start trading with algorithmic edge.
@@ -114,7 +117,7 @@ Join the private desk today and start trading with algorithmic edge.
 ## 6. Social Media Video Scripts (TikTok, Reels, Shorts)
 
 ### Script 1: The "Why 90% Fail Prop Firms" Hook
-* **Visual:** Split screen showing someone looking stressed at 5 monitors vs. a phone buzzing with a clean TAYO Telegram alert.
+* **Visual:** Split screen showing someone looking stressed at 5 monitors vs. a phone buzzing with a clean DEO Edge Telegram alert.
 * **Hook (0-3s):** *"The reason you keep blowing prop firm challenges has nothing to do with your strategy."*
 * **Body (3-30s):** 
   *"It’s because you're taking 1:1 risk-to-reward setups. If you risk $500 to make $500, you need an impossible 70% win rate just to cover spreads and commissions. Look at this NAS100 setup our bot took today. 
@@ -131,7 +134,7 @@ Join the private desk today and start trading with algorithmic edge.
 * **Hook (0-3s):** *"If your favorite signal provider doesn't have a live public database like this... run."*
 * **Body (3-30s):** 
   *"Notice how every guru posts photoshopped MT4 profits with blue numbers, but never shows their losses? 
-  We built TAYO Radar on Cloudflare Workers and D1 SQL. Every trade, every stop loss, and every target hit is permanently logged in real time. 
+  We built DEO Edge on Cloudflare Workers and D1 SQL. Every trade, every stop loss, and every target hit is permanently logged in real time.
   Look at our journal: Here are the wins (+3.0R, +2.5R), and here are the -1R losses. Because we enforce a minimum 1:2.5R floor, even at a 45% win rate, our curve steadily climbs."*
 * **Call to Action (30-40s):** *"Audit the journal yourself at the link in bio. First 20 founding spots are open on Whop now."*
 
@@ -214,7 +217,7 @@ Stop trading alone.
 
 ### Post 2: Weekly Review Post (Every Friday Evening)
 ```text
-📊 WEEKLY PERFORMANCE AUDIT — TAYO RADAR
+📊 WEEKLY PERFORMANCE AUDIT — DEO EDGE
 
 Another disciplined week executed by the algorithmic engine:
 

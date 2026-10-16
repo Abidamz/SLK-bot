@@ -5,7 +5,7 @@ Synthetic fixtures only — logic verification, not performance evidence.
 from datetime import datetime, timedelta, timezone
 
 from tayo_bot.models import Candle, Direction, SignalStatus
-from tayo_bot.tayo.types import Alert, Event
+from tayo_bot.slk.types import Alert, Event
 from tayo_bot.tracking import Tracker, evaluate_signal, format_stats
 
 BASE = datetime(2024, 3, 4, tzinfo=timezone.utc)
@@ -70,7 +70,9 @@ class TestJournal:
         s = t.stats()
         assert s["tp"] == 1 and s["win_rate"] == 1.0
         assert s["setups_tracked"] == 0  # no events logged in this test
-        assert "EURUSD" in format_stats(s)
+        summary = format_stats(s)
+        assert "EURUSD" in summary
+        assert "DEO EDGE PERFORMANCE" in summary
 
 
 class TestEvaluate:

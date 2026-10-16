@@ -1,16 +1,16 @@
-# TAYO Radar · UI/UX Institutional Evaluation & Product Roadmap
+# DEO Edge · UI/UX Institutional Evaluation & Product Roadmap
 
-**Document Version:** 1.0.0  
-**Date:** September 2026  
-**System:** TAYO Radar Quantitative Execution Desk (`slk-alert-worker` v2.5.3)  
-**Branch:** `arena/01a0b153-tayo-bot`  
-**Classification:** Product Design, Technical Documentation & Commercial Strategy  
+**Document Version:** 1.0.0<br>
+**Date:** September 2026<br>
+**System:** DEO Edge Quantitative Execution Desk (`slk-alert-worker` v2.5.3)<br>
+**Branch:** `arena/01a0b153-tayo-bot`<br>
+**Classification:** Product Design, Technical Documentation & Commercial Strategy
 
 ---
 
 ## 1. Executive Summary & UI Evaluation Score
 
-The TAYO Radar web interface serves a unique hybrid role in financial technology: it acts simultaneously as an **institutional paper execution terminal** for algorithmic oversight and as a **high-converting public proof-of-edge journal** for a premium $100/month subscriber community on Whop and Telegram.
+The DEO Edge web interface serves a unique hybrid role in financial technology: it acts simultaneously as an **institutional paper execution terminal** for algorithmic oversight and as a **high-converting public proof-of-edge journal** for a premium $100/month subscriber community on Whop and Telegram.
 
 ### Overall Evaluation Score: **8.8 / 10 (Institutional Grade)**
 
@@ -53,14 +53,14 @@ The interface accommodates two distinct user archetypes via an instantaneous cli
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        TAYO RADAR TOPBAR & HERO                         │
-│  [TAYO] TAYO Radar         [● Public Overview | ○ Operator Terminal]     │
+│                        DEO EDGE TOPBAR & HERO                         │
+│  [DEO] DEO Edge         [● Public Overview | ○ Operator Terminal]     │
 │  Quantitative Desk       [● Worker Online · Paper Pipeline] [VIP $100] │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                   7-STAGE TAYO EXECUTION ARCHITECTURE                    │
+│                   7-STAGE DEO EDGE CONFIRMATION LIFECYCLE                    │
 │   MAP  ──►  TOUCH  ──►  SWEEP  ──►  SHIFT  ──►  RETEST  ──► CONFIRMED  │
 │  (Bias)   (Origin)    (Pool)       (BOS)       (FVG)      (Bar Close)  │
 │                                                                        │
@@ -118,7 +118,7 @@ Directly embedded into the dashboard:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                      TAYO RADAR PRODUCT ROADMAP                         │
+│                      DEO EDGE PRODUCT ROADMAP                         │
 ├──────────────┬───────────────────────────────┬─────────────────────────┤
 │ Phase        │ Target Capability             │ Business Impact         │
 ├──────────────┼───────────────────────────────┼─────────────────────────┤
@@ -158,7 +158,7 @@ Directly embedded into the dashboard:
 ### Priority 5: Monte Carlo Simulation & Drawdown Stress Testing (Long-Term) ✅ COMPLETED
 - **Concept:** An interactive quantitative forecasting tab modeling 10,000 randomized iterations of the strategy's historical distribution.
 - **Features:** 95% confidence intervals, probability of consecutive losses, maximum drawdown distribution, and expected compound growth rate.
-- **Branding Impact:** Cementing TAYO Radar's positioning as a professional quantitative desk rather than an amateur Telegram signal channel.
+- **Branding Impact:** Cementing DEO Edge's positioning as a professional quantitative desk rather than an amateur Telegram signal channel.
 
 ---
 
@@ -178,4 +178,4 @@ Directly embedded into the dashboard:
 
 ## 6. Conclusion
 
-The TAYO Radar user interface now fully embodies the institutional rigors of the proprietary TAYO Model (Structure · Liquidity · Key Levels). By transparently distinguishing paper simulation operations from live broker connections, detailing the deterministic 7-stage confirmation lifecycle, and providing a clean dual-mode operator experience, the platform establishes maximum trust, compliance safety, and member retention.
+The DEO Edge user interface now fully embodies the institutional rigors of the SLK method (Structure · Liquidity · Key Levels). By transparently distinguishing paper simulation operations from live broker connections, detailing the deterministic 7-stage confirmation lifecycle, and providing a clean dual-mode operator experience, the platform establishes maximum trust, compliance safety, and member retention.

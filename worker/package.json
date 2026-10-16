@@ -2,7 +2,7 @@
   "name": "tayo-alert-worker",
   "version": "1.0.0",
   "private": true,
-  "description": "TAYO (Structure-Liquidity-Key levels) alert scanner \u2014 Cloudflare Worker",
+  "description": "DEO Edge (Structure-Liquidity-Key levels) alert scanner \u2014 Cloudflare Worker",
   "type": "module",
   "scripts": {
     "test": "vitest run",

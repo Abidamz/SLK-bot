@@ -1,4 +1,4 @@
-/** Feature extraction for the TAYO model — TypeScript port of
+/** Feature extraction for the SLK method — TypeScript port of
  *  tayo_bot/slk/features.py. Pure functions, no I/O. */
 import type { Candle, Direction, Imbalance, KeyLevel, LiquidityPool, Swing } from "./types";
 import type { StrategyConfig } from "./config";

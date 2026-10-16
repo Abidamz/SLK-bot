@@ -1,4 +1,4 @@
-name: Deploy TAYO Radar
+name: Deploy DEO Edge
 
 on:
   push:
@@ -72,7 +72,7 @@ jobs:
 
       # Pages projects are NOT auto-created the way Workers are: `pages deploy
       # --project-name=X` fails outright if X does not exist yet. The dashboard
-      # is already fully TAYO-branded (text, copy, links), but the Cloudflare
+      # carries the DEO Edge product name while retaining existing service URLs.
       # Pages project itself is still called `slk-radar`, and renaming it is an
       # owner action in the dashboard. Keeping the deploy pointed at the
       # existing project keeps releases flowing; flip this to `tayo-radar` once

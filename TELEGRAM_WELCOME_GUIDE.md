@@ -1,16 +1,17 @@
-# TAYO Radar VIP — Telegram Welcome & Trade Execution Guide
+# DEO Edge VIP — Telegram Welcome & Trade Execution Guide
 
 > **Instructions for Channel Admins:**  
 > Copy and paste this message into your **VIP Telegram Channel**, pin it to the top (`Pin Message`), and set it as the automated welcome message sent by `@whop_bot` when new members join.
+> **Account-name note:** This copy change does not rename the Telegram bot, channel, group, or public username. An account owner/admin must change those in Telegram; existing handles and links are intentionally preserved here.
 
 ---
 
 ```text
-👑 WELCOME TO TAYO RADAR VIP EXECUTION DESK 👑
+👑 WELCOME TO DEO EDGE VIP 👑
 
 Welcome to the institutional trading room. 
 
-TAYO Radar operates on pure algorithmic orderflow mechanics — the proprietary TAYO Model (Structure · Liquidity · Key Levels). Our cloud engine monitors 10 high-volatility markets 24/7, filtering out 90% of retail chop and delivering ONLY high-probability, asymmetric setups.
+DEO Edge uses the SLK method (Structure · Liquidity · Key Levels) for paper-research alerts. Deriv synthetic indices are shown in a separate 10-symbol, 24/7 watchlist; that watchlist does not activate production alerts or place orders.
 
 Please read this execution protocol carefully before placing your first trade.
 
@@ -30,7 +31,7 @@ Every signal we issue enforces a strict minimum 1:2.5R to 1:4.0R reward asymmetr
 ──────────────────────────────────────────────
 Your VIP channel is a zero-noise, high-conviction execution feed. You will ONLY receive alerts when a confirmed entry candle closes:
 
-🚨🚨🚨 [ACTION REQUIRED] — TAYO CONFIRMED ENTRY
+🚨🚨🚨 [ACTION REQUIRED] — DEO EDGE CONFIRMED ENTRY
 PAIR: XAUUSD (Gold)
 TIMEFRAME: 30m
 DIRECTION: SHORT 🔴
@@ -78,12 +79,20 @@ Let the algorithm do the heavy lifting. Trade with edge.
 
 ---
 
+## Rename Telegram Display Names (one-time owner/admin task)
+
+The updated message copy does not change Telegram account settings:
+
+- **Bot display name:** In `@BotFather`, open `/mybots`, select the existing bot, choose **Edit Bot → Edit Name**, and set the display name to **DEO Edge**.
+- **Channel/group title:** An owner or admin opens the channel/group information, chooses **Edit**, and updates its title to a DEO Edge name.
+- **Usernames and links:** These remain unchanged. Only rename a public username if the owner chooses a new available handle, then update any links that point to it.
+
 ## Channel Welcome Setup in Whop Bot
 
 When configuring `@whop_bot` inside your private VIP Telegram:
 
 1. Add `@whop_bot` as an **Administrator** in your Telegram Channel with permission to invite users.
-2. In your Whop Dashboard under **Products $\to$ TAYO Radar VIP $\to$ Experience $\to$ Telegram**:
+2. In your Whop Dashboard, open the DEO Edge membership product (the listing may still show its previous TAYO name) and choose **Experience $\to$ Telegram**:
    - Enable **"Direct Message Welcome"** or **"Send Welcome Message upon joining"**.
    - Paste the block above into the automated welcome sequence.
 3. Keep this message permanently pinned to the chat header so members can refer back to the lot sizing and breakeven rules at any time.

@@ -1,6 +1,6 @@
-# TAYO Alert Worker (Cloudflare-native)
+# DEO Edge Alert Worker (Cloudflare-native)
 
-Cloudflare Worker port of the TAYO price-action alert bot. It runs the full
+Cloudflare Worker for DEO Edge alerts using the SLK method. It runs the full
 ABC-storyline → XYZ-execution state machine on a 1-minute Cron Trigger,
 confirms signals on **closed candles only**, and delivers paper alerts to
 Telegram and Discord. State lives in D1. **Research tool — it never places
@@ -19,6 +19,9 @@ Configured feeds (Twelve Data/OANDA/Dukascopy/Deriv) ──► Cron */1 * * * * 
                             Telegram Bot API  +  Discord incoming webhook
                           (outbound only — no inbound webhooks required)
 ```
+
+Deriv synthetics are also listed in a separate 10-symbol, display-only watchlist;
+that display does not add them to production alert routing or enable execution.
 
 - **Engine** (`src/features.ts`, `src/storyline.ts`, `src/engine.ts`,
   `src/outcomes.ts`): dependency-free port of the Python v2 engine
