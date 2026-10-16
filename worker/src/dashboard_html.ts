@@ -200,7 +200,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span id="statusDot" class="dot ok"></span>
         <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
-      <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
+      <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         <span>VIP Access ($100/mo)</span>
       </a>
@@ -214,7 +214,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span>VIP regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong> (Batch 1: 90% full)</span>
       </div>
       <div class="banner-right">
-        <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
+        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
       </div>
     </div>
 
@@ -257,7 +257,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. A separate Deriv synthetic watchlist covers 10 symbols for 24/7 observation; this display does not activate production alerts or execution.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
+          <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             <span>Join VIP Signals ($100/mo · $49 with code FOUNDING20)</span>
           </a>
@@ -599,7 +599,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
             <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
-            <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
+            <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
               ⚡ Can't wait? 2 Founding Member spots currently open on Whop ($49/mo) →
             </a>
           </div>
@@ -643,7 +643,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <h3>Deriv Synthetic Watchlist (10 Volatility Assets)</h3>
           <p>The watchlist covers the supported Volatility Indices (V75, V100, V50, V25, V10 and the 1s series) for separate, 24/7 research. This display does not switch on production alerts or place orders for Deriv.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
-            <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
+            <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
               <span>👉 Deriv Synthetics VIP Signals (Instant Access)</span>
             </a>
             <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
@@ -965,10 +965,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <span>DEO Edge · Institutional Paper Simulation & Clean Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
-        <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ Deriv Synthetics VIP</a>
+        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ Deriv Synthetics VIP</a>
         <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Deriv Synthetics (@TAYO_Hub_synthetics_free)</a>
         <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@TAYO_radar)</a>
-        <a href="https://whop.com/slk-radar/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
+        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
     </div>
   </footer>

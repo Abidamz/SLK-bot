@@ -63,7 +63,8 @@ describe("dashboard view modes", () => {
     ["Worker terms", embeddedTerms],
     ["Worker notifications", notifySource],
   ])("%s uses the current DEO Edge Whop checkout URL", (_name, html) => {
-    expect(html).toContain("https://whop.com/slk-radar/deo-edge-vip-signals/");
+    expect(html).toContain("https://whop.com/deoedge/deo-edge-vip-signals/");
+    expect(html).not.toContain("https://whop.com/slk-radar/deo-edge-vip-signals/");
     expect(html).not.toContain("https://whop.com/slk-radar/slk-radar-vip-signals");
   });
 
