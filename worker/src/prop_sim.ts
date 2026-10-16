@@ -57,8 +57,9 @@ export interface SimConfig {
 
 export interface SimResult {
   passRate: number;
+  /** Share of simulations that hit the daily or overall loss limit. */
   blownRate: number;
-  /** Finished the window having neither passed nor blown the account. */
+  /** Finished without passing or hitting a loss limit. */
   neitherRate: number;
   /**
    * Mean trades taken per trial. Exposed because it is the only direct check
@@ -102,7 +103,7 @@ function drawOutcome(mix: AlertMix, rand: () => number): number {
 
 type Outcome = 1 | 0 | -1;
 
-/** +1 passed, -1 account blown, 0 ran out of time. */
+/** +1 passed, -1 daily/overall drawdown limit hit, 0 ran out of time. */
 function trial(cfg: SimConfig, rand: () => number, count: { trades: number }): Outcome {
   // alertsPerMonthPerInstrument is per calendar month; the window holds one
   // month of opportunity spread over tradingDays sessions. Dividing by the
@@ -186,10 +187,10 @@ const VERDICT_RULES: PropRules[] = [
 ];
 const VERDICT_RISKS = [0.5, 0.75, 1.0];
 
-/** Pass/blown probabilities if a subscriber trades every alert at a fixed
- *  risk against standard challenge rules, computed from the live closed
- *  ledger rather than any backtest. Seeded, so the same ledger always
- *  renders the same verdict. */
+/** Pass and drawdown-limit-breach probabilities if a subscriber trades
+ *  every alert at a fixed risk against standard challenge rules, computed
+ *  from the live closed ledger rather than any backtest. Seeded, so the same
+ *  ledger always renders the same verdict. */
 export function propVerdictGrid(
   rows: Trade[], spanDays: number,
   opts: { trials?: number; bootstraps?: number; bootTrials?: number; seed?: number } = {},

@@ -27,6 +27,10 @@ const pagesCss = readFileSync(
   fileURLToPath(new URL("../../dashboard/styles.css", import.meta.url)),
   "utf8",
 );
+const pagesApp = readFileSync(
+  fileURLToPath(new URL("../../dashboard/app.js", import.meta.url)),
+  "utf8",
+);
 const workerHtml = readFileSync(
   fileURLToPath(new URL("../src/dashboard_html.ts", import.meta.url)),
   "utf8",
@@ -73,6 +77,22 @@ describe("dashboard parity sentinels", () => {
     // `.modal` itself sets display:grid, so relying only on the browser's
     // default [hidden] style is insufficient; this author rule must exist.
     expect(css).toMatch(/\.modal\[hidden\]\s*\{\s*display\s*:\s*none\s*\}/);
+  });
+
+  it.each([
+    ["pages", pagesHtml],
+    ["worker", workerHtml],
+  ])("%s: prop verdict copy explains the drawdown-limit outcome", (_name, html) => {
+    expect(html).toContain("hitting a drawdown limit");
+    expect(html).not.toContain("blown probabilities");
+  });
+
+  it.each([
+    ["pages", pagesApp],
+    ["worker", workerHtml],
+  ])("%s: prop verdict table labels the loss-limit outcome as drawdown", (_name, source) => {
+    expect(source).toContain('title="Share of simulations that hit either the daily or overall loss limit">Drawdown</th>');
+    expect(source).not.toContain("<th>Blown</th>");
   });
 
   it.each([

@@ -915,7 +915,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <p class="chart-disclaimer">Historical outcomes do not guarantee future performance. Real costs, execution differences, and changing markets can make results differ.</p>
       <div class="mc-verdict">
         <h3>🏁 Prop challenge verdict — live mixture</h3>
-        <p class="muted-copy">Pass and blown probabilities if a subscriber trades every alert at a fixed risk against standard challenge rules (21 trading days, −5% overall blow). Computed from the stored closed ledger — it updates itself as alerts resolve. Brackets are the 90% bootstrap interval: the uncertainty the sample size alone imposes. Research tool, not a promise.</p>
+        <p class="muted-copy">Shows the estimated chance of passing and of hitting a drawdown limit if a subscriber trades every alert at fixed risk under the rules shown (21 trading days; daily limit shown; 5% overall loss limit). It updates as alerts resolve. Brackets show the 90% bootstrap range—the uncertainty from this small sample. Research tool, not a promise.</p>
         <div id="pvWrap"><p class="muted-copy" id="pvStatus">Loading verdict…</p></div>
       </div>
     </section>
@@ -2240,7 +2240,7 @@ async function loadPropVerdict() {
     wrap.innerHTML =
       '<p class="muted-copy">Sample: ' + d.n + ' closed alerts over ' + d.spanDays.toFixed(0) + ' days (' + d.alertsPerMonth.toFixed(1) + ' alerts/month service-wide). Mixture: ' +
       (d.mix.winRate * 100).toFixed(0) + '% win / ' + (d.mix.lossRate * 100).toFixed(0) + '% loss / ' + (d.mix.scratchRate * 100).toFixed(0) + '% scratch, winner ' + d.mix.targetR.toFixed(2) + 'R adjusted.</p>' +
-      '<table class="lifecycle-table"><thead><tr><th>Target / daily limit</th><th>Risk per trade</th><th>Pass</th><th>Blown</th><th>Pass 90% interval</th></tr></thead><tbody>' + body + '</tbody></table>';
+      '<table class="lifecycle-table"><thead><tr><th>Target / daily limit</th><th>Risk per trade</th><th>Pass</th><th title="Share of simulations that hit either the daily or overall loss limit">Drawdown</th><th>Pass 90% interval</th></tr></thead><tbody>' + body + '</tbody></table>';
   } catch (e) {
     wrap.innerHTML = '<p class="muted-copy">Verdict unavailable: ' + (e && e.message ? e.message : e) + '</p>';
   }

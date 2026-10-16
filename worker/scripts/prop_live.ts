@@ -93,8 +93,8 @@ console.log("PROP CHALLENGE ON LIVE FORWARD MIXTURE (20 alerts, 2026-08-25 → 2
 console.log("ledger includes 2 owner-corrected NAS100 TPs - docs/OUTCOME_OVERRIDE_POLICY.md");
 console.log(`mix: win ${(TP / N * 100).toFixed(1)}% loss ${(SL / N * 100).toFixed(1)}% scratch ${(BE / N * 100).toFixed(1)}% | win ${MEAN_WIN_RAW.toFixed(2)}R raw / ${ADJUSTED_WIN_EQ.toFixed(2)}R adjusted-equivalent | ${(ALERTS_PER_MONTH).toFixed(1)} alerts/month service-wide`);
 console.log(`measured expectancy: +${(ADJUSTED_NET_R / N).toFixed(3)} adjusted R/alert`);
-console.log("rules: 21 trading days, overall blow at -5%; subscriber envelope 0.5-1% risk\n");
-console.log("target daily  risk%   pass%   blown%  neither%  avgTrades  [bootstrap 90% interval on pass%]");
+console.log("rules: 21 trading days, 5% overall loss limit; subscriber envelope 0.5-1% risk\n");
+console.log("target daily  risk%   pass% drawdown%  neither%  avgTrades  [bootstrap 90% interval on pass%]");
 
 for (const rules of RULES) {
   for (const risk of RISKS) {
@@ -129,5 +129,5 @@ const stress = simulate({
   alertsPerMonthPerInstrument: ALERTS_PER_MONTH,
   riskPct: 0.75, correlation: 0.2, dailyLossCap: 0, trials: 20000, seed: 99,
 });
-console.log(`stress (correlation 0.2, target 8 daily 3, risk 0.75): pass ${stress.passRate.toFixed(1)}% blown ${stress.blownRate.toFixed(1)}%`);
+console.log(`stress (correlation 0.2, target 8 daily 3, risk 0.75): pass ${stress.passRate.toFixed(1)}% drawdown limit hit ${stress.blownRate.toFixed(1)}%`);
 console.log("\nSanity: avgTrades near 11 at 0.5% risk (few trials end early); lower at higher risk because passes end the trial.");
