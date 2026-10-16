@@ -163,7 +163,7 @@ export function captureFvgRetest50Experiments(
 /**
  * Automatically checks schedule boundaries (21:00 UTC New York close for daily,
  * Friday 21:05 UTC for weekly) and dispatches performance journal recaps to
- * the respective free channels with built-in deduplication via D1/KV.
+ * each segment's free channel and matching VIP channel(s), with built-in deduplication via D1/KV.
  */
 export async function checkAndDispatchScheduledRecaps(
   env: Env,
@@ -360,7 +360,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const resolvedOutcomes = await resolveAllOpenAlerts(env, store, cfg, now, fetchFn);
   const liveResolveMs = Date.now() - liveResolveStartedAt;
 
-  // 1.1 Automated Performance Journal Recaps for Free Channels (at 21:00 UTC and Friday close)
+  // 1.1 Automated Performance Journal Recaps for Free and matching VIP Channels (21:00 UTC and Friday close)
   try {
     await checkAndDispatchScheduledRecaps(env, store, now);
   } catch (recapErr) {
@@ -3444,7 +3444,7 @@ export default {
         derivFreeChannelChatId: derivFreeChatId ? `${derivFreeChatId.slice(0, 4)}...${derivFreeChatId.slice(-4)}` : null,
         instructions: {
           previewRecap: "Visit /admin/preview-recap?period=daily&segment=institutional (or segment=synthetics) to inspect the automated performance recap card.",
-          triggerRecap: "Visit /admin/trigger-recap?period=daily&segment=both to instantly dispatch the performance recaps to the respective free channels.",
+          triggerRecap: "Visit /admin/trigger-recap?period=daily&segment=both to instantly dispatch each performance recap to its matching free and VIP channels.",
           deleteAlert: "Visit /admin/delete-alert?setup_id=<setup_id> to delete a specific alert from the journal.",
           connectDm: "1. Open your bot in Telegram and send /start. 2. Visit /admin/connect-dm to link automatically.",
           setDmManually: "Visit /admin/set-dm?chat_id=<your_id>",

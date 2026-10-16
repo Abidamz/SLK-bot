@@ -300,6 +300,12 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(new Set(digests.map((message) => message.chatId))).toEqual(new Set([
       "-100FREE-INSTITUTIONAL", "-100FREE-SYNTHETICS",
     ]));
+    const recaps = sentMessages.filter((message) => !message.text.startsWith("🧭 ENGINE DISCIPLINE"));
+    expect(recaps).toHaveLength(4);
+    expect(recaps.filter((message) => message.text.includes("Institutional (Forex"))
+      .map((message) => message.chatId).sort()).toEqual(["-100FREE-INSTITUTIONAL", "-100VIP-INSTITUTIONAL"].sort());
+    expect(recaps.filter((message) => message.text.includes("Continuous Synthetics"))
+      .map((message) => message.chatId).sort()).toEqual(["-100FREE-SYNTHETICS", "-100VIP-SYNTHETICS"].sort());
     expect(digests.every((message) => message.text === formatEngineDisciplineDigest({
       scans: 1, setupsEvaluated: 14, sweep: 10, shift: 8, retest: 4, confirmed: 0,
       rejectionCounts: {
@@ -307,11 +313,11 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
         nonPositiveRisk: 0, invalid: 2, expired: 3,
       },
     }))).toBe(true);
-    expect(sentMessages.some((message) => message.chatId.includes("VIP"))).toBe(false);
+    expect(digests.some((message) => message.chatId.includes("VIP"))).toBe(false);
 
     const second = await checkAndDispatchScheduledRecaps(env, store, weeklyTime);
     expect(second.engineDigestSent).toBe(false);
-    expect(sentMessages).toHaveLength(4); // two weekly recaps plus two digests, once each
+    expect(sentMessages).toHaveLength(6); // four segment recaps plus two free-only digests, once each
   });
 
   it("honors ENGINE_DIGEST=false without affecting weekly recaps", async () => {
@@ -337,13 +343,15 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     expect(messages).toHaveLength(2);
   });
 
-  it("sendPerformanceRecap dispatches institutional recaps strictly to TELEGRAM_FREE_CHAT_ID", async () => {
+  it("sends institutional recaps to the free and matching VIP channel(s)", async () => {
     const sentMessages: { chatId: string; text: string }[] = [];
     const env: NotifyEnv = {
       TELEGRAM_BOT_TOKEN: "MOCK_TOKEN",
-      TELEGRAM_FREE_CHAT_ID: "-100111222333",
-      TELEGRAM_DERIV_FREE_CHAT_ID: "-100999888777",
-      fetchFn: async (u, init) => {
+      TELEGRAM_CHAT_ID: "-100VIP-INSTITUTIONAL",
+      TELEGRAM_DERIV_CHAT_ID: "-100VIP-SYNTHETICS",
+      TELEGRAM_FREE_CHAT_ID: "-100FREE-INSTITUTIONAL",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100FREE-SYNTHETICS",
+      fetchFn: async (_u, init) => {
         const body = JSON.parse(String(init?.body ?? "{}"));
         sentMessages.push({ chatId: body.chat_id, text: body.text });
         return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -352,19 +360,22 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
 
     const res = await sendPerformanceRecap(env, sampleRows, "daily", "institutional", baseTime);
     expect(res.sent).toBe(true);
-    expect(sentMessages).toHaveLength(1);
-    expect(sentMessages[0].chatId).toBe("-100111222333");
-    expect(sentMessages[0].text).toContain("Institutional (Forex · Indices · Metals)");
-    expect(sentMessages[0].text).not.toContain("Continuous Synthetics");
+    expect(new Set(sentMessages.map((message) => message.chatId))).toEqual(new Set([
+      "-100FREE-INSTITUTIONAL", "-100VIP-INSTITUTIONAL",
+    ]));
+    expect(sentMessages.every((message) => message.text.includes("Institutional (Forex · Indices · Metals)"))).toBe(true);
+    expect(sentMessages.every((message) => !message.text.includes("Continuous Synthetics"))).toBe(true);
   });
 
-  it("sendPerformanceRecap dispatches synthetic recaps strictly to TELEGRAM_DERIV_FREE_CHAT_ID", async () => {
+  it("sends synthetic recaps to the synthetic free and matching VIP channel(s)", async () => {
     const sentMessages: { chatId: string; text: string }[] = [];
     const env: NotifyEnv = {
       TELEGRAM_BOT_TOKEN: "MOCK_TOKEN",
-      TELEGRAM_FREE_CHAT_ID: "-100111222333",
-      TELEGRAM_DERIV_FREE_CHAT_ID: "-100999888777",
-      fetchFn: async (u, init) => {
+      TELEGRAM_CHAT_ID: "-100VIP-INSTITUTIONAL",
+      TELEGRAM_DERIV_CHAT_ID: "-100VIP-SYNTHETICS",
+      TELEGRAM_FREE_CHAT_ID: "-100FREE-INSTITUTIONAL",
+      TELEGRAM_DERIV_FREE_CHAT_ID: "-100FREE-SYNTHETICS",
+      fetchFn: async (_u, init) => {
         const body = JSON.parse(String(init?.body ?? "{}"));
         sentMessages.push({ chatId: body.chat_id, text: body.text });
         return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -373,10 +384,34 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
 
     const res = await sendPerformanceRecap(env, sampleRows, "daily", "synthetics", baseTime);
     expect(res.sent).toBe(true);
-    expect(sentMessages).toHaveLength(1);
-    expect(sentMessages[0].chatId).toBe("-100999888777");
-    expect(sentMessages[0].text).toContain("Continuous Synthetics");
-    expect(sentMessages[0].text).not.toContain("Forex · Indices · Metals");
+    expect(new Set(sentMessages.map((message) => message.chatId))).toEqual(new Set([
+      "-100FREE-SYNTHETICS", "-100VIP-SYNTHETICS",
+    ]));
+    expect(sentMessages.every((message) => message.text.includes("Continuous Synthetics"))).toBe(true);
+    expect(sentMessages.every((message) => !message.text.includes("Forex · Indices · Metals"))).toBe(true);
+  });
+
+  it("deduplicates channels and honors an explicit one-channel recap target", async () => {
+    const sentMessages: { chatId: string; text: string }[] = [];
+    const env: NotifyEnv = {
+      TELEGRAM_BOT_TOKEN: "MOCK_TOKEN",
+      TELEGRAM_CHAT_ID: "-100VIP,-100DUPLICATE",
+      TELEGRAM_FREE_CHAT_ID: "-100FREE,-100DUPLICATE",
+      fetchFn: async (_u, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        sentMessages.push({ chatId: body.chat_id, text: body.text });
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    };
+
+    const allTargets = await sendPerformanceRecap(env, sampleRows, "daily", "institutional", baseTime);
+    expect(allTargets.targetChatIds).toEqual(["-100FREE", "-100DUPLICATE", "-100VIP"]);
+    expect(sentMessages.map((message) => message.chatId)).toEqual(allTargets.targetChatIds);
+
+    sentMessages.length = 0;
+    const vipOnly = await sendPerformanceRecap(env, sampleRows, "daily", "institutional", baseTime, "-100VIP-BACKFILL");
+    expect(vipOnly.targetChatIds).toEqual(["-100VIP-BACKFILL"]);
+    expect(sentMessages.map((message) => message.chatId)).toEqual(["-100VIP-BACKFILL"]);
   });
 
   it("checkAndDispatchScheduledRecaps handles daily 21:00 UTC schedule with deduplication via KV", async () => {

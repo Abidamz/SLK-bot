@@ -1256,7 +1256,7 @@ export function computeRecapStats(
 }
 
 /**
- * Formats a high-converting institutional performance recap card for free channels.
+ * Formats the daily or weekly performance recap card for its market segment.
  */
 export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   const isDaily = stats.period === "daily";
@@ -1367,7 +1367,7 @@ export async function sendEngineDisciplineDigest(
 }
 
 /**
- * Dispatches an automated performance recap card to the designated Free Channel.
+ * Dispatches a performance recap to the free channel and matching VIP channel(s).
  */
 export async function sendPerformanceRecap(
   env: NotifyEnv,
@@ -1380,11 +1380,18 @@ export async function sendPerformanceRecap(
   const stats = computeRecapStats(rows, segment, period, nowMs);
   const text = formatPerformanceRecap(stats);
 
-  const targetChatIds = targetChatIdOverride
-    ? [targetChatIdOverride]
-    : (segment === "synthetics"
-        ? parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID || env.TELEGRAM_DERIV_CHAT_ID || env.TELEGRAM_FREE_CHAT_ID || env.TELEGRAM_CHAT_ID)
-        : parseChatIds(env.TELEGRAM_FREE_CHAT_ID || env.TELEGRAM_CHAT_ID));
+  const configuredTargetChatIds = targetChatIdOverride
+    ? parseChatIds(targetChatIdOverride)
+    : segment === "synthetics"
+      ? [
+          ...parseChatIds(env.TELEGRAM_DERIV_FREE_CHAT_ID || env.TELEGRAM_FREE_CHAT_ID),
+          ...parseChatIds(env.TELEGRAM_DERIV_CHAT_ID || env.TELEGRAM_CHAT_ID),
+        ]
+      : [
+          ...parseChatIds(env.TELEGRAM_FREE_CHAT_ID),
+          ...parseChatIds(env.TELEGRAM_CHAT_ID),
+        ];
+  const targetChatIds = [...new Set(configuredTargetChatIds)];
 
   if (targetChatIds.length === 0 || !env.TELEGRAM_BOT_TOKEN) {
     return { sent: false, targetChatIds, text };
