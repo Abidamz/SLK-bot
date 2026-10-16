@@ -15,10 +15,16 @@ touch that landed within a handful of points.
 
 ## The policy
 
-1. **The automatic resolver keeps single-feed truth.** No touch tolerance
-   and no second feed inside the outcome path. Tolerance-shaped fills are
-   how phantom edge gets manufactured, and one dispute does not justify
-   signal-path surgery.
+1. **The automatic resolver keeps feed truth, narrowly widened.** As written
+   2026-10-15 this said "no tolerance and no second feed"; both were
+   subsequently shipped and the wording is corrected here rather than left
+   to contradict the code. What stands: the resolver may only ever see what
+   a feed actually printed. The two allowances are (a) a *one-spread* TP
+   touch tolerance (`TP_TOUCH_SPREADS`, default 1, TP side only, stops
+   untouched — a touch inside the quoted spread is a touch) and (b) a second
+   provider cross-check that can only confirm a touch some feed printed.
+   Neither may be widened to close a gap of the size measured below, because
+   tolerance-shaped fills are how phantom edge gets manufactured.
 2. **Manual override is the sanctioned bridge, never the default.**
    `POST /admin/set-outcome` (admin-gated) validates the terminal status,
    recomputes R from the row's own entry/stop unless overridden, writes the
@@ -28,14 +34,31 @@ touch that landed within a handful of points.
 3. **Measure every dispute.** `GET /admin/candles?pair=&tf=&limit=` returns
    the exact candles the resolver saw, plus the provider name. Record the
    gap size (points and fraction of stop distance) for each dispute.
-4. **Revisit second-feed confirmation with data, not vibes.** If overrides
-   recur (working threshold: three or more) or the measured gaps prove
-   systematic versus stop distance, implement independent-feed confirmation
-   at resolution time and re-gate it against the standing 0.30R gross bar.
+4. **Second-feed confirmation is now exhausted — superseded 2026-10-16.**
+   The original trigger was "if overrides recur (three or more), add
+   independent-feed confirmation at resolution time." That remedy was
+   built early (`DUAL_FEED_RESOLVE`, on by default) and override 2 is the
+   proof it does not cover this class: OANDA *and* TwelveData both missed
+   the same NAS100 touch by 20.1 points, and `/admin/repair-outcomes`
+   against 1000 bars of history returned UNRESOLVED too. Two feeds that
+   price the same CFD the same wrong way are not independent on the
+   dimension that matters. The escalation path from here is broker truth
+   (item 6), not a third feed. The count threshold survives only as a
+   trigger to *re-examine tolerance width*, which the measured gaps have
+   already answered: a tolerance wide enough for index CFDs is a third of
+   a typical stop, which is fabrication.
 5. **Overrides change the live ledger and say so.** The ledger is now
    engine-resolved rows plus owner-corrected rows; stats computed from it
    inherit that mix. Corrections are recorded here and in the scan log so
    no future analysis mistakes them for engine output.
+6. **Broker truth is the only remaining cure (named, not yet built).** The
+   MT5 receiver bridge (`mt5/TAYO_DemoReceiver.mq5`) reports the fills the
+   subscriber's own broker actually made back to the ledger, so an outcome
+   comes from the feed that produced it. Until it exists, every index-CFD
+   TP near the edge of a fast move is a coin flip between "resolved
+   correctly" and "owner override", and the live book carries that mix.
+   This is an owner decision (build cost, hosting, per-subscriber setup),
+   not something to ship unilaterally.
 
 ## The first override
 
@@ -67,25 +90,38 @@ touch that landed within a handful of points.
   no candles at/after entry, unusable target, empty or stale feed.
 
 Manual override (`POST /admin/set-outcome`) remains for historical rows
-and owner judgement calls only. It is not an operating model: if overrides
-become routine, the dual-feed design is what must change, not the ledger.
+and owner judgement calls only. It is not an operating model: two
+overrides in two days on the same instrument class is already routine by
+any honest reading, and the feed-side remedies are spent (item 4). What
+must change now is the source of truth — the broker bridge in item 6 —
+not the ledger and not the tolerance.
+
+The owner's standing instruction governs: no manual monitoring as an
+operating model. Overrides are logged audited exceptions, each one an
+argument for building item 6, never a workflow.
 
 ## Override log
 
 1. **2026-10-15** — `NAS100:15m:SHORT:DECISION:29725.0:2026-10-14T20:00Z`:
    BE_HIT -> TP_HIT +3.00R. Broker filled TP1 29426.8; engine feed printed
    a near-miss and closed BE at the reversal.
-2. **2026-10-16** — `NAS100:15m:SHORT:OC:30003.0:2026-10-14T20:00Z`:
-   OPEN -> TP_HIT at 29869.08. Broker filled TP1 on the 10:00Z candle;
-   both engine feeds (OANDA primary, TwelveData secondary) missed the
-   touch by more than the one-spread tolerance shipped in 58ff757, so
-   the realtime resolver and the repair endpoint both returned
-   UNRESOLVED. Measured gap: OANDA's lowest post-entry 15m low was
-   29889.2 against the 29869.08 target - 20.1 points, about a third of
-   the trade's risk. Index-CFD feeds diverge by tens of points on fast
-   moves; that is a structural property of CFD pricing, not a bug in
-   either feed, and no tolerance can cover it without fabricating
-   outcomes.
+2. **2026-10-16 — APPLIED** — `NAS100:15m:SHORT:OC:30003.0:2026-10-14T20:00Z`:
+   OPEN -> TP_HIT at 29869.08, **+3.00R**, exit 2026-10-16T10:00:00Z,
+   `applied: true`, `notified: true` (outcome message replayed to the
+   channel and DMs), scan-log note written with the reason string.
+   Broker filled TP1 on the 10:00Z candle; both engine feeds (OANDA
+   primary, TwelveData secondary) missed the touch by more than the
+   one-spread tolerance shipped in 58ff757, so the realtime resolver and
+   the repair endpoint both returned UNRESOLVED. Measured gap: OANDA's
+   lowest post-entry 15m low was 29889.2 against the 29869.08 target -
+   20.1 points, about a third of the trade's risk. Index-CFD feeds
+   diverge by tens of points on fast moves; that is a structural property
+   of CFD pricing, not a bug in either feed, and no tolerance can cover
+   it without fabricating outcomes.
+   Ledger effect: +16.58R -> +19.58R raw, one more win in tp/(tp+sl).
+   The 2026-10-15 live census (19 alerts) predates this row, so the
+   forward book is now 20 resolved alerts and the mixture constants in
+   `scripts/prop_live.ts` are stale until re-censused.
 
 **Pattern and permanent fix.** Both overrides are NAS100 index-CFD TP
 touches where the subscriber's broker feed and our CFD feeds diverged by

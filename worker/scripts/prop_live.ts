@@ -20,6 +20,12 @@
  *  Bootstrap: resample the 19 alerts with replacement, rebuild the mixture,
  *  re-simulate — the spread of pass rates IS the uncertainty n=19 imposes.
  *  Usage: npx tsx scripts/prop_live.ts            (no network access needed)
+ *
+ *  STALE AS OF 2026-10-16: the census below is the 2026-10-15 ledger. A
+ *  second owner override (NAS100 OC 30003, OPEN -> TP_HIT +3.00R, logged in
+ *  docs/OUTCOME_OVERRIDE_POLICY.md) resolved after it, so the live book is
+ *  now 20 alerts. Refresh the constants from a fresh live_direction.ts run
+ *  before using the output; the script prints the same warning.
  */
 import { simulate, type AlertMix, type PropRules } from "../src/prop_sim";
 
@@ -75,6 +81,9 @@ const RULES: PropRules[] = [
 const RISKS = [0.5, 0.75, 1.0];
 
 console.log("PROP CHALLENGE ON LIVE FORWARD MIXTURE (19 alerts, 2026-08-25 → 2026-10-15)");
+console.log("!! CENSUS STALE: a second NAS100 override (+3.00R) landed 2026-10-16.");
+console.log("!! Re-run `npx tsx scripts/live_direction.ts --from 2026-08-25` and update");
+console.log("!! N/TP/SL/BE/MEAN_* below before quoting any number this prints.");
 console.log(`mix: win ${(TP / N * 100).toFixed(1)}% loss ${(SL / N * 100).toFixed(1)}% scratch ${(BE / N * 100).toFixed(1)}% | winner ${(MEAN_WIN_RAW - MEAN_COST).toFixed(2)}R adj | ${(ALERTS_PER_MONTH).toFixed(1)} alerts/month service-wide`);
 console.log("rules: 21 trading days, overall blow at -5%; subscriber envelope 0.5-1% risk\n");
 console.log("target daily  risk%   pass%   blown%  neither%  avgTrades  [bootstrap 90% interval on pass%]");

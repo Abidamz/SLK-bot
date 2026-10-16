@@ -101,6 +101,13 @@ NAS100 TP (+3.0R). Window recency, universe breadth, and the correction
 explain the gap; neither measurement was lying, they were measuring
 different books.
 
+_2026-10-16 update: a second NAS100 correction (+3.00R, TP_HIT, logged in
+`docs/OUTCOME_OVERRIDE_POLICY.md`) landed after this census. The live book
+is now 20 resolved alerts (TP 10 / SL 8 / BE 2 expected) and every figure
+in this paragraph plus the mixture constants in `scripts/prop_live.ts`
+(N=19, TP 9) are stale until the census is re-run. Do not quote +0.94
+forward without re-censusing._
+
 **5. 15m nuance.** In-window 15m is neutral (+0.02 R/alert adjusted, 17
 alerts); its 360d damage (−0.14) sits outside the recent window. The cut
 case rests on the year, not the fortnight; owner decision unchanged.
