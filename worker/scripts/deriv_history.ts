@@ -60,6 +60,12 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface DerivHistoryEndpoint {
+  url: string;
+  label: string;
+  headers: Record<string, string>;
+}
+
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
@@ -111,7 +117,7 @@ class DerivHistoryClient {
   private nextEndpointIndex = 0;
 
   constructor(
-    private readonly urls: string[],
+    private readonly endpoints: DerivHistoryEndpoint[],
     private readonly createSocket: (url: string, headers: Record<string, string>) => DerivSocketLike,
     private readonly connectTimeoutMs: number,
     private readonly requestTimeoutMs: number,
@@ -130,30 +136,27 @@ class DerivHistoryClient {
   private async connectWithFallback(): Promise<void> {
     const errors: string[] = [];
     const startIndex = this.nextEndpointIndex;
-    for (let offset = 0; offset < this.urls.length; offset++) {
-      const endpointIndex = (startIndex + offset) % this.urls.length;
-      const url = this.urls[endpointIndex];
+    for (let offset = 0; offset < this.endpoints.length; offset++) {
+      const endpointIndex = (startIndex + offset) % this.endpoints.length;
+      const endpoint = this.endpoints[endpointIndex];
       try {
-        await this.connectToEndpoint(url, endpointIndex);
+        await this.connectToEndpoint(endpoint, endpointIndex);
         this.nextEndpointIndex = endpointIndex;
         return;
       } catch (error) {
-        errors.push(`${new URL(url).host}: ${errorMessage(error)}`);
-        this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+        errors.push(`${endpoint.label}: ${errorMessage(error)}`);
+        this.nextEndpointIndex = (endpointIndex + 1) % this.endpoints.length;
       }
     }
     throw new Error(`all Deriv history endpoints failed (${errors.join("; ")})`);
   }
 
-  private connectToEndpoint(url: string, endpointIndex: number): Promise<void> {
+  private connectToEndpoint(endpoint: DerivHistoryEndpoint, endpointIndex: number): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       let opened = false;
       let settled = false;
       let timer: ReturnType<typeof setTimeout>;
-      const socket = this.createSocket(url, {
-        Origin: "https://deriv.com",
-        "User-Agent": "Mozilla/5.0 (compatible; DEO-Edge-backtest/1.0)",
-      });
+      const socket = this.createSocket(endpoint.url, endpoint.headers);
       this.socket = socket;
 
       const failBeforeOpen = (error: Error): void => {
@@ -161,14 +164,14 @@ class DerivHistoryClient {
         settled = true;
         clearTimeout(timer);
         if (this.socket === socket) this.socket = null;
-        this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+        this.nextEndpointIndex = (endpointIndex + 1) % this.endpoints.length;
         try { socket.close(); } catch {}
         reject(error);
       };
 
       timer = setTimeout(() => {
         if (!opened) {
-          failBeforeOpen(new Error(`Timed out connecting to Deriv history (${url})`));
+          failBeforeOpen(new Error(`Timed out connecting to Deriv history (${endpoint.label})`));
         }
       }, this.connectTimeoutMs);
 
@@ -183,6 +186,25 @@ class DerivHistoryClient {
         resolve();
       });
       socket.on("message", (raw: unknown) => this.onMessage(raw));
+      socket.on("unexpected-response", (_request: unknown, response: unknown) => {
+        const res = response as {
+          statusCode?: number;
+          statusMessage?: string;
+          headers?: Record<string, unknown>;
+          resume?: () => void;
+        };
+        const header = (name: string): string => {
+          const value = res.headers?.[name];
+          return value == null ? "" : Array.isArray(value) ? value.join(",") : String(value);
+        };
+        const detail = [
+          `HTTP ${res.statusCode ?? "unknown"}${res.statusMessage ? ` ${res.statusMessage}` : ""}`,
+          header("server") ? `server=${header("server")}` : "",
+          header("cf-ray") ? `cf-ray=${header("cf-ray")}` : "",
+        ].filter(Boolean).join(", ");
+        try { res.resume?.(); } catch {}
+        failBeforeOpen(new Error(`Deriv WebSocket handshake rejected (${detail})`));
+      });
       socket.on("error", (err: unknown) => {
         const error = new Error(`Deriv history socket error: ${errorMessage(err)}`);
         if (!opened) {
@@ -191,7 +213,7 @@ class DerivHistoryClient {
         }
         if (this.socket === socket) {
           this.socket = null;
-          this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+          this.nextEndpointIndex = (endpointIndex + 1) % this.endpoints.length;
           this.rejectPending(error);
           try { socket.close(); } catch {}
         }
@@ -201,7 +223,7 @@ class DerivHistoryClient {
         const wasCurrentSocket = this.socket === socket;
         if (wasCurrentSocket) {
           this.socket = null;
-          this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+          this.nextEndpointIndex = (endpointIndex + 1) % this.endpoints.length;
         }
         const reasonText = reason == null ? "" : String(reason);
         const error = new Error(`Deriv history socket closed (${code}${reasonText ? `: ${reasonText}` : ""})`);
@@ -314,13 +336,35 @@ export async function fetchDerivHistoryRange(
   const createSocket = options.createSocket
     ?? ((url, headers) => new WebSocket(url, { headers }) as unknown as DerivSocketLike);
   const encodedAppId = encodeURIComponent(appId);
-  const urls = [
-    `wss://ws.derivws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
-    `wss://ws.binaryws.com/websockets/v3?app_id=${encodedAppId}`,
-    `wss://frontend.binaryws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
+  const endpoints: DerivHistoryEndpoint[] = [
+    {
+      url: "wss://api.derivws.com/trading/v1/options/ws/public",
+      label: "api.derivws.com public market-data socket (no Origin)",
+      headers: {},
+    },
+    {
+      url: "wss://api.derivws.com/trading/v1/options/ws/public",
+      label: "api.derivws.com public market-data socket (api.deriv.com Origin)",
+      headers: { Origin: "https://api.deriv.com" },
+    },
+    {
+      url: `wss://ws.derivws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
+      label: "ws.derivws.com",
+      headers: {},
+    },
+    {
+      url: `wss://ws.binaryws.com/websockets/v3?app_id=${encodedAppId}`,
+      label: "ws.binaryws.com",
+      headers: {},
+    },
+    {
+      url: `wss://frontend.binaryws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
+      label: "frontend.binaryws.com",
+      headers: {},
+    },
   ];
   const client = new DerivHistoryClient(
-    urls, createSocket, options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+    endpoints, createSocket, options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   );
 

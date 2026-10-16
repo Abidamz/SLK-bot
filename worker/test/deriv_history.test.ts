@@ -13,6 +13,13 @@ const history = [
   { epoch: 300, open: 12.5, high: 14, low: 12, close: 13.5 },
 ];
 
+interface FakeUnexpectedResponse {
+  statusCode: number;
+  statusMessage?: string;
+  headers?: Record<string, unknown>;
+  resume?: () => void;
+}
+
 class FakeSocket implements DerivSocketLike {
   readyState = 0;
   readonly sent: Record<string, unknown>[] = [];
@@ -21,8 +28,13 @@ class FakeSocket implements DerivSocketLike {
   constructor(
     private readonly response: (request: Record<string, any>) => unknown,
     private readonly connectError?: Error,
+    private readonly unexpectedResponse?: FakeUnexpectedResponse,
   ) {
     queueMicrotask(() => {
+      if (this.unexpectedResponse) {
+        this.emit("unexpected-response", {}, this.unexpectedResponse);
+        return;
+      }
       if (this.connectError) {
         this.emit("error", this.connectError);
         return;
@@ -77,9 +89,8 @@ describe("Deriv historical candle paging", () => {
       },
     });
 
-    expect(url).toContain("app_id=1089");
-    expect(url).toContain("brand=deriv");
-    expect(headers.Origin).toBe("https://deriv.com");
+    expect(url).toBe("wss://api.derivws.com/trading/v1/options/ws/public");
+    expect(headers).toEqual({});
     expect(result.symbol).toBe("R_75");
     expect(result.pages).toBe(2);
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
@@ -95,7 +106,7 @@ describe("Deriv historical candle paging", () => {
       createSocket: (url) => {
         const host = new URL(url).hostname;
         attemptedHosts.push(host);
-        if (host === "ws.derivws.com") {
+        if (host === "api.derivws.com") {
           return new FakeSocket(() => ({}), new Error("Unexpected server response: 520"));
         }
         return new FakeSocket((request) => ({
@@ -105,7 +116,7 @@ describe("Deriv historical candle paging", () => {
       },
     });
 
-    expect(attemptedHosts.slice(0, 2)).toEqual(["ws.derivws.com", "ws.binaryws.com"]);
+    expect(attemptedHosts.slice(0, 3)).toEqual(["api.derivws.com", "api.derivws.com", "ws.derivws.com"]);
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000]);
   });
 
@@ -122,8 +133,23 @@ describe("Deriv historical candle paging", () => {
       },
     })).rejects.toThrow(/failed after 5 attempts.*520/);
 
-    expect(socketsCreated).toBe(15);
+    expect(socketsCreated).toBe(25);
     expect(retryDelays).toEqual([1_000, 2_000, 4_000, 8_000]);
+  });
+
+  it("includes Cloudflare request IDs in final handshake errors", async () => {
+    const rayId = "a4ba0471eaa9643d-LHR";
+    const response: FakeUnexpectedResponse = {
+      statusCode: 520,
+      headers: { server: "cloudflare", "cf-ray": rayId },
+      resume: () => {},
+    };
+    await expect(fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
+      pageSize: 2,
+      pageDelayMs: 0,
+      sleep: async () => {},
+      createSocket: () => new FakeSocket(() => ({}), undefined, response),
+    })).rejects.toThrow(`cf-ray=${rayId}`);
   });
 
   it("keeps all ten watchlist labels mapped to Deriv candle symbols", () => {
