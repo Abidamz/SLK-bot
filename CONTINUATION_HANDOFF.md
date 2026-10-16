@@ -5,7 +5,7 @@
 **This session's branch:** `arena/0e17c27a-tayo-bot`
 **Production lineage:** `arena/08df9077-tayo-bot`
 **Production Worker:** `https://slk-alert-worker.abidogundamilola.workers.dev`
-**Production dashboard:** `https://slk-radar.pages.dev`
+**Production dashboard:** `https://deoedge.pages.dev`
 **Deriv relay:** `https://slk-bot.vercel.app`
 
 This is the source of truth for future sessions. The current owner-provided brief and this file override stale descriptions elsewhere in the repository.
@@ -255,7 +255,7 @@ The `tayo-radar` Pages project is **git-integrated**, and Cloudflare classifies 
 - This is exactly what happened between early September and 2026-10-07: the setting held `arena/3ff9b8eb-tayo-bot`, an abandoned session branch, so every dashboard upload landed as a preview while `slk-radar.pages.dev` kept serving a stale build. The Worker dashboard kept updating (it ships inside the Worker), which made the Pages copy look merely "cached".
 - **Symptom to recognise:** `…workers.dev/dashboard` shows current data while `slk-radar.pages.dev` shows old data, and `main.slk-radar.pages.dev` serves a **newer** build than the production hostname.
 - Pages serves static assets with a browser cache window of roughly four hours that `_headers` cannot override. The `Stamp Dashboard Asset Versions` step rewrites `app.js?v=…` and `styles.css?v=…` in `dashboard/index.html` to the commit SHA before upload, so every release gets a fresh cache key. Keep that step, and keep the `?v=` query strings in the HTML.
-- **After each push, check:** the Live Desk tape on `https://slk-radar.pages.dev/` shows today's UTC timestamps, and `https://slk-radar.pages.dev/app.js` contains the string `tail=1`.
+- **After each push, check:** the Live Desk tape on `https://deoedge.pages.dev/` shows today's UTC timestamps, and `https://deoedge.pages.dev/app.js` contains the string `tail=1`.
 
 ### Full local validation suite
 
@@ -288,7 +288,7 @@ Post-release proof recorded for `a1c91f0` (confirmation funnel): `/health` → `
 Dashboard proof (Pages production host, also use a fresh query parameter):
 
 ```bash
-curl -fsS "https://slk-radar.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
+curl -fsS "https://deoedge.pages.dev/app.js?v=$(date +%s)" | grep -c "tail=1"
 ```
 
 Expect a non-zero count. A zero means the upload landed as a preview — re-read the Pages deploy-path section above.
@@ -460,4 +460,4 @@ git push origin arena/0e17c27a-tayo-bot
 - Shadow-experiment aggregates (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/shadow-experiments`
 - Scan/error/funnel/delivery audit (owner key required): `https://slk-alert-worker.abidogundamilola.workers.dev/api/scan-audit?days=21`
 - Deriv relay: `https://slk-bot.vercel.app/health` and `/candles`
-- Public dashboard/journal: `https://slk-radar.pages.dev`
+- Public dashboard/journal: `https://deoedge.pages.dev`

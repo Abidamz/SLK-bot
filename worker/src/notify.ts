@@ -760,7 +760,7 @@ export function formatFreeTpTeaser(rec: AlertRowish, oc: OutcomeLike): string {
     `VIP members received this live alert with exact entry, stop floor, and targets.`,
     ``,
     `👉 Join VIP ($100/mo · $49 w/ code FOUNDING20): https://whop.com/slk-radar/slk-radar-vip-signals`,
-    `👉 Live Verified Journal: https://slk-radar.pages.dev`,
+    `👉 Live Verified Journal: https://deoedge.pages.dev`,
   ].join("\n");
 }
 
@@ -1295,7 +1295,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   }
 
   const allTimeWinRateStr = stats.allTimeWinRate !== null ? `${stats.allTimeWinRate.toFixed(1)}%` : "N/A";
-  const ledgerUrl = isInst ? "https://slk-radar.pages.dev" : "https://slk-radar.pages.dev?segment=synthetics";
+  const ledgerUrl = isInst ? "https://deoedge.pages.dev" : "https://deoedge.pages.dev?segment=synthetics";
 
   return [
     title,

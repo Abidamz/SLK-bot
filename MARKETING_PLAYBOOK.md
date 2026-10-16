@@ -3,8 +3,8 @@
 > **Product:** DEO Edge VIP Trading Signals & Institutional Orderflow Engine
 > **Target Subscription:** $100 / month (USD) via Whop
 > **Core Assets:**
-> - Public Performance Journal & Proof Ledger: `https://slk-radar.pages.dev`
-> - Official Terms & Legal Disclaimer: `https://slk-radar.pages.dev/terms`
+> - Public Performance Journal & Proof Ledger: `https://deoedge.pages.dev`
+> - Official Terms & Legal Disclaimer: `https://deoedge.pages.dev/terms`
 > - VIP Signal Telegram Delivery (Automated Whop Bot Integration)
 >
 > **Current market-scope note:** The dashboard lists a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only and does not enable production alerts or order execution. Keep existing Telegram handles and URLs until an owner changes them.
@@ -21,7 +21,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 1. **Rule-based confirmation:** The workflow follows the SLK sequence:
    `Higher-Timeframe Liquidity Sweep → Market Structure Shift (BOS) → FVG Imbalance Retest`.
 2. **Asymmetric Risk:Reward ($\ge$ 1:2.5R to 1:4R):** Every trade enforces a mathematically sound risk floor. Even with a 40–50% win rate, subscribers compound capital.
-3. **Radical Transparency (The Unfair Advantage):** Every single alert, stop loss, and outcome is logged publicly in real time on `slk-radar.pages.dev`. There is zero manual editing or hiding losses.
+3. **Radical Transparency (The Unfair Advantage):** Every single alert, stop loss, and outcome is logged publicly in real time on `deoedge.pages.dev`. There is zero manual editing or hiding losses.
 4. **Zero-Fatigue Alerts:**
    - Background market bias & sweeps are delivered silently.
    - High-conviction entry alerts arrive **LOUD (`🚨 [ACTION REQUIRED]`)** and **auto-pinned** to the top of Telegram so members never miss an execution.
@@ -106,7 +106,7 @@ The dashboard separates currently configured production instruments from a 10-sy
 1. 🎯 **Telegram research alerts:** Entry reference, Stop Loss, Target 1, Target 2, and invalidation levels for subscriber review and their own trading decisions.
 2. 🚨 **High-Priority Auto-Pinned Alerts:** Trade signals ring loud and pin to the chat header so you never miss an execution.
 3. 🧭 **Daily Directional Bias Cards:** 4H structure status, 1H vantage point, and armed retracement zones.
-4. 📊 **Public Paper-Alert Journal:** Review recorded alert outcomes at slk-radar.pages.dev; do not present paper results as independently verified live-trading performance.
+4. 📊 **Public Paper-Alert Journal:** Review recorded alert outcomes at deoedge.pages.dev; do not present paper results as independently verified live-trading performance.
 5. 🛡️ **Built for Prop Firm Traders:** Asymmetric payouts designed to pass and retain FTMO, FundedNext, and Topstep accounts.
 
 Join the private desk today and start trading with algorithmic edge.
@@ -130,7 +130,7 @@ Join the private desk today and start trading with algorithmic edge.
 ---
 
 ### Script 2: The "Transparency / Anti-Fake Guru" Hook
-* **Visual:** Screen recording of `slk-radar.pages.dev` with live performance statistics.
+* **Visual:** Screen recording of `deoedge.pages.dev` with live performance statistics.
 * **Hook (0-3s):** *"If your favorite signal provider doesn't have a live public database like this... run."*
 * **Body (3-30s):** 
   *"Notice how every guru posts photoshopped MT4 profits with blue numbers, but never shows their losses? 
@@ -186,7 +186,7 @@ If an ICT/SMC setup does not offer at least 2.5 times the stop distance, our alg
 
 6/7 We don't hide our losses or post photoshopped MT4 screenshots. 
 You can inspect every alert, timestamp, and R-multiple live on our public dashboard:
-👉 slk-radar.pages.dev
+👉 deoedge.pages.dev
 
 7/7 The first 20 Founding Member spots are live on Whop at $49/mo (locked forever before the jump to $100/mo).
 Secure your desk: [WHOP LINK]
@@ -212,7 +212,7 @@ VIP members received this alert with exact entry, stop floor, and lot size calcu
 
 Stop trading alone. 
 👉 Join VIP Signals ($100/mo): [WHOP LINK]
-👉 Live Verified Journal: slk-radar.pages.dev
+👉 Live Verified Journal: deoedge.pages.dev
 ```
 
 ### Post 2: Weekly Review Post (Every Friday Evening)
@@ -231,7 +231,7 @@ On a 1% risk-per-trade model, that is +7.3% on account capital this week alone.
 On a $100k funded account, that represents +$7,300 in profit split.
 
 Everything is recorded live on the public blockchain of our database:
-👉 slk-radar.pages.dev
+👉 deoedge.pages.dev
 
 Upgrade to VIP for Monday's London open: [WHOP LINK]
 ```
@@ -241,7 +241,7 @@ Upgrade to VIP for Monday's London open: [WHOP LINK]
 ## 9. Action Checklist for Your Other Browser / Marketing Tab
 
 When you open your marketing repo on Arena AI in Chrome, feed it this file and ask it to:
-1. Build a high-converting **Linktree / Landing Page** or Carrd site with links to `slk-radar.pages.dev`, Free Telegram, and Whop Checkout.
+1. Build a high-converting **Linktree / Landing Page** or Carrd site with links to `deoedge.pages.dev`, Free Telegram, and Whop Checkout.
 2. Generate 30 days of pre-scheduled **Twitter / X posts** using Section 7.
-3. Design **social banner graphics and video thumbnail overlays** matching the institutional styling of `slk-radar.pages.dev`.
+3. Design **social banner graphics and video thumbnail overlays** matching the institutional styling of `deoedge.pages.dev`.
 4. Set up an automated **Whop email follow-up sequence** for abandoned checkouts.

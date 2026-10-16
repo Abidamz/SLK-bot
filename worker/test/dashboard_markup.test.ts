@@ -14,6 +14,8 @@ import { describe, expect, it } from "vitest";
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
 
 const indexHtml = read("../../dashboard/index.html");
+const termsHtml = read("../../dashboard/terms.html");
+const faviconSvg = read("../../dashboard/favicon.svg");
 const stylesCss = read("../../dashboard/styles.css");
 const embedded = read("../src/dashboard_html.ts");
 
@@ -27,6 +29,14 @@ function panelOpeningTagFor(title: string): string {
 }
 
 describe("dashboard view modes", () => {
+  it("declares the DEO Edge favicon on the Pages home and terms pages", () => {
+    const iconLink = '<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1">';
+    expect(indexHtml).toContain(iconLink);
+    expect(termsHtml).toContain(iconLink);
+    expect(faviconSvg).toContain('aria-label="DEO Edge"');
+    expect(faviconSvg).toContain(">DEO</text>");
+  });
+
   it("hides every .operator-only panel unless operator mode is active", () => {
     expect(stylesCss).toContain("body:not(.operator-mode) .operator-only{display:none!important}");
     expect(stylesCss).toContain("body.operator-mode .marketing-only{display:none!important}");
