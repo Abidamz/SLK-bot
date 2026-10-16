@@ -10,6 +10,7 @@ import * as F from "./features";
 import { countTransition, emptyReplayDiagnostics, type ReplayDiagnostics } from "./diagnostics";
 import { PARAM_VERSION, minStopDistance, pipSize, roundToTick, stopExceedsCeiling } from "./config";
 import { MAP_TF_SECONDS } from "./storyline";
+import { findSwings } from "./features";
 import { evaluateDirectionalBias, type DirectionalBiasDiagnostics } from "./shadow";
 import {
   buildH4VantageConfluence, diagnosticTagsForRow, sessionBucketUtcPlus1,
@@ -19,6 +20,28 @@ import type {
   Alert, Candle, Direction, EngineEvent, Setup, Storyline, ShadowExperimentCapture, ShadowTradeCapture,
 } from "./types";
 import type { StrategyConfig } from "./config";
+
+/** The retest candle must close back outside the origin zone on the entry
+ *  side: wick in, close out. A candle that closes inside the zone is a
+ *  visit, not a rejection — "the rejection is not a standalone factor",
+ *  but without it the retest is just a touch. */
+export function rejectionClose(c: Candle, zoneLo: number, zoneHi: number, isShort: boolean): boolean {
+  return isShort ? c.c <= zoneLo : c.c >= zoneHi;
+}
+
+/** Inducement: an internal swing formed on the pullback leg between the BOS
+ *  and the retest, resting between the zone and the leg extreme — the magnet
+ *  the method wants swept before the zone itself is touched. Without one,
+ *  the zone is the first liquidity in price's path, which is exactly the
+ *  setup the teaching calls dangerous. */
+export function inducementPresent(
+  candles: Candle[], fromIndex: number, toIndex: number,
+  zoneLo: number, zoneHi: number, isShort: boolean,
+): boolean {
+  const leg = candles.slice(fromIndex, Math.max(fromIndex + 3, toIndex));
+  const [highs, lows] = findSwings(leg, 1, 1);
+  return isShort ? highs.some((s) => s.price < zoneLo) : lows.some((s) => s.price > zoneHi);
+}
 
 export interface ScanEntryArgs {
   pair: string;
@@ -468,6 +491,15 @@ export function scanEntry(args: ScanEntryArgs): {
           }
 
           if (cur.leftZone && returns) {
+            // Entry-quality rules from the method, both default-off. Failing
+            // either keeps the setup in RETEST rather than killing it: the
+            // next candle may still show the rejection or form the magnet,
+            // until the retest window expires.
+            const rejected = !cfg.requireRejectionClose
+              || rejectionClose(c, z.zoneLo, z.zoneHi, isShort);
+            const induced = !cfg.requireInducement
+              || inducementPresent(candles, cur.bosIndex, i, z.zoneLo, z.zoneHi, isShort);
+            if (rejected && induced) {
             // opposing liquidity must remain standing for reversal setups
             let standing = false;
             if (cur.drawOnLiquidity !== null) {
@@ -494,6 +526,7 @@ export function scanEntry(args: ScanEntryArgs): {
             }
             active[d] = null;
             continue;
+            }
           }
         }
         if (i - cur.bosIndex > cfg.retestWindow) {

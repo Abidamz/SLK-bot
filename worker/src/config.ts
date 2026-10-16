@@ -49,6 +49,14 @@ export interface StrategyConfig {
   retestToleranceAtr: number;
   /** 1–99 require that percent of the overlapping directional FVG; 100 preserves the legacy boundary check. */
   retestDepthPct?: number;
+  /** Entry-quality rule from the method: the retest candle must close back
+   *  outside the origin zone on the entry side (wick in, close out). A candle
+   *  that closes inside the zone is a visit, not a rejection. Default off. */
+  requireRejectionClose?: boolean;
+  /** Entry-quality rule from the method: the pullback leg must have formed an
+   *  internal swing (inducement magnet) between the zone and the leg extreme
+   *  before the zone is tagged. Default off. */
+  requireInducement?: boolean;
   setupWindow: number;
   slBufferAtr: number;
   minRiskAtr: number;
@@ -171,6 +179,8 @@ export function defaultStrategy(): StrategyConfig {
     retestWindow: 20,
     retestToleranceAtr: 0.3,
     retestDepthPct: 100,
+    requireRejectionClose: false,
+    requireInducement: false,
     setupWindow: 100,
     slBufferAtr: 0.1,
     minRiskAtr: 0.8,  // quarantine structurally tiny stops
@@ -217,6 +227,8 @@ interface EnvVars {
   FILTER_HTF_CONFLICT?: string;
   FILTER_HTF_CONFLICT_DERIV_ONLY?: string;
   DUAL_FEED_RESOLVE?: string;
+  REQUIRE_REJECTION_CLOSE?: string;
+  REQUIRE_INDUCEMENT?: string;
 }
 
 export function loadConfig(env: EnvVars): WorkerConfig {
@@ -296,6 +308,8 @@ export function loadConfig(env: EnvVars): WorkerConfig {
   if (Number.isFinite(minStopPips) && minStopPips >= 0) strategy.minStopPips = minStopPips;
   if (Number.isFinite(maxStopPips) && maxStopPips > 0) strategy.maxStopPips = maxStopPips;
   if (Number.isFinite(flipImpulseAtr) && flipImpulseAtr > 0) strategy.flipImpulseAtr = flipImpulseAtr;
+  if ((env.REQUIRE_REJECTION_CLOSE ?? "false").toLowerCase() === "true") strategy.requireRejectionClose = true;
+  if ((env.REQUIRE_INDUCEMENT ?? "false").toLowerCase() === "true") strategy.requireInducement = true;
   if (Number.isFinite(slBufferAtr) && slBufferAtr > 0) strategy.slBufferAtr = slBufferAtr;
   if (Number.isFinite(minTpR) && minTpR > 0) strategy.minTpR = minTpR;
   if (Number.isFinite(retestDepthPct) && retestDepthPct >= 1 && retestDepthPct <= 100) {

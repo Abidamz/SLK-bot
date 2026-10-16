@@ -431,7 +431,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_CONT_MAX_DEPTH", "BACKTEST_CONT_MIN_BODY_PCT",
   "BACKTEST_CONT_MIN_BREAK_ATR", "BACKTEST_CONT_MIN_TOUCHES",
   "BACKTEST_CONT_REQUIRE_LIQ", "BACKTEST_CONT_RR", "BACKTEST_END_OFFSET_DAYS",
-  "BACKTEST_NAVIGATOR",
+  "BACKTEST_NAVIGATOR", "BACKTEST_REJECT_CLOSE", "BACKTEST_INDUCEMENT",
   "BACKTEST_ENTRY_TFS", "BACKTEST_FLIP_DIRECTION_AWARE",
   "BACKTEST_FLIP_IMPULSE_ATR",
   "BACKTEST_MIN_STOP_PIPS", "BACKTEST_MIN_TP_R",
@@ -1076,6 +1076,8 @@ async function main() {
   const flipImpulse = Number(process.env.BACKTEST_FLIP_IMPULSE_ATR ?? "");
   const strategy: StrategyConfig = {
     ...defaultStrategy(),
+    requireRejectionClose: (process.env.BACKTEST_REJECT_CLOSE ?? "false") === "true",
+    requireInducement: (process.env.BACKTEST_INDUCEMENT ?? "false") === "true",
     ...(flipRaw !== undefined ? { flipDirectionAware: flipAware } : {}),
     ...(Number.isFinite(flipImpulse) && flipImpulse > 0 ? { flipImpulseAtr: flipImpulse } : {}),
     ...(Number.isFinite(requestedMinTpR) && requestedMinTpR > 0 ? { minTpR: requestedMinTpR } : {}),
