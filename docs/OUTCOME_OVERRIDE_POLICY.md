@@ -69,3 +69,25 @@ touch that landed within a handful of points.
 Manual override (`POST /admin/set-outcome`) remains for historical rows
 and owner judgement calls only. It is not an operating model: if overrides
 become routine, the dual-feed design is what must change, not the ledger.
+
+## Override log
+
+1. **2026-10-15** — `NAS100:15m:SHORT:DECISION:29725.0:2026-10-14T20:00Z`:
+   BE_HIT -> TP_HIT +3.00R. Broker filled TP1 29426.8; engine feed printed
+   a near-miss and closed BE at the reversal.
+2. **2026-10-16** — `NAS100:15m:SHORT:OC:30003.0:2026-10-14T20:00Z`:
+   OPEN -> TP_HIT at 29869.08. Broker filled TP1 on the 10:00Z candle;
+   both engine feeds (OANDA primary, TwelveData secondary) missed the
+   touch by more than the one-spread tolerance shipped in 58ff757, so
+   the realtime resolver and the repair endpoint both returned
+   UNRESOLVED.
+
+**Pattern and permanent fix.** Both overrides are NAS100 index-CFD TP
+touches where the subscriber's broker feed and our CFD feeds diverged by
+more than a spread during fast moves. A tolerance large enough to cover
+index-CFD dispersion would be a third of a risk on typical stops -
+fabrication, not fairness. The permanent cure is broker truth: the MT5
+receiver bridge (mt5/TAYO_DemoReceiver.mq5) reporting actual fills back
+to the ledger in live mode, so outcomes come from the feed that filled
+them. Until that exists, overrides remain the audited exception path for
+index pairs, and every one is logged here with its measured cause.
