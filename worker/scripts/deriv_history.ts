@@ -10,6 +10,8 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_HISTORY_REQUEST_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 15_000;
+const MAX_OFF_GRID_FRACTION_PER_PAGE = 0.01;
+const MAX_OFF_GRID_SAMPLES = 5;
 
 interface DerivCandle {
   epoch: number | string;
@@ -52,6 +54,8 @@ export interface DerivHistoryResult {
   requestedToMs: number;
   pages: number;
   candles: Candle[];
+  skippedMisalignedCandles: number;
+  skippedMisalignedSamples: number[];
 }
 
 interface PendingRequest {
@@ -85,27 +89,55 @@ function parseResponse(raw: unknown): DerivResponse {
   return data;
 }
 
-function decodeCandles(rows: DerivCandle[], granularitySeconds: number): Candle[] {
+interface DecodedCandlePage {
+  candles: Candle[];
+  oldestEpoch: number | null;
+  skippedMisalignedCandles: number;
+  misalignedSamples: number[];
+}
+
+function decodeCandles(rows: DerivCandle[], granularitySeconds: number): DecodedCandlePage {
   const out: Candle[] = [];
+  const misalignedSamples: number[] = [];
+  let oldestEpoch: number | null = null;
+  let skippedMisalignedCandles = 0;
   for (const row of rows) {
+    const epochSeconds = Number(row.epoch);
     const candle: Candle = {
-      t: Number(row.epoch) * 1000,
+      t: epochSeconds * 1000,
       o: Number(row.open),
       h: Number(row.high),
       l: Number(row.low),
       c: Number(row.close),
     };
-    const valid = Number.isFinite(candle.t)
-      && Number.isFinite(candle.o) && Number.isFinite(candle.h)
-      && Number.isFinite(candle.l) && Number.isFinite(candle.c)
-      && candle.h >= Math.max(candle.o, candle.c)
-      && candle.l <= Math.min(candle.o, candle.c)
-      && candle.h >= candle.l
-      && candle.t % (granularitySeconds * 1000) === 0;
-    if (!valid) throw new Error(`Deriv history contains a malformed candle at ${row.epoch}`);
+    const values = `epoch=${String(row.epoch)}, granularity=${granularitySeconds}s, open=${String(row.open)}, high=${String(row.high)}, low=${String(row.low)}, close=${String(row.close)}`;
+    if (!Number.isSafeInteger(epochSeconds)) {
+      throw new Error(`Deriv history returned a non-integer candle epoch (${values})`);
+    }
+    if (![candle.o, candle.h, candle.l, candle.c].every(Number.isFinite)) {
+      throw new Error(`Deriv history returned non-finite OHLC values (${values})`);
+    }
+    if (
+      candle.h < Math.max(candle.o, candle.c)
+      || candle.l > Math.min(candle.o, candle.c)
+      || candle.h < candle.l
+    ) {
+      throw new Error(`Deriv history returned an invalid OHLC range (${values})`);
+    }
+    oldestEpoch = oldestEpoch === null ? epochSeconds : Math.min(oldestEpoch, epochSeconds);
+    if (epochSeconds % granularitySeconds !== 0) {
+      skippedMisalignedCandles++;
+      if (misalignedSamples.length < MAX_OFF_GRID_SAMPLES) misalignedSamples.push(epochSeconds);
+      continue;
+    }
     out.push(candle);
   }
-  return out.sort((a, b) => a.t - b.t);
+  return {
+    candles: out.sort((a, b) => a.t - b.t),
+    oldestEpoch,
+    skippedMisalignedCandles,
+    misalignedSamples,
+  };
 }
 
 class DerivHistoryClient {
@@ -374,6 +406,8 @@ export async function fetchDerivHistoryRange(
   const maxPages = Math.ceil((endEpoch - fromEpoch + 1) / (granularitySeconds * pageSize)) + 3;
   const candles: Candle[] = [];
   let pages = 0;
+  let skippedMisalignedCandles = 0;
+  const skippedMisalignedSamples: number[] = [];
   try {
     while (endEpoch >= fromEpoch) {
       if (pages >= maxPages) {
@@ -396,13 +430,25 @@ export async function fetchDerivHistoryRange(
       }
       pages++;
       if (raw.length === 0) break;
-      const page = decodeCandles(raw, granularitySeconds);
-      if (page.length === 0) break;
-      candles.push(...page.filter((c) => c.t >= fromMs && c.t < endExclusiveMs));
+      const decoded = decodeCandles(raw, granularitySeconds);
+      const offGridLimit = Math.max(1, Math.floor(raw.length * MAX_OFF_GRID_FRACTION_PER_PAGE));
+      if (decoded.skippedMisalignedCandles > offGridLimit) {
+        const samples = decoded.misalignedSamples
+          .map((epoch) => new Date(epoch * 1000).toISOString()).join(", ");
+        throw new Error(
+          `Deriv returned ${decoded.skippedMisalignedCandles}/${raw.length} candle timestamps off the ${granularitySeconds}s grid for ${pairKey}; refusing a likely shifted page. Sample UTC timestamps: ${samples}`,
+        );
+      }
+      skippedMisalignedCandles += decoded.skippedMisalignedCandles;
+      for (const epoch of decoded.misalignedSamples) {
+        if (skippedMisalignedSamples.length >= MAX_OFF_GRID_SAMPLES) break;
+        skippedMisalignedSamples.push(epoch);
+      }
+      candles.push(...decoded.candles.filter((c) => c.t >= fromMs && c.t < endExclusiveMs));
       options.onProgress?.({ pair: pairKey, symbol, pages, bars: candles.length });
 
-      const oldestEpoch = Math.floor(page[0].t / 1000);
-      if (oldestEpoch <= fromEpoch) break;
+      const oldestEpoch = decoded.oldestEpoch;
+      if (oldestEpoch === null || oldestEpoch <= fromEpoch) break;
       if (oldestEpoch >= endEpoch) {
         throw new Error(`Deriv pagination made no progress for ${pairKey} at ${new Date(oldestEpoch * 1000).toISOString()}`);
       }
@@ -411,6 +457,14 @@ export async function fetchDerivHistoryRange(
     }
   } finally {
     client.close();
+  }
+
+  if (skippedMisalignedCandles > 0) {
+    const samples = skippedMisalignedSamples
+      .map((epoch) => new Date(epoch * 1000).toISOString()).join(", ");
+    console.warn(
+      `Deriv history skipped ${skippedMisalignedCandles} off-grid ${granularitySeconds}s candle(s) for ${pairKey}; they were not re-timestamped. Sample UTC timestamps: ${samples}. Check the coverage/gap counts in the report.`,
+    );
   }
 
   candles.sort((a, b) => a.t - b.t);
@@ -437,6 +491,8 @@ export async function fetchDerivHistoryRange(
     requestedToMs: toMs,
     pages,
     candles: unique,
+    skippedMisalignedCandles,
+    skippedMisalignedSamples,
   };
 }
 

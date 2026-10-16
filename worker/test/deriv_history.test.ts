@@ -98,6 +98,53 @@ describe("Deriv historical candle paging", () => {
     expect(sockets[0].sent.every((request) => request.count === 2)).toBe(true);
   });
 
+  it("skips an isolated off-grid candle without shifting it and reports the omission", async () => {
+    const shiftedCandle = { epoch: 135, open: 10.5, high: 12, low: 10, close: 11.5 };
+    const rows = [history[0], shiftedCandle, ...history.slice(1)];
+    const result = await fetchDerivHistoryRange("V75", 60, 120_000, 360_000, {
+      pageSize: 10,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+      })),
+    });
+
+    expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
+    expect(result.skippedMisalignedCandles).toBe(1);
+    expect(result.skippedMisalignedSamples).toEqual([135]);
+  });
+
+  it("fails early when a page is systematically off the requested candle grid", async () => {
+    const rows = Array.from({ length: 5 }, (_, index) => ({
+      epoch: 135 + index * 60,
+      open: 10,
+      high: 11,
+      low: 9,
+      close: 10.5,
+    }));
+    await expect(fetchDerivHistoryRange("V75", 60, 60_000, 600_000, {
+      pageSize: rows.length,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: rows.filter((c) => c.epoch <= request.end),
+      })),
+    })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted page/);
+  });
+
+  it("reports OHLC fields when a candle range is malformed", async () => {
+    const badCandle = { epoch: 120, open: 10, high: 9, low: 8, close: 10 };
+    await expect(fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
+      pageSize: 2,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: [badCandle],
+      })),
+    })).rejects.toThrow(/invalid OHLC range.*epoch=120, granularity=60s, open=10, high=9, low=8, close=10/);
+  });
+
   it("falls back to another Deriv history endpoint after a 520 handshake failure", async () => {
     const attemptedHosts: string[] = [];
     const result = await fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
