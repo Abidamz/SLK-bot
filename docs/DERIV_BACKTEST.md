@@ -16,7 +16,7 @@ npm run backtest:deriv -- 360
 
 The 360-day scan uses the configured synthetic entry timeframes (`30m,1h` in the current production configuration). The final 120 days are held out; the first 240 days are the development period. Development trades that are still open or resolve at/after the boundary are purged, so their held-out price path cannot affect development results. The report shows per-symbol and combined development/holdout results without choosing pairs based on the holdout. Minute history includes an additional ten-day warm-up, and daily candles are loaded separately for higher-timeframe context. The script defaults to all ten symbols; an uppercase comma-separated Deriv pair list can be supplied before the day count to run a smaller diagnostic sample.
 
-The downloader uses Deriv's WebSocket candle-history API with bounded pages, retries, ordering/deduplication checks, and a local cache. It stops rather than silently emitting a zero-trade report if the requested minute or daily context is absent or too short. The report records expected/received bars and gaps for every downloaded timeframe. A candle-gap count is a data-quality warning, not proof that a market was untradeable.
+The downloader uses Deriv's WebSocket candle-history API with bounded pages, endpoint failover, exponential backoff on transient failures, ordering/deduplication checks, and a local cache. It stops rather than silently emitting a zero-trade report if the requested minute or daily context is absent or too short. The report records expected/received bars and gaps for every downloaded timeframe. A candle-gap count is a data-quality warning, not proof that a market was untradeable.
 
 ## Costs and interpretation
 

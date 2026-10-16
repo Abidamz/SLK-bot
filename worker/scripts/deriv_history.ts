@@ -7,6 +7,9 @@ const DEFAULT_APP_ID = "1089";
 const DEFAULT_PAGE_DELAY_MS = 250;
 const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_HISTORY_REQUEST_ATTEMPTS = 5;
+const RETRY_BASE_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 15_000;
 
 interface DerivCandle {
   epoch: number | string;
@@ -105,8 +108,10 @@ class DerivHistoryClient {
   private nextReqId = 1;
   private readonly pending = new Map<number, PendingRequest>();
 
+  private nextEndpointIndex = 0;
+
   constructor(
-    private readonly url: string,
+    private readonly urls: string[],
     private readonly createSocket: (url: string, headers: Record<string, string>) => DerivSocketLike,
     private readonly connectTimeoutMs: number,
     private readonly requestTimeoutMs: number,
@@ -116,22 +121,64 @@ class DerivHistoryClient {
     if (this.socket?.readyState === WebSocket.OPEN) return Promise.resolve();
     if (this.connecting) return this.connecting;
 
-    this.connecting = new Promise<void>((resolve, reject) => {
+    this.connecting = this.connectWithFallback().finally(() => {
+      this.connecting = null;
+    });
+    return this.connecting;
+  }
+
+  private async connectWithFallback(): Promise<void> {
+    const errors: string[] = [];
+    const startIndex = this.nextEndpointIndex;
+    for (let offset = 0; offset < this.urls.length; offset++) {
+      const endpointIndex = (startIndex + offset) % this.urls.length;
+      const url = this.urls[endpointIndex];
+      try {
+        await this.connectToEndpoint(url, endpointIndex);
+        this.nextEndpointIndex = endpointIndex;
+        return;
+      } catch (error) {
+        errors.push(`${new URL(url).host}: ${errorMessage(error)}`);
+        this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+      }
+    }
+    throw new Error(`all Deriv history endpoints failed (${errors.join("; ")})`);
+  }
+
+  private connectToEndpoint(url: string, endpointIndex: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
       let opened = false;
-      const socket = this.createSocket(this.url, {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      const socket = this.createSocket(url, {
         Origin: "https://deriv.com",
         "User-Agent": "Mozilla/5.0 (compatible; DEO-Edge-backtest/1.0)",
       });
       this.socket = socket;
-      const timer = setTimeout(() => {
+
+      const failBeforeOpen = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.socket === socket) this.socket = null;
+        this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+        try { socket.close(); } catch {}
+        reject(error);
+      };
+
+      timer = setTimeout(() => {
         if (!opened) {
-          try { socket.close(); } catch {}
-          reject(new Error(`Timed out connecting to Deriv history (${this.url})`));
+          failBeforeOpen(new Error(`Timed out connecting to Deriv history (${url})`));
         }
       }, this.connectTimeoutMs);
 
       socket.on("open", () => {
+        if (settled) {
+          try { socket.close(); } catch {}
+          return;
+        }
         opened = true;
+        settled = true;
         clearTimeout(timer);
         resolve();
       });
@@ -139,23 +186,29 @@ class DerivHistoryClient {
       socket.on("error", (err: unknown) => {
         const error = new Error(`Deriv history socket error: ${errorMessage(err)}`);
         if (!opened) {
-          clearTimeout(timer);
-          reject(error);
+          failBeforeOpen(error);
+          return;
         }
-        this.rejectPending(error);
+        if (this.socket === socket) {
+          this.socket = null;
+          this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+          this.rejectPending(error);
+          try { socket.close(); } catch {}
+        }
       });
       socket.on("close", (code: number, reason: unknown) => {
         clearTimeout(timer);
-        this.socket = null;
+        const wasCurrentSocket = this.socket === socket;
+        if (wasCurrentSocket) {
+          this.socket = null;
+          this.nextEndpointIndex = (endpointIndex + 1) % this.urls.length;
+        }
         const reasonText = reason == null ? "" : String(reason);
         const error = new Error(`Deriv history socket closed (${code}${reasonText ? `: ${reasonText}` : ""})`);
-        if (!opened) reject(error);
-        this.rejectPending(error);
+        if (!opened) failBeforeOpen(error);
+        else if (wasCurrentSocket) this.rejectPending(error);
       });
-    }).finally(() => {
-      this.connecting = null;
     });
-    return this.connecting;
   }
 
   private onMessage(raw: unknown): void {
@@ -260,9 +313,14 @@ export async function fetchDerivHistoryRange(
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const createSocket = options.createSocket
     ?? ((url, headers) => new WebSocket(url, { headers }) as unknown as DerivSocketLike);
-  const url = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(appId)}&brand=deriv&l=en`;
+  const encodedAppId = encodeURIComponent(appId);
+  const urls = [
+    `wss://ws.derivws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
+    `wss://ws.binaryws.com/websockets/v3?app_id=${encodedAppId}`,
+    `wss://frontend.binaryws.com/websockets/v3?app_id=${encodedAppId}&brand=deriv&l=en`,
+  ];
   const client = new DerivHistoryClient(
-    url, createSocket, options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
+    urls, createSocket, options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
     options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   );
 
@@ -278,15 +336,18 @@ export async function fetchDerivHistoryRange(
         throw new Error(`Deriv pagination exceeded ${maxPages} pages for ${pairKey}; refusing a partial backtest window`);
       }
       let raw: DerivCandle[] = [];
-      for (let attempt = 0; ; attempt++) {
+      for (let attempt = 0; attempt < MAX_HISTORY_REQUEST_ATTEMPTS; attempt++) {
         try {
           raw = await client.historyPage({ symbol, granularitySeconds, count: pageSize, endEpoch });
           break;
         } catch (error) {
-          if (attempt >= 2) {
-            throw new Error(`Deriv history failed after 3 attempts for ${pairKey} at ${endEpoch}: ${errorMessage(error)}`);
+          if (attempt >= MAX_HISTORY_REQUEST_ATTEMPTS - 1) {
+            throw new Error(
+              `Deriv history failed after ${MAX_HISTORY_REQUEST_ATTEMPTS} attempts for ${pairKey} at ${endEpoch}: ${errorMessage(error)}`,
+            );
           }
-          await sleep(500 * (attempt + 1));
+          const delayMs = Math.min(MAX_RETRY_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** attempt);
+          await sleep(delayMs);
         }
       }
       pages++;

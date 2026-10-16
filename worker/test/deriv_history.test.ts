@@ -18,8 +18,15 @@ class FakeSocket implements DerivSocketLike {
   readonly sent: Record<string, unknown>[] = [];
   private readonly listeners = new Map<string, ((...args: any[]) => void)[]>();
 
-  constructor(private readonly response: (request: Record<string, any>) => unknown) {
+  constructor(
+    private readonly response: (request: Record<string, any>) => unknown,
+    private readonly connectError?: Error,
+  ) {
     queueMicrotask(() => {
+      if (this.connectError) {
+        this.emit("error", this.connectError);
+        return;
+      }
       this.readyState = 1;
       this.emit("open");
     });
@@ -40,6 +47,7 @@ class FakeSocket implements DerivSocketLike {
   }
 
   close(code = 1000, reason = "test complete"): void {
+    if (this.readyState === 3) return;
     this.readyState = 3;
     queueMicrotask(() => this.emit("close", code, Buffer.from(reason)));
   }
@@ -77,6 +85,45 @@ describe("Deriv historical candle paging", () => {
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
     expect(sockets[0].sent.map((request) => request.end)).toEqual([359, 239]);
     expect(sockets[0].sent.every((request) => request.count === 2)).toBe(true);
+  });
+
+  it("falls back to another Deriv history endpoint after a 520 handshake failure", async () => {
+    const attemptedHosts: string[] = [];
+    const result = await fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
+      pageSize: 2,
+      pageDelayMs: 0,
+      createSocket: (url) => {
+        const host = new URL(url).hostname;
+        attemptedHosts.push(host);
+        if (host === "ws.derivws.com") {
+          return new FakeSocket(() => ({}), new Error("Unexpected server response: 520"));
+        }
+        return new FakeSocket((request) => ({
+          req_id: request.req_id,
+          candles: history.filter((c) => c.epoch <= request.end).slice(-request.count),
+        }));
+      },
+    });
+
+    expect(attemptedHosts.slice(0, 2)).toEqual(["ws.derivws.com", "ws.binaryws.com"]);
+    expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000]);
+  });
+
+  it("backs off and fails clearly when every Deriv history endpoint returns 520", async () => {
+    let socketsCreated = 0;
+    const retryDelays: number[] = [];
+    await expect(fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
+      pageSize: 2,
+      pageDelayMs: 0,
+      sleep: async (ms) => { retryDelays.push(ms); },
+      createSocket: () => {
+        socketsCreated++;
+        return new FakeSocket(() => ({}), new Error("Unexpected server response: 520"));
+      },
+    })).rejects.toThrow(/failed after 5 attempts.*520/);
+
+    expect(socketsCreated).toBe(15);
+    expect(retryDelays).toEqual([1_000, 2_000, 4_000, 8_000]);
   });
 
   it("keeps all ten watchlist labels mapped to Deriv candle symbols", () => {
