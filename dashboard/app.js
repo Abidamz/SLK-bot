@@ -1327,8 +1327,8 @@ async function loadPropVerdict() {
     ).join('');
     wrap.innerHTML =
       '<p class="muted-copy">Sample: ' + d.n + ' closed alerts over ' + d.spanDays.toFixed(0) + ' days (' + d.alertsPerMonth.toFixed(1) + ' alerts/month service-wide). Mixture: ' +
-      (d.mix.winRate * 100).toFixed(0) + '% win / ' + (d.mix.lossRate * 100).toFixed(0) + '% loss / ' + (d.mix.scratchRate * 100).toFixed(0) + '% scratch, winner ' + d.mix.targetR.toFixed(2) + 'R adjusted.</p>' +
-      '<table class="lifecycle-table"><thead><tr><th>Target / daily limit</th><th>Risk per trade</th><th>Pass</th><th title="Share of simulations that hit either the daily or overall loss limit">Drawdown</th><th>Pass 90% interval</th></tr></thead><tbody>' + body + '</tbody></table>';
+      (d.mix.winRate * 100).toFixed(0) + '% win / ' + (d.mix.lossRate * 100).toFixed(0) + '% loss / ' + (d.mix.scratchRate * 100).toFixed(0) + '% scratch, model adjusted win-equivalent ' + d.mix.targetR.toFixed(2) + 'R.</p>' +
+      '<table class="lifecycle-table"><thead><tr><th>Target / daily limit</th><th>Risk per trade</th><th title="Estimated chance of reaching the profit target before a loss limit">Pass</th><th title="Share of simulations that hit either the daily or overall loss limit">Drawdown</th><th title="Bootstrap range for the pass estimate, not an account-return range">Pass 90% interval</th></tr></thead><tbody>' + body + '</tbody></table>';
   } catch (e) {
     wrap.innerHTML = '<p class="muted-copy">Verdict unavailable: ' + (e && e.message ? e.message : e) + '</p>';
   }

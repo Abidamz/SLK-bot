@@ -82,8 +82,11 @@ describe("dashboard parity sentinels", () => {
   it.each([
     ["pages", pagesHtml],
     ["worker", workerHtml],
-  ])("%s: prop verdict copy explains the drawdown-limit outcome", (_name, html) => {
-    expect(html).toContain("hitting a drawdown limit");
+  ])("%s: prop verdict copy distinguishes pass probability from return", (_name, html) => {
+    expect(html).toContain("Pass is the estimated chance");
+    expect(html).toContain("not a return you have already made");
+    expect(html).toContain("The 90% interval shows how that pass estimate varies");
+    expect(html).toContain("not a return range or a guarantee");
     expect(html).not.toContain("blown probabilities");
   });
 
@@ -92,6 +95,7 @@ describe("dashboard parity sentinels", () => {
     ["worker", workerHtml],
   ])("%s: prop verdict table labels the loss-limit outcome as drawdown", (_name, source) => {
     expect(source).toContain('title="Share of simulations that hit either the daily or overall loss limit">Drawdown</th>');
+    expect(source).toContain("model adjusted win-equivalent");
     expect(source).not.toContain("<th>Blown</th>");
   });
 
