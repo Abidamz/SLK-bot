@@ -166,7 +166,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 TAYO RADAR — DAILY PERFORMANCE RECAP",
+      "📊 DEO EDGE — DAILY PERFORMANCE RECAP",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "🏛️ Institutional (Forex · Indices · Metals)",
       "📅 New York Close · 2026-09-30",
@@ -182,7 +182,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "",
       "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "TAYO Model (Structure · Liquidity · Key Levels)",
+      "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
     // branding guardrails
@@ -195,14 +195,14 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 TAYO RADAR — DAILY PERFORMANCE RECAP",
+      "📊 DEO EDGE — DAILY PERFORMANCE RECAP",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "🏛️ Institutional (Forex · Indices · Metals)",
       "📅 New York Close · 2026-09-30",
       "",
       "📈 TODAY'S RESULTS",
       "No setups closed — capital preserved.",
-      "We only act on the highest-conviction TAYO confirmations.",
+      "We only act on the highest-conviction DEO Edge setups.",
       "",
       "🏆 ALL-TIME LEDGER",
       "+0.00R · N/A decided win rate (0 TP · 0 SL)",
@@ -210,7 +210,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "",
       "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "TAYO Model (Structure · Liquidity · Key Levels)",
+      "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
   });
@@ -220,7 +220,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
     const card = formatPerformanceRecap(stats);
 
     expect(card).toBe([
-      "📊 TAYO RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL",
+      "📊 DEO EDGE — 24/7 SYNTHETICS WEEKLY JOURNAL",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "⚡ Continuous Synthetics (V75 · V100 · V50 · V25 · V10)",
       "📅 Week Ending Friday · 2026-09-30",
@@ -236,7 +236,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "",
       "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "TAYO Model (Structure · Liquidity · Key Levels)",
+      "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
       "Paper simulation — research only. Not financial advice.",
     ].join("\n"));
   });
@@ -257,7 +257,7 @@ describe("Performance Journal Recaps (Recommendation 1)", () => {
       "0 sent — none met our 2.5R minimum.",
       "Top rejection: 2.5R target floor (5)",
       "Research only — paper-mode observations; not audited performance or financial advice.",
-      "TAYO Model (Structure · Liquidity · Key Levels)",
+      "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
     ].join("\n"));
   });
 

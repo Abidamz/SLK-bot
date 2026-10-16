@@ -157,7 +157,7 @@ export async function createTelegramInviteLink(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId,
-        name: name ?? "TAYO VIP Access",
+        name: name ?? "DEO Edge VIP Access",
         member_limit: memberLimit,
         expire_date: expireDate,
       }),
@@ -479,7 +479,7 @@ export function generateQuickChartUrl(a: Alert): string {
           pointBackgroundColor: "#ff9800",
         },
         {
-          label: "TAYO Trade Path",
+          label: "DEO Edge Trade Path",
           data: [
             origin || entry,
             isLong ? sl + risk * 0.2 : sl - risk * 0.2, // Sweep
@@ -499,7 +499,7 @@ export function generateQuickChartUrl(a: Alert): string {
     options: {
       title: {
         display: true,
-        text: `TAYO MODEL · TradingView · ${a.pair} ${a.entryTf} ${a.direction} · Risk/Reward 1:${a.rrInternal ?? "2.5"}R`,
+        text: `DEO EDGE · SLK METHOD · TradingView · ${a.pair} ${a.entryTf} ${a.direction} · Risk/Reward 1:${a.rrInternal ?? "2.5"}R`,
         fontColor: "#d1d4dc",
         fontSize: 15,
       },
@@ -554,7 +554,7 @@ export async function sendDiscord(env: NotifyEnv, text: string, color = RED): Pr
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      username: "TAYO Paper Alerts",
+      username: "DEO Edge Paper Alerts",
       content: "```\n" + text + "\n```",
       allowed_mentions: { parse: [] }, // never ping anyone
     }),
@@ -589,8 +589,8 @@ export function formatAlert(a: Alert, executionMode: ExecutionMode = "market"): 
     + (flags.length ? " · " + flags.join(", ") : "");
 
   const lines = [
-    `🚨🚨🚨 [ACTION REQUIRED] — TAYO CONFIRMED ENTRY 🚨🚨🚨`,
-    `${emoji} TAYO ${paper} — ${a.pair} · 🌟【 ${boldPair} 】🌟`,
+    `🚨🚨🚨 [ACTION REQUIRED] — DEO EDGE CONFIRMED ENTRY 🚨🚨🚨`,
+    `${emoji} DEO Edge ${paper} — ${a.pair} · 🌟【 ${boldPair} 】🌟`,
     `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction   : ${a.direction} ${emoji}`,
     `Timeframe   : ${a.entryTf} (map ${a.mapTf})`,
@@ -766,7 +766,7 @@ export function formatOutcome(rec: AlertRowish, oc: OutcomeLike): string {
   if (oc.status === "BE_HIT") {
     lines.push(
       "🛡️ INSTRUCTION: Trade was secured at Breakeven after reaching +1.50R favorable excursion.",
-      "👉 ACTION: Exit / close position flat at Entry price (0.00R). Zero loss incurred — account 100% protected. Await the next TAYO confirmed setup.",
+      "👉 ACTION: Exit / close position flat at Entry price (0.00R). Zero loss incurred — account 100% protected. Await the next DEO Edge confirmed setup.",
     );
   }
   if (rec.stop_loss != null) lines.push(`Stop ${fmtPrice(pair, Number(rec.stop_loss))}`);
@@ -972,7 +972,7 @@ export function formatBiasCard(
   const h4Status = diag.h4.breakoutStatus.replace(/_/g, " ").split(" ").map(capitalize).join(" ");
 
   const lines = [
-    `🧭 TAYO BIAS CONTEXT — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟`,
+    `🧭 DEO EDGE BIAS CONTEXT — NOT AN ENTRY — 🌟【 ${boldPair} 】🌟`,
     `📍 Pair       : 🌟【 ${boldPair} 】🌟`,
     `Direction    : ${direction} ${emoji} · ${gradeLabel}`,
     `4H Vantage   : ${diag.h4.direction.toUpperCase()} (${h4Status})`,
@@ -1217,11 +1217,11 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   const isInst = stats.segment === "institutional";
   const title = isDaily
     ? isInst
-      ? "📊 TAYO RADAR — DAILY PERFORMANCE RECAP"
-      : "📊 TAYO RADAR — 24/7 SYNTHETICS DAILY RECAP"
+      ? "📊 DEO EDGE — DAILY PERFORMANCE RECAP"
+      : "📊 DEO EDGE — 24/7 SYNTHETICS DAILY RECAP"
     : isInst
-      ? "📊 TAYO RADAR — WEEKLY PERFORMANCE JOURNAL"
-      : "📊 TAYO RADAR — 24/7 SYNTHETICS WEEKLY JOURNAL";
+      ? "📊 DEO EDGE — WEEKLY PERFORMANCE JOURNAL"
+      : "📊 DEO EDGE — 24/7 SYNTHETICS WEEKLY JOURNAL";
 
   const marketLine = isInst
     ? "🏛️ Institutional (Forex · Indices · Metals)"
@@ -1244,7 +1244,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
   } else {
     resultsLines.push(
       "No setups closed — capital preserved.",
-      "We only act on the highest-conviction TAYO confirmations.",
+      "We only act on the highest-conviction DEO Edge setups.",
     );
   }
 
@@ -1266,7 +1266,7 @@ export function formatPerformanceRecap(stats: PerformanceRecapStats): string {
     "",
     "💎 VIP: live confirmed entries with exact Entry · Stop · Targets → https://whop.com/slk-radar/slk-radar-vip-signals ($100/mo · $49 w/ code FOUNDING20)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━",
-    "TAYO Model (Structure · Liquidity · Key Levels)",
+    "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
     "Paper simulation — research only. Not financial advice.",
   ].join("\n");
 }
@@ -1297,7 +1297,7 @@ export function formatEngineDisciplineDigest(totals: EngineDisciplineTotals): st
     disciplineLine,
     `Top rejection: ${top[0]}${top[1] > 0 ? ` (${top[1]})` : ""}`,
     "Research only — paper-mode observations; not audited performance or financial advice.",
-    "TAYO Model (Structure · Liquidity · Key Levels)",
+    "DEO Edge · SLK Method (Structure · Liquidity · Key Levels)",
   ].join("\n");
 }
 

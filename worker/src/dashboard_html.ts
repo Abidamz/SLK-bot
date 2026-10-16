@@ -3,7 +3,7 @@ export const DASHBOARD_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TAYO Bot · Algorithmic Trading Portfolio & Live Track Record</title>
+  <title>DEO Edge · Trading Research & Live Trade Journal</title>
   <style>
 :root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:flex;align-items:center;gap:11px;font-size:20px;letter-spacing:-.03em}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:grid;place-items:center;width:38px;height:38px;border:1px solid #4c806e;border-radius:12px;color:var(--accent);font-weight:800;font-size:12px}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.mc-verdict{margin-top:26px;border-top:1px solid var(--line);padding-top:18px}.mc-verdict h3{margin:0 0 6px;font-size:15px}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .alert-row:hover{border-color:#54719c;background:#142033}
@@ -178,10 +178,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">TAYO</span>
+      <span class="brand-mark">DEO</span>
       <div>
-        <strong>TAYO Radar</strong>
-        <small>Quantitative Execution Desk</small>
+        <strong>DEO Edge</strong>
+        <small>Structure · Liquidity · Key Levels</small>
       </div>
     </div>
     <div class="header-actions">
@@ -253,8 +253,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
     <section class="hero">
       <div>
         <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
-        <h1>Algorithmic Confirmation Engine & Research Ledger</h1>
-          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across 23 markets (13 institutional and 10 synthetic).</p>
+        <h1>DEO Edge · Confirmation Engine & Research Ledger</h1>
+          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. A separate Deriv synthetic watchlist covers 10 symbols for 24/7 observation; this display does not activate production alerts or execution.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -276,7 +276,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <span>·</span>
           <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-            <span>24/7 Synthetics Radar (<strong>@TAYO_Hub_synthetics_free</strong>)</span>
+            <span>Deriv Synthetics Watchlist (<strong>@TAYO_Hub_synthetics_free</strong>)</span>
           </a>
         </div>
       </div>
@@ -303,7 +303,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
         <div>
           <p class="eyebrow" style="margin:0 0 2px;">PERFORMANCE BY MARKET SEGMENT</p>
-          <h2 style="margin:0; font-size:18px;">Institutional vs. 24/7 Synthetics Performance</h2>
+          <h2 style="margin:0; font-size:18px;">Institutional Markets & Deriv Synthetic Watchlist</h2>
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
           <button type="button" class="segment-btn active" data-segment="all">
@@ -313,7 +313,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <span>🏛️</span> Institutional <span class="seg-count">13</span>
           </button>
           <button type="button" class="segment-btn" data-segment="synthetics">
-            <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
+            <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
           </button>
         </div>
       </div>
@@ -339,13 +339,13 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Click to filter Overview by 24/7 Synthetics">
+        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Click to filter Overview by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
               <div>
-                <strong style="color:#f3e8ff; font-size:14px; display:block;">24/7 Algorithmic Synthetics</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Volatility Assets · Continuous 24/7/365</small>
+                <strong style="color:#f3e8ff; font-size:14px; display:block;">Deriv Synthetic Watchlist</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · Continuous 24/7/365 · Watchlist only</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
@@ -398,7 +398,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <article class="panel lifecycle">
           <div class="panel-head">
             <div>
-              <p class="eyebrow">TAYO CONFIRMATION MODEL (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
+              <p class="eyebrow">DEO EDGE CONFIRMATION METHOD (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
               <h2>7-Stage Execution Lifecycle</h2>
             </div>
             <span class="pill amber">Deterministic rules</span>
@@ -591,7 +591,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <select id="waitlistInterest" style="padding: 11px 12px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
               <option value="all">🌐 All Markets (Full Suite)</option>
               <option value="institutional">🏛️ Institutional FX & Indices</option>
-              <option value="synthetics">⚡ 24/7 Algorithmic Synthetics</option>
+              <option value="synthetics">⚡ Deriv Synthetic Watchlist</option>
             </select>
             <button type="submit" id="waitlistSubmitBtn" class="waitlist-submit-btn">
               Reserve Priority Spot →
@@ -615,7 +615,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
               Join Free Telegram Hub (@TAYO_radar)
             </a>
             <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
-              Join Free Synthetics Radar
+              Join Free Deriv Synthetics Channel
             </a>
           </div>
         </div>
@@ -632,22 +632,22 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <span>🏛️</span> Institutional FX & Indices <span class="seg-count">13</span>
         </button>
         <button type="button" class="segment-btn" data-segment="synthetics">
-          <span>⚡</span> 24/7 Synthetics <span class="seg-count">10</span>
+          <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
         </button>
       </div>
 
       <!-- Synthetics Info Banner (Active when Synthetics is selected) -->
       <div id="syntheticsNotice" class="synthetics-banner" hidden>
         <div class="synth-banner-content">
-          <span class="synth-badge">⚡ 24/7 Continuous Market</span>
-          <h3>Deriv Algorithmic Synthetic Indices (10 Volatility Assets)</h3>
-          <p>Continuous algorithmic liquidity across 10 Volatility Indices (V75, V100, V50, V25, V10 and the 1s series). While traditional forex and equity indices close for the weekend, Deriv synthetic indices trade 24 hours a day, 7 days a week, 365 days a year with institutional market structure, zero spread widening spikes, and pure price action execution.</p>
+          <span class="synth-badge">⚡ Deriv · 24/7 Watchlist</span>
+          <h3>Deriv Synthetic Watchlist (10 Volatility Assets)</h3>
+          <p>The watchlist covers the supported Volatility Indices (V75, V100, V50, V25, V10 and the 1s series) for separate, 24/7 research. This display does not switch on production alerts or place orders for Deriv.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
             <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
-              <span>👉 Unlock 24/7 Synthetics VIP Signals (Instant Access)</span>
+              <span>👉 Deriv Synthetics VIP Signals (Instant Access)</span>
             </a>
             <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
-              <span>💬 Join Free 24/7 Synthetics Radar Channel</span>
+              <span>💬 Join Free Deriv Synthetics Channel</span>
             </a>
           </div>
         </div>
@@ -704,13 +704,13 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Click to filter by 24/7 Synthetics">
+        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Click to filter by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
               <div>
-                <strong style="color:#f3e8ff; font-size:14px; display:block;">24/7 Algorithmic Synthetics</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Volatility Assets · Continuous 24/7/365</small>
+                <strong style="color:#f3e8ff; font-size:14px; display:block;">Deriv Synthetic Watchlist</strong>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · Continuous 24/7/365 · Watchlist only</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
@@ -749,7 +749,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <article class="panel notice">
         <p class="eyebrow">RESEARCH & TRANSPARENCY</p>
         <h2>Algorithmic Paper Ledger</h2>
-        <p>All statistics are derived from automated Cloudflare D1 database trade records executing TAYO confirmation rules (Structure, Liquidity, Key Levels) on live broker market data. Not financial advice. See <a href="terms.html" style="color:var(--accent); text-decoration: underline;">Terms & Risk Disclaimer</a>.</p>
+        <p>All statistics are derived from automated Cloudflare D1 database trade records executing DEO Edge confirmation rules (Structure, Liquidity, Key Levels) on live broker market data. Not financial advice. See <a href="terms.html" style="color:var(--accent); text-decoration: underline;">Terms & Risk Disclaimer</a>.</p>
       </article>
     </section>
 
@@ -826,7 +826,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <div>
               <span class="eyebrow">TELEGRAM</span>
               <h3>Confirmed Entry Alerts</h3>
-              <p>Posts full TAYO confirmation entry, stop-loss, 3R target, bias grade, and path to your channel.</p>
+              <p>Posts the full DEO Edge confirmed entry, stop-loss, 3R target, bias grade, and path to your channel.</p>
             </div>
             <span class="pill green">Enabled</span>
           </label>
@@ -962,11 +962,11 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <!-- Public Marketing Footer -->
   <footer class="marketing-only">
     <div class="footer-content">
-      <span>TAYO Radar · Institutional Paper Simulation & Clean Automated Monitoring</span>
+      <span>DEO Edge · Institutional Paper Simulation & Clean Automated Monitoring</span>
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
-        <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ 24/7 Synthetics VIP</a>
-        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Synthetics (@TAYO_Hub_synthetics_free)</a>
+        <a href="https://whop.com/slk-radar/slk-radar-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ Deriv Synthetics VIP</a>
+        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ Free Deriv Synthetics (@TAYO_Hub_synthetics_free)</a>
         <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 Free Telegram (@TAYO_radar)</a>
         <a href="https://whop.com/slk-radar/slk-radar-vip-signals" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
@@ -977,7 +977,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <footer class="operator-only" style="border-top: 1px solid var(--line); background: #070b12; padding: 18px 24px; color: var(--muted); font-size: 11.5px;">
     <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
       <div>
-        <strong style="color: var(--text);">TAYO Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
+        <strong style="color: var(--text);">DEO Edge Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
       </div>
       <div style="display: flex; gap: 16px; align-items: center;">
         <span>Primary Feed: Swiss Bank Dukascopy (Forex) · Deriv WebSocket Relay (Synthetics)</span>
@@ -1171,7 +1171,7 @@ if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNot
 
 if ($('clearSyntheticsBtn')) {
   $('clearSyntheticsBtn').addEventListener('click', async () => {
-    if (!confirm('Purge all synthetic trade records from the journal?\\n\\nThis will restore the public overview to Institutional-only (+30.78R, 75.0% Win Rate) and give 24/7 Synthetics a clean slate under the active HTF conflict filter.')) return;
+    if (!confirm('Purge all synthetic trade records from the journal?\\n\\nThis will restore the public overview to Institutional-only (+30.78R, 75.0% Win Rate) and give Deriv watchlist a clean slate under the active HTF conflict filter.')) return;
     const btn = $('clearSyntheticsBtn');
     const oldText = btn.textContent;
     btn.textContent = 'Purging…';
@@ -1483,7 +1483,7 @@ function renderStats(s) {
     ['segSynthSignals', 'segSynthSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(synth.total || 0); });
   }
 
-  const segBadgeText = state.marketSegment === 'synthetics' ? '⚡ Synthetics' : state.marketSegment === 'institutional' ? '🏛️ Institutional' : 'All';
+  const segBadgeText = state.marketSegment === 'synthetics' ? '⚡ Deriv Watchlist' : state.marketSegment === 'institutional' ? '🏛️ Institutional' : 'All';
   ['overviewNetRSegmentBadge', 'overviewWinRateSegmentBadge', 'overviewOpenSegmentBadge', 'overviewTotalSegmentBadge'].forEach(id => {
     if ($(id)) $(id).textContent = segBadgeText;
   });
@@ -1861,7 +1861,7 @@ function buildReplaySteps(data) {
   }
   if (data.confirmedAt) {
     const idx = idxAt(data.confirmedAt);
-    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. TAYO entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. DEO Edge entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
   }
   const oc = data.outcome;
   if (oc && oc.status && oc.status !== 'OPEN') {
@@ -2030,13 +2030,13 @@ async function exportLedger(fmt) {
     const rows = await fetchLedgerRows();
     const stamp = new Date().toISOString().slice(0, 10);
     if (fmt === 'json') {
-      downloadBlob(\`tayo-radar-ledger-\${stamp}.json\`, 'application/json', JSON.stringify(rows, null, 2));
+      downloadBlob(\`deo-edge-ledger-\${stamp}.json\`, 'application/json', JSON.stringify(rows, null, 2));
       return;
     }
     const escCsv = val => { const s = val == null ? '' : String(val); return /[",\\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
     for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
-    downloadBlob(\`tayo-radar-ledger-\${stamp}.csv\`, 'text/csv', lines.join('\\n'));
+    downloadBlob(\`deo-edge-ledger-\${stamp}.csv\`, 'text/csv', lines.join('\\n'));
   } catch (e) {
     alert('Export failed: ' + e.message);
   }

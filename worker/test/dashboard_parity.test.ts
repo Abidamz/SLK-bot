@@ -43,6 +43,18 @@ describe("dashboard parity sentinels", () => {
   it.each([
     ["pages", pagesHtml],
     ["worker", workerHtml],
+  ])("%s: customer-facing dashboard uses DEO Edge and names the Deriv watchlist", (_name, html) => {
+    expect(html).toContain("<strong>DEO Edge</strong>");
+    expect(html).toContain("DEO EDGE CONFIRMATION METHOD");
+    expect(html).toContain("DEO Edge · Confirmation Engine & Research Ledger");
+    expect(html).toContain("Deriv synthetic watchlist covers 10 symbols for 24/7 observation");
+    expect(html).toContain("this display does not activate production alerts or execution");
+    expect(html).not.toContain("<strong>TAYO Radar</strong>");
+  });
+
+  it.each([
+    ["pages", pagesHtml],
+    ["worker", workerHtml],
   ])("%s: chart modal wrapper exists and opens before its backdrop", (_name, html) => {
     const w = html.indexOf(WRAPPER);
     const b = html.indexOf(BACKDROP);

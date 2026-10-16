@@ -258,7 +258,7 @@ if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNot
 
 if ($('clearSyntheticsBtn')) {
   $('clearSyntheticsBtn').addEventListener('click', async () => {
-    if (!confirm('Purge all synthetic trade records from the journal?\n\nThis will restore the public overview to Institutional-only (+30.78R, 75.0% Win Rate) and give 24/7 Synthetics a clean slate under the active HTF conflict filter.')) return;
+    if (!confirm('Purge all synthetic trade records from the journal?\n\nThis will restore the public overview to Institutional-only (+30.78R, 75.0% Win Rate) and give Deriv watchlist a clean slate under the active HTF conflict filter.')) return;
     const btn = $('clearSyntheticsBtn');
     const oldText = btn.textContent;
     btn.textContent = 'Purging…';
@@ -572,7 +572,7 @@ function renderStats(s) {
     ['segSynthSignals', 'segSynthSignalsOverview'].forEach(id => { if ($(id)) $(id).textContent = String(synth.total || 0); });
   }
 
-  const segBadgeText = state.marketSegment === 'synthetics' ? '⚡ Synthetics' : state.marketSegment === 'institutional' ? '🏛️ Institutional' : 'All';
+  const segBadgeText = state.marketSegment === 'synthetics' ? '⚡ Deriv Watchlist' : state.marketSegment === 'institutional' ? '🏛️ Institutional' : 'All';
   ['overviewNetRSegmentBadge', 'overviewWinRateSegmentBadge', 'overviewOpenSegmentBadge', 'overviewTotalSegmentBadge'].forEach(id => {
     if ($(id)) $(id).textContent = segBadgeText;
   });
@@ -950,7 +950,7 @@ function buildReplaySteps(data) {
   }
   if (data.confirmedAt) {
     const idx = idxAt(data.confirmedAt);
-    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. TAYO entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
+    if (idx >= 0) steps.push({ candleIdx: idx, stage: 'CONFIRMED', narration: 'CONFIRMED — retest candle closed. DEO Edge entry alert dispatched to VIP with entry, stop loss and targets. Levels appear now (never before).' });
   }
   const oc = data.outcome;
   if (oc && oc.status && oc.status !== 'OPEN') {
@@ -1119,13 +1119,13 @@ async function exportLedger(fmt) {
     const rows = await fetchLedgerRows();
     const stamp = new Date().toISOString().slice(0, 10);
     if (fmt === 'json') {
-      downloadBlob(`tayo-radar-ledger-${stamp}.json`, 'application/json', JSON.stringify(rows, null, 2));
+      downloadBlob(`deo-edge-ledger-${stamp}.json`, 'application/json', JSON.stringify(rows, null, 2));
       return;
     }
     const escCsv = val => { const s = val == null ? '' : String(val); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [EXPORT_FIELDS.map(([, label]) => escCsv(label)).join(',')];
     for (const r of rows) lines.push(EXPORT_FIELDS.map(([key]) => escCsv(r[key])).join(','));
-    downloadBlob(`tayo-radar-ledger-${stamp}.csv`, 'text/csv', lines.join('\n'));
+    downloadBlob(`deo-edge-ledger-${stamp}.csv`, 'text/csv', lines.join('\n'));
   } catch (e) {
     alert('Export failed: ' + e.message);
   }

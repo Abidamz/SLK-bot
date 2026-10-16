@@ -2636,7 +2636,7 @@ export default {
       let body: Record<string, unknown> = {};
       try { if (request.method === "POST") body = await request.json() as Record<string, unknown>; } catch { return json({ error: "invalid JSON" }, 400); }
       const channel = body.channel === "telegram" || body.channel === "discord" ? body.channel : "all";
-      const text = "TAYO TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
+      const text = "DEO EDGE TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
       const { sendTelegram, sendDiscord } = await import("./notify");
       const results: Record<string, string> = {};
       const store = makeStore(env.DB);
@@ -2761,10 +2761,10 @@ export default {
         // Immediately send a confirmation DM to user
         const { sendTelegram } = await import("./notify");
         const welcomeText = [
-          "🔔 [CONNECTED] TAYO PRIVATE DM SIGNALS ACTIVE! 🔔",
+          "🔔 [CONNECTED] DEO EDGE PRIVATE DM SIGNALS ACTIVE! 🔔",
           "",
           `Hello ${lastChat.first_name || lastChat.username || "there"}!`,
-          "Your personal Telegram chat is now linked directly to the TAYO Radar engine.",
+          "Your personal Telegram chat is now linked directly to the DEO Edge engine.",
           "",
           "⚡ Whenever a confirmed entry signal fires, you will receive a loud alert right here simultaneously with the channel so you NEVER miss a trade.",
           `Linked Chat ID : ${dmChatId}`,
@@ -2827,7 +2827,7 @@ export default {
 
         const { sendTelegram } = await import("./notify");
         const verification = [
-          "✅ TAYO Free Channel connection verified",
+          "✅ DEO Edge Free Channel connection verified",
           "",
           "The bot can post to this channel.",
           "This is a delivery check only — no setup, entry, or trade outcome was generated.",
@@ -2894,12 +2894,12 @@ export default {
         const { sendTelegram, toBold } = await import("./notify");
         const boldV75 = toBold("V75");
         const welcome = [
-          `⚡ TAYO Radar — 24/7 Synthetics Hub Connected! ⚡`,
+          `⚡ DEO Edge — 24/7 Synthetics Hub Connected! ⚡`,
           "",
           `📍 Active Instrument: 🌟【 ${boldV75} 】🌟 (Volatility 75 Index)`,
           "• Status     : Connected & Active ✅",
           "• Operational: 24 Hours / 7 Days a Week",
-          "• Engine     : TAYO Institutional Market Structure",
+          "• Engine     : DEO Edge · SLK Method",
           "",
           "VIP delivery is limited to engine-confirmed paper entries and final outcomes. Pre-entry WATCH and bias-context cards are not sent to VIP.",
         ].join("\n");
@@ -2931,7 +2931,7 @@ export default {
       await store.setKv("telegram_deriv_chat_id", derivChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ TAYO Synthetics VIP channel linked to ${derivChatId}.\nPaper mode only. VIP delivery is limited to confirmed entries and final outcomes; pre-entry WATCH and bias-context cards are not sent to VIP.`, { silent: false, pin: true, chatId: derivChatId });
+        await sendTelegram(env, `✅ DEO Edge Synthetics VIP channel linked to ${derivChatId}.\nPaper mode only. VIP delivery is limited to confirmed entries and final outcomes; pre-entry WATCH and bias-context cards are not sent to VIP.`, { silent: false, pin: true, chatId: derivChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -2998,7 +2998,7 @@ export default {
         const { sendTelegram, toBold } = await import("./notify");
         const boldV75 = toBold("V75");
         const welcome = [
-          `⚡ TAYO Free Synthetics Channel Connected ⚡`,
+          `⚡ DEO Edge Free Synthetics Channel Connected ⚡`,
           "",
           `📍 Market group: 🌟【 ${boldV75} 】🌟 and supported synthetic markets`,
           "• Status     : Connected ✅",
@@ -3035,7 +3035,7 @@ export default {
       await store.setKv("telegram_deriv_free_chat_id", derivFreeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ TAYO Free Synthetics channel linked to ${derivFreeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: derivFreeChatId });
+        await sendTelegram(env, `✅ DEO Edge Free Synthetics channel linked to ${derivFreeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: derivFreeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -3067,7 +3067,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 TAYO SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
+        "🧪 DEO EDGE SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3101,7 +3101,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 TAYO SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
+        "🧪 DEO EDGE SYNTHETICS DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3131,7 +3131,7 @@ export default {
       await store.setKv("telegram_dm_chat_id", dmChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `🔔 TAYO Private DM Alert delivery linked to chat ID ${dmChatId}! Loud signals will now be sent here simultaneously with the channel.`, { silent: false, pin: false, chatId: dmChatId });
+        await sendTelegram(env, `🔔 DEO Edge Private DM Alert delivery linked to chat ID ${dmChatId}! Loud signals will now be sent here simultaneously with the channel.`, { silent: false, pin: false, chatId: dmChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -3159,7 +3159,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const text = [
-        "🧪 TAYO PRIVATE DM DELIVERY TEST — NOT A SIGNAL",
+        "🧪 DEO EDGE PRIVATE DM DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies direct Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3195,7 +3195,7 @@ export default {
       await store.setKv("telegram_free_chat_id", freeChatId);
       const { sendTelegram } = await import("./notify");
       try {
-        await sendTelegram(env, `✅ TAYO Free channel linked to ${freeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: freeChatId });
+        await sendTelegram(env, `✅ DEO Edge Free channel linked to ${freeChatId}.\nPaper-research updates only; no orders are placed. Pre-entry WATCH and bias-context posts are optional and currently disabled.`, { silent: false, pin: false, chatId: freeChatId });
       } catch (testErr) {
         return json({
           ok: true,
@@ -3227,7 +3227,7 @@ export default {
       }
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 TAYO FREE CHANNEL DELIVERY TEST — NOT A SIGNAL",
+        "🧪 DEO EDGE FREE CHANNEL DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies Telegram delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3741,7 +3741,7 @@ export default {
       const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
       const { sendTelegram } = await import("./notify");
       const testMessage = [
-        "🧪 TAYO TELEGRAM DELIVERY TEST — NOT A SIGNAL",
+        "🧪 DEO EDGE TELEGRAM DELIVERY TEST — NOT A SIGNAL",
         "",
         "This message verifies channel and optional direct-message delivery only.",
         "No market setup, entry, or trade outcome was generated.",
@@ -3911,12 +3911,12 @@ export default {
       if (action === "membership.went_valid" || action === "payment.succeeded") {
         // Generate single-use invite link for primary VIP (Institutional)
         const primaryLink = primaryChatId
-          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `TAYO VIP - ${userId}`)
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `DEO Edge VIP - ${userId}`)
           : null;
 
         // Generate single-use invite link for Synthetics VIP
         const derivLink = derivChatId
-          ? await createTelegramInviteLink(notifyEnv, derivChatId, `TAYO Synthetics VIP - ${userId}`)
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `DEO Edge Synthetics VIP - ${userId}`)
           : null;
 
         const memberRecord = {
@@ -4045,11 +4045,11 @@ export default {
 
       if (event === "went_valid") {
         const primaryLink = primaryChatId
-          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `TAYO VIP Test - test_user_789`)
+          ? await createTelegramInviteLink(notifyEnv, primaryChatId, `DEO Edge VIP Test - test_user_789`)
           : "TELEGRAM_CHAT_ID not configured";
 
         const derivLink = derivChatId
-          ? await createTelegramInviteLink(notifyEnv, derivChatId, `TAYO Synthetics VIP Test - test_user_789`)
+          ? await createTelegramInviteLink(notifyEnv, derivChatId, `DEO Edge Synthetics VIP Test - test_user_789`)
           : "TELEGRAM_DERIV_CHAT_ID not configured";
 
         const memberRecord = {
