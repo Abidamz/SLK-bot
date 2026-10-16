@@ -80,7 +80,12 @@ become routine, the dual-feed design is what must change, not the ledger.
    both engine feeds (OANDA primary, TwelveData secondary) missed the
    touch by more than the one-spread tolerance shipped in 58ff757, so
    the realtime resolver and the repair endpoint both returned
-   UNRESOLVED.
+   UNRESOLVED. Measured gap: OANDA's lowest post-entry 15m low was
+   29889.2 against the 29869.08 target - 20.1 points, about a third of
+   the trade's risk. Index-CFD feeds diverge by tens of points on fast
+   moves; that is a structural property of CFD pricing, not a bug in
+   either feed, and no tolerance can cover it without fabricating
+   outcomes.
 
 **Pattern and permanent fix.** Both overrides are NAS100 index-CFD TP
 touches where the subscriber's broker feed and our CFD feeds diverged by
