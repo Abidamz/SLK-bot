@@ -59,11 +59,12 @@ describe("backtest knobs — the allowlist must match the reads", () => {
     expect(src).toContain("git pull");
   });
 
-  it("records the entry timeframes in the run header, so a dropped request is visible in the log", () => {
-    expect(src).toContain("entry tfs : ${ENTRY_TFS.join");
+  it("records the source-specific entry timeframes in the run header", () => {
+    expect(src).toContain("entry tfs : ${SOURCE_ENTRY_TFS.join");
+    expect(src).toContain("SOURCE === \"deriv\" ? SYNTH_ENTRY_TFS : ENTRY_TFS");
   });
 
   it("writes the V-level candidate to a separate report instead of overwriting baseline results", () => {
-    expect(src).toContain('const planSuffix = VLEVEL_STOPS_TARGETS ? "-vlevel" : "";');
+    expect(src).toContain('const planSuffix = `${SOURCE === "deriv" ? "-deriv" : ""}${VLEVEL_STOPS_TARGETS ? "-vlevel" : ""}`;');
   });
 });

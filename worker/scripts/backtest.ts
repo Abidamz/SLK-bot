@@ -1,23 +1,25 @@
-/** Walk-forward replay of the LIVE TAYO alert engine on real OANDA
- *  minute data. Nothing is fabricated or synthesised; statistics come from
- *  the replay alone. (The model spec bans invented backtest/performance
- *  numbers; this script is how you produce real ones yourself.)
+/** Walk-forward replay of the SLK alert engine on historical OANDA or Deriv
+ *  candles. Deriv is a separate research-only source; it does not change live
+ *  routing or production pairs. All results come from downloaded price history.
  *
  *  Usage (Codespaces terminal):
  *    cd /workspaces/SLK-bot/worker
- *    npm i -D tsx                      # one-time
- *    npx tsx scripts/backtest.ts                 # default watchlist, 60 days (baseline)
- *    npx tsx scripts/backtest.ts US30 30         # one pair, 30 days
- *    BACKTEST_VLEVEL_STOPS_TARGETS=true npx tsx scripts/backtest.ts
- *                                                # Rule 4 candidate; compare against baseline
+ *    npm run backtest -- 60                     # existing OANDA replay
+ *    npm run backtest:deriv -- 360              # all ten Deriv watchlist symbols
+ *    npm run backtest:deriv -- V75,V100 360     # selected Deriv symbols
  *
- *  Baseline report: backtest-report-<date>.md; Rule 4 report:
- *  backtest-report-<date>-vlevel.md. Both are gitignored.
+ *  The Deriv run leaves the final 120 days untouched and writes coverage,
+ *  conflict-gate, and spread-sensitivity notes into its gitignored report.
  */
 import { writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeJetta, fetchOandaRange } from "../src/provider";
-import { defaultStrategy, minStopDistance, pipSize, TF_SECONDS, type StrategyConfig } from "../src/config";
+import { defaultStrategy, isDerivPair, minStopDistance, pipSize, strategyForPair, TF_SECONDS, type StrategyConfig } from "../src/config";
+import { fetchDerivHistoryRange, summarizeDerivHistory } from "./deriv_history";
+import {
+  applyDerivSpreadScenario, derivCrossTimeframeDuplicate, derivDeliveryCooldownActive,
+  splitDerivHoldout,
+} from "../src/deriv_replay";
 import { resampleCandles, dropIncomplete, calendarSeriesComplete, keyLevels } from "../src/features";
 import { biasGate, storylineTiers, type BiasEvidence, type BiasTier } from "../src/bias_gate";
 import { EMPTY_NAVIGATOR, navigatorState, type NavigatorState } from "../src/navigator";
@@ -66,14 +68,18 @@ const CODES: Record<string, string> = {
  * and the older 90d sub-window — see docs/BACKTEST_FINDINGS_2026-10-11.md and
  * the matching cut to PAIRS in wrangler.jsonc.
  *
- * The ten Deriv synthetics cannot be replayed here at all: this script
- * requires OANDA, which does not carry them, so no backtest can ever produce
- * a result for them in either direction.
+ * The default run remains OANDA-only. Deriv synthetics use their own
+ * historical candle source and an independent research replay:
+ *   BACKTEST_SOURCE=deriv npx tsx scripts/backtest.ts 360
+ * That defaults to the ten display-watchlist symbols and never changes the
+ * production PAIRS setting. The Deriv spread model is reported as unknown
+ * unless BACKTEST_DERIV_SPREADS supplies price-unit estimates.
  *
  * To scan the full institutional set again, pass it explicitly:
  *   npx tsx scripts/backtest.ts AUDJPY,EURJPY,GBPJPY,USDJPY,USDCAD,JAPAN225,NAS100,EURUSD,GBPUSD,NZDUSD,XAUUSD,US30,GER40 180
  */
 const DEFAULT_PAIRS = ["JAPAN225", "NAS100", "EURUSD", "XAUUSD"];
+const DEFAULT_DERIV_PAIRS = ["V75", "V100", "V50", "V25", "V10", "V75_1S", "V100_1S", "V50_1S", "V25_1S", "V10_1S"];
 
 
 const HEADERS = { "user-agent": "Mozilla/5.0 (compatible; slk-backtest/1.0)" };
@@ -247,12 +253,61 @@ async function loadDailyContextOanda(pair: string, to: Date): Promise<Candle[]> 
     fetchOandaRange(OANDA_TOKEN, pair, "1d", fromMs, to.getTime(), { environment: OANDA_ENV }));
 }
 
+const DERIV_APP_ID = process.env.DERIV_APP_ID ?? "1089";
+
+async function loadDerivHistory(pair: string, granularitySeconds: number, fromMs: number, toMs: number): Promise<Candle[]> {
+  const key = ["deriv", pair, `${granularitySeconds}s`, fromMs, toMs].join("-");
+  let hit = true;
+  const rows = await cached<Candle[]>(key, async () => {
+    hit = false;
+    const result = await fetchDerivHistoryRange(pair, granularitySeconds, fromMs, toMs, {
+      appId: DERIV_APP_ID,
+      onProgress: ({ pages, bars }) => {
+        if (pages % 50 === 0) console.log(`   ${pair}: ${pages} history pages, ${bars.toLocaleString()} bars`);
+      },
+    });
+    return result.candles;
+  });
+  const quality = summarizeDerivHistory(rows, fromMs, toMs, granularitySeconds);
+  const span = rows.length
+    ? ` (${new Date(rows[0].t).toISOString().slice(0, 10)} → ${new Date(rows[rows.length - 1].t).toISOString().slice(0, 10)})`
+    : "";
+  const tfLabel = granularitySeconds === 60 ? "m1" : granularitySeconds === 86400 ? "d1" : `${granularitySeconds}s`;
+  if (!DERIV_HISTORY_COVERAGE.some((entry) => entry.pair === pair && entry.timeframe === tfLabel)) {
+    DERIV_HISTORY_COVERAGE.push({
+      pair, timeframe: tfLabel, fromMs, toMs,
+      firstBarMs: rows[0]?.t ?? null, lastBarMs: rows[rows.length - 1]?.t ?? null,
+      expectedBars: quality.expectedBars, receivedBars: quality.receivedBars,
+      missingBars: quality.missingBars, gapCount: quality.gapCount, maxGapSeconds: quality.maxGapSeconds,
+    });
+  }
+  console.log(
+    `   ${pair}: ${rows.length.toLocaleString()} ${tfLabel} bars ${hit ? "from cache" : "via Deriv"}${span}; ` +
+    `${quality.missingBars.toLocaleString()} missing, ${quality.gapCount} gaps`,
+  );
+  return rows;
+}
+
+async function loadMinuteHistoryDeriv(pair: string, from: Date, to: Date): Promise<Candle[]> {
+  return loadDerivHistory(pair, 60, from.getTime(), to.getTime());
+}
+
+async function loadDailyContextDeriv(pair: string, to: Date): Promise<Candle[]> {
+  const endOfLastCompleteDay = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  const fromMs = endOfLastCompleteDay - 730 * DAY_MS;
+  return loadDerivHistory(pair, 86400, fromMs, endOfLastCompleteDay);
+}
+
 /**
  * Days to shift the end of the scan window back from today. Lets the same
  * window length be replayed over two disjoint periods, so a pair that looks
  * weak can be checked against a second sample before anything is dropped.
  */
 const END_OFFSET_DAYS = Math.max(0, Number(process.env.BACKTEST_END_OFFSET_DAYS ?? "0") || 0);
+const DAY_MS = 86_400_000;
+// Pin one minute-aligned replay end before fetching any pair, so all timestamps
+// and the held-out boundary use the same minute even when downloads take time.
+const REPLAY_END_MS = Math.floor((Date.now() - END_OFFSET_DAYS * DAY_MS) / 60_000) * 60_000;
 
 /** How many entry-TF candles a pending limit at the retest close stays live. */
 const LIMIT_WINDOW_CANDLES = 2;
@@ -347,6 +402,9 @@ const VLEVEL_STOPS_TARGETS = (process.env.BACKTEST_VLEVEL_STOPS_TARGETS ?? "fals
  */
 const ENTRY_TFS = (process.env.BACKTEST_ENTRY_TFS ?? "30m,1h")
   .split(",").map((x) => x.trim()).filter(Boolean);
+/** Mirror wrangler.jsonc SYNTH_ENTRY_TFS; never inherit the wider FX/index set. */
+const SYNTH_ENTRY_TFS = (process.env.SYNTH_ENTRY_TFS ?? "30m,1h")
+  .split(",").map((x) => x.trim()).filter(Boolean);
 
 /**
  * Prop-firm challenge parameters. Subscribers trade funded accounts, so the
@@ -415,6 +473,11 @@ for (const tf of ENTRY_TFS) {
     throw new Error(`BACKTEST_ENTRY_TFS: "${tf}" is not one of 15m, 30m, 1h, 2h`);
   }
 }
+for (const tf of SYNTH_ENTRY_TFS) {
+  if (tf !== "15m" && tf !== "30m" && tf !== "1h" && tf !== "2h") {
+    throw new Error(`SYNTH_ENTRY_TFS: "${tf}" is not one of 15m, 30m, 1h, 2h`);
+  }
+}
 
 /**
  * Every BACKTEST_* variable this script reads, so that an unrecognised one can
@@ -446,7 +509,7 @@ const KNOWN_BACKTEST_VARS = [
   "BACKTEST_MAX_STOP_PIPS", "BACKTEST_MAX_TRADES_PER_DAY",
   "BACKTEST_PROP_DAILY", "BACKTEST_PROP_TARGET",
   "BACKTEST_PROP_TOTAL",
-  "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_TARGET_SWEEP",
+  "BACKTEST_RISK_PCTS", "BACKTEST_SOURCE", "BACKTEST_DERIV_SPREADS", "BACKTEST_TARGET_SWEEP",
   "BACKTEST_VERBOSE", "BACKTEST_VLEVEL_STOPS_TARGETS",
 ] as const;
 
@@ -555,29 +618,58 @@ const fmtCounts = (rec: Record<string, number>): string =>
 
 async function replay(
   pair: string, days: number, strategy = defaultStrategy(),
-): Promise<{ origin: Trade[]; continuation: Trade[]; confirmation: Trade[]; bias: BiasSummary }> {
+): Promise<{ origin: Trade[]; continuation: Trade[]; confirmation: Trade[]; bias: BiasSummary; htfConflictSuppressed: number; sameLevelSuppressed: number; cooldownSuppressed: number }> {
   const useOanda = SOURCE === "oanda";
+  const useDeriv = SOURCE === "deriv";
+  const replayEntryTfs = useDeriv ? SYNTH_ENTRY_TFS : ENTRY_TFS;
   const code = CODES[pair] ?? pair;
-  if (!useOanda && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
-  const now = new Date(Date.now() - END_OFFSET_DAYS * 86400_000);
-  const scanStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days);
-  const warmupStart = scanStart - 10 * 86400_000;
+  if (!useOanda && !useDeriv && !CODES[pair]) throw new Error(`no Duka code for ${pair}`);
+  if (useDeriv && !isDerivPair(pair)) throw new Error(`${pair} is not one of the configured Deriv watchlist symbols`);
+  const pairStrategy = strategyForPair(pair, strategy);
+  const now = new Date(REPLAY_END_MS);
+  const scanStart = useDeriv
+    ? REPLAY_END_MS - days * DAY_MS
+    : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days);
+  const warmupStart = scanStart - 10 * DAY_MS;
 
-  const span = `${new Date(scanStart).toISOString().slice(0, 10)} → ${now.toISOString().slice(0, 10)}`;
-  console.log(`\n=== ${pair} (${useOanda ? "OANDA" : code}) — ${days}d [${span}]`);
+  const span = useDeriv
+    ? `${new Date(scanStart).toISOString().slice(0, 16).replace("T", " ")} UTC → ${now.toISOString().slice(0, 16).replace("T", " ")} UTC`
+    : `${new Date(scanStart).toISOString().slice(0, 10)} → ${now.toISOString().slice(0, 10)}`;
+  console.log(`\n=== ${pair} (${useOanda ? "OANDA" : useDeriv ? "Deriv CFDs" : code}) — ${days}d [${span}]`);
   const m1 = useOanda
     ? await loadMinuteHistoryOanda(pair, new Date(warmupStart), now)
-    : await loadMinuteHistory(code, new Date(warmupStart), now);
+    : useDeriv
+      ? await loadMinuteHistoryDeriv(pair, new Date(warmupStart), now)
+      : await loadMinuteHistory(code, new Date(warmupStart), now);
   const d1 = useOanda
     ? await loadDailyContextOanda(pair, now)
-    : await loadDailyContext(code, now.getUTCFullYear());
-  if (!useOanda) console.log(`   ${m1.length.toLocaleString()} m1 bars, ${d1.length} d1 bars`);
+    : useDeriv
+      ? await loadDailyContextDeriv(pair, now)
+      : await loadDailyContext(code, now.getUTCFullYear());
   if (!m1.length) {
+    if (useDeriv) throw new Error(`Deriv returned no minute history for ${pair}; refusing to emit a partial or zero-looking report`);
     console.log(`   !! no bars returned — skipping ${pair}`);
     // Must match the normal return shape. Returning a bare [] here makes
     // `r.origin` undefined in the caller, and spreading undefined throws —
     // so one pair with no bars would abort the entire replay.
-    return { origin: [], continuation: [], confirmation: [], bias: emptyBias() };
+    return { origin: [], continuation: [], confirmation: [], bias: emptyBias(), htfConflictSuppressed: 0, sameLevelSuppressed: 0, cooldownSuppressed: 0 };
+  }
+  if (useDeriv) {
+    const earliest = m1[0].t;
+    const latest = m1[m1.length - 1].t;
+    if (earliest > warmupStart + DAY_MS) {
+      throw new Error(`Deriv history for ${pair} starts ${new Date(earliest).toISOString()}, later than the required warmup window ${new Date(warmupStart).toISOString()}; refusing a shortened 360-day replay`);
+    }
+    if (latest < REPLAY_END_MS - 2 * 60_000) {
+      throw new Error(`Deriv history for ${pair} ends at ${new Date(latest).toISOString()}, before the replay end ${new Date(REPLAY_END_MS).toISOString()}; refusing a stale report`);
+    }
+    if (!d1.length || d1[0].t > scanStart - 25 * DAY_MS) {
+      const actualStart = d1[0] ? new Date(d1[0].t).toISOString() : "no daily bars";
+      throw new Error(`Deriv daily context for ${pair} starts at ${actualStart}; at least 25 complete daily candles before the scan start are required`);
+    }
+    if (d1[d1.length - 1].t < REPLAY_END_MS - 2 * DAY_MS) {
+      throw new Error(`Deriv daily context for ${pair} is stale; last bar is ${new Date(d1[d1.length - 1].t).toISOString()}`);
+    }
   }
 
   const m15 = resampleCandles(m1, TF_SECONDS["15m"]);
@@ -595,10 +687,15 @@ async function replay(
   // whole rest of the window, including weeks that had not started.
 
   const seen = new Set<string>();
+  const sameLevelAccepted = new Map<string, { tf: string; time: number }[]>();
+  const cooldownAccepted = new Map<string, number>();
   const trades: Trade[] = [];
   // Why a replay produced nothing is invisible without these: a silent zero
   // looks identical whether the window was empty or every tick was gated.
   let ticks = 0;
+  let htfConflictSuppressed = 0;
+  let sameLevelSuppressed = 0;
+  let cooldownSuppressed = 0;
   const skip = { base: 0, h4: 0, d1: 0, window: 0 };
   // The engine's own funnel counters, aggregated exactly as the coverage
   // audit reports them. Without these a replay that finds nothing is
@@ -628,7 +725,7 @@ async function replay(
   // Every close of the finest requested entry timeframe in the scan window is
   // a production tick: 30m by default, 15m when the 15m arm is requested —
   // production scans 15m, so a replay without it understates the live book.
-  const tick15 = ENTRY_TFS.includes("15m");
+  const tick15 = replayEntryTfs.includes("15m");
   const tickSeries = tick15 ? m15 : m30;
   const tickStep = tick15 ? 900_000 : 1_800_000;
   let m30Ptr = 0;
@@ -673,7 +770,7 @@ async function replay(
           : null,
       };
       if (BIAS_ENABLED) {
-        const tiers = biasTiers(d1c, d1t, w1t, h4, close, strategy);
+        const tiers = biasTiers(d1c, d1t, w1t, h4, close, pairStrategy);
         biasCache = {
           key: tfKey,
           ev: biasGate(tiers, {
@@ -693,7 +790,7 @@ async function replay(
         const mo = calendarSeriesComplete(d1c, "M", close);
         navCache = {
           key: tfKey,
-          st: navigatorState(mo, w1t, d1t, { levels: keyLevels(d1t, strategy) }),
+          st: navigatorState(mo, w1t, d1t, { levels: keyLevels(d1t, pairStrategy) }),
         };
       }
     }
@@ -729,18 +826,23 @@ async function replay(
     // window. Every coarser arm is resampled from `base` and truncated to the
     // candles that had closed by `close` - the same split the 1h arm used.
     const tfs: [string, Candle[], number][] = [];
-    if (ENTRY_TFS.includes("15m") && tick15) tfs.push(["15m", base, close]);
-    if (ENTRY_TFS.includes("30m")) tfs.push(["30m", base30, close]);
-    for (const tf of ENTRY_TFS) {
+    if (replayEntryTfs.includes("15m") && tick15) tfs.push(["15m", base, close]);
+    if (replayEntryTfs.includes("30m")) tfs.push(["30m", base30, close]);
+    for (const tf of replayEntryTfs) {
       if (tf === "30m" || tf === "15m") continue;
       const secs = TF_SECONDS[tf];
       if (close % (secs * 1000) !== 0) continue;                              // no candle closed on this tf yet
       tfs.push([tf, dropIncomplete(resampleCandles(base, secs), secs, close), close]);
     }
+    const h1Context = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], close);
+    const derivScanContext = useDeriv
+      ? { d1Candles: d1t, h1Candles: h1Context, h4Candles: h4 }
+      : {};
     for (const [tf, candles, nowMs] of tfs) {
       const res = scanEntry({
         pair, entryTf: tf, tfSeconds: TF_SECONDS[tf], candles, snaps,
-        cfg: strategy, mode: "paper", provider: "oanda",
+        cfg: pairStrategy, mode: "paper", provider: useDeriv ? "deriv" : "oanda",
+        ...derivScanContext,
       });
       const alerts = res.alerts;
       if (NAV_ENABLED && alerts.length) {
@@ -786,7 +888,7 @@ async function replay(
         // produced ~28,000 "setups" over 180 days against a stated rate of one
         // or two a week. Outcomes are still resolved on the finer series below,
         // so stop and target hits are not blurred to 4-hour granularity.
-        for (const cs of findContinuationSetups(h4, strategy, gateCache.dir, {
+        for (const cs of findContinuationSetups(h4, pairStrategy, gateCache.dir, {
           ...CONT_PARAMS,
           minTouches: CONT_MIN_TOUCHES,
           maxRetraceDepth: CONT_MAX_DEPTH,
@@ -796,7 +898,7 @@ async function replay(
           minBreakBodyPct: CONT_MIN_BODY_PCT,
           minBreakAtrMult: CONT_MIN_BREAK_ATR,
           requireLiquidity: CONT_REQUIRE_LIQ,
-          minStop: minStopDistance(pair, strategy.minStopPips ?? 10),
+          minStop: minStopDistance(pair, pairStrategy.minStopPips ?? 10),
         }, contDiag)) {
           if (contSeen.has(cs.setupId)) continue;
           contSeen.add(cs.setupId);
@@ -884,6 +986,36 @@ async function replay(
       for (const a of alerts) {
         if (seen.has(a.setupId)) continue;                                    // prod dedupe
         seen.add(a.setupId);
+        const cooldownKey = useDeriv
+          ? `${pair}|${a.direction}|${COOLDOWN_PER_TIMEFRAME ? tf : "pair_direction"}`
+          : null;
+        const lastDelivered = cooldownKey ? cooldownAccepted.get(cooldownKey) : undefined;
+        if (derivDeliveryCooldownActive(lastDelivered, a.candleCloseTime, pairStrategy.cooldownMinutes)) {
+          cooldownSuppressed++;
+          continue;                                                           // production 240m delivery cooldown
+        }
+        const sameLevelKey = useDeriv && DEDUP_SAME_LEVEL_ENABLED && a.keyLevelType && Number.isFinite(a.originTime)
+          ? `${pair}|${a.direction}|${a.keyLevelType}|${a.originTime}`
+          : null;
+        if (sameLevelKey) {
+          const recent = (sameLevelAccepted.get(sameLevelKey) ?? [])
+            .filter((prior) => a.candleCloseTime - prior.time < pairStrategy.cooldownMinutes * 60_000);
+          sameLevelAccepted.set(sameLevelKey, recent);
+          if (derivCrossTimeframeDuplicate(recent, tf, a.candleCloseTime, pairStrategy.cooldownMinutes)) {
+            sameLevelSuppressed++;
+            continue;                                                         // production cross-timeframe same-level gate
+          }
+        }
+        if (useDeriv && FILTER_HTF_CONFLICT_ENABLED && a.shadowClassification === "HTF_CONFLICT") {
+          htfConflictSuppressed++;
+          continue;                                                           // Deriv delivery gate: not part of the tradable book
+        }
+        if (cooldownKey) cooldownAccepted.set(cooldownKey, a.candleCloseTime);
+        if (sameLevelKey) {
+          const recent = sameLevelAccepted.get(sameLevelKey) ?? [];
+          recent.push({ tf, time: a.candleCloseTime });
+          sameLevelAccepted.set(sameLevelKey, recent);
+        }
         const tfCandles = entrySeries[tf];
         const after = tfCandles.filter((c) => c.t >= a.candleCloseTime);      // prod semantics
         const oc = evaluateSignal(a.direction, a.entry, a.stopLoss, a.tpInternal, after, 120,
@@ -983,33 +1115,99 @@ async function replay(
         ` · refused ${nav.refused} alerts of ${nav.ticks} ticks`,
     );
   }
-  return { origin: trades, continuation: contTrades, confirmation: confTrades, bias };
+  if (useDeriv) {
+    console.log(`   Deriv 240m delivery cooldown: suppressed ${cooldownSuppressed} unique alerts`);
+    console.log(`   Deriv cross-timeframe same-level gate: suppressed ${sameLevelSuppressed} unique alerts`);
+    console.log(`   Deriv HTF conflict gate: suppressed ${htfConflictSuppressed} unique alerts`);
+  }
+  return { origin: trades, continuation: contTrades, confirmation: confTrades, bias, htfConflictSuppressed, sameLevelSuppressed, cooldownSuppressed };
 }
 
 
-/**
- * OANDA only.
- *
- * Dukascopy remains a real provider in the worker (providerForPair), but its
- * feed returns no bars for every instrument. Left as the backtest's fallback
- * it produced a complete report — per-pair tables, totals, an execution
- * comparison — in which every figure was zero. That reads like a measured
- * result rather than a broken fetch, which is the worst failure mode
- * available. Require OANDA and stop if it is missing.
- */
+/** Select one historical source; never silently fall back to a different market. */
 const SOURCE = (process.env.BACKTEST_SOURCE ?? "oanda").toLowerCase();
+const SOURCE_ENTRY_TFS = SOURCE === "deriv" ? SYNTH_ENTRY_TFS : ENTRY_TFS;
+const FILTER_HTF_CONFLICT_ENABLED = (process.env.FILTER_HTF_CONFLICT ?? "true").toLowerCase() === "true";
+const DEDUP_SAME_LEVEL_ENABLED = (process.env.DEDUP_SAME_LEVEL ?? "").trim().toLowerCase() !== "false";
+const COOLDOWN_PER_TIMEFRAME = (process.env.COOLDOWN_SCOPE ?? "").trim().toLowerCase() !== "pair_direction";
+const DERIV_HISTORY_COVERAGE: Array<{
+  pair: string; timeframe: string; fromMs: number; toMs: number;
+  firstBarMs: number | null; lastBarMs: number | null;
+  expectedBars: number; receivedBars: number; missingBars: number; gapCount: number; maxGapSeconds: number;
+}> = [];
+
+function configureDerivSpreadEstimates(): void {
+  const raw = process.env.BACKTEST_DERIV_SPREADS?.trim();
+  if (!raw) return;
+  for (const item of raw.split(",")) {
+    const match = /^([A-Z0-9_]+)=([0-9]*\.?[0-9]+)$/.exec(item.trim());
+    if (!match) throw new Error(`Invalid BACKTEST_DERIV_SPREADS item ${JSON.stringify(item)}; use PAIR=priceUnits`);
+    const pair = match[1];
+    const spread = Number(match[2]);
+    if (!isDerivPair(pair) || !Number.isFinite(spread) || spread < 0) {
+      throw new Error(`Invalid Deriv spread estimate ${JSON.stringify(item)}; pair must be Deriv and spread non-negative`);
+    }
+    SPREAD_EST[pair] = spread;
+  }
+}
+
+const SPREAD_SENSITIVITY = [0, 0.005, 0.01, 0.025, 0.05] as const;
+
+function renderDerivSpreadSensitivity(pairs: string[], rows: Trade[]): string {
+  const cells = (subset: Trade[]) => SPREAD_SENSITIVITY.map((fraction) => {
+    const adjusted = applyDerivSpreadScenario(subset, fraction);
+    return f(stats(adjusted, false).finalR, 1);
+  });
+  const output = [
+    "## Deriv CFD spread sensitivity (scenario only)",
+    "",
+    "Assumes the quoted spread on **each side** equals the listed fraction of that trade's original stop distance; the round trip pays twice that amount. These scenarios stand alone and replace, rather than add to, any fixed per-symbol spread inputs above. This is a normalized sensitivity, not a measured Deriv spread or a fill reconstruction. Commission, financing/swap, slippage, and changing spreads are not included.",
+    "",
+    "| scope | gross (0%) | 0.5%/side | 1%/side | 2.5%/side | 5%/side |",
+    "|---|---:|---:|---:|---:|---:|",
+  ];
+  for (const pair of pairs) output.push(`| ${pair} | ${cells(rows.filter((trade) => trade.pair === pair)).join(" | ")} |`);
+  output.push(`| **Combined** | ${cells(rows).join(" | ")} |`);
+  return output.join("\n");
+}
+
+function renderDerivHoldout(pairs: string[], rows: Trade[]): string {
+  const split = splitDerivHoldout(rows, { heldOutDays: OOS_DAYS, now: REPLAY_END_MS });
+  const selectedRows = (sample: Trade[], pair?: string) => pair
+    ? sample.filter((trade) => trade.pair === pair)
+    : sample;
+  const result = (sample: Trade[]) => {
+    const gross = stats(sample, false);
+    const fixedSpread = stats(sample, true);
+    return `${gross.alerts} · ${f(gross.finalR, 1)}R · ${f(fixedSpread.finalR, 1)}R`;
+  };
+  const lines = [
+    "## Fixed chronological Deriv holdout",
+    "",
+    `Boundary: ${new Date(split.splitTime).toISOString()} UTC through ${new Date(split.endTime).toISOString()} UTC (${OOS_DAYS} days). All requested symbols are retained; the held-out window is not used to choose pairs or tune rules. Development results include only trades that entered and resolved before the boundary. Development trades still open or resolving on/after the boundary are purged to prevent their price path leaking into development results.`,
+    "",
+    "| pair | development: trades · gross R · fixed-spread R | held-out: trades · gross R · fixed-spread R |",
+    "|---|---:|---:|",
+  ];
+  for (const pair of pairs) {
+    lines.push(`| ${pair} | ${result(selectedRows(split.development, pair))} | ${result(selectedRows(split.holdout, pair))} |`);
+  }
+  lines.push(`| **Combined** | ${result(split.development)} | ${result(split.holdout)} |`);
+  lines.push("", `Purged at the split: ${split.purged} development trades; ignored invalid or post-window entries: ${split.ignored}. Fixed-spread values use only explicitly supplied spread estimates; otherwise they equal gross results.`, "");
+  return lines.join("\n");
+}
 
 async function main() {
   const args = process.argv.slice(2);
-  let days = 60;
-  let pairs = DEFAULT_PAIRS;
+  let days = SOURCE === "deriv" ? 360 : 60;
+  let pairs = SOURCE === "deriv" ? DEFAULT_DERIV_PAIRS : DEFAULT_PAIRS;
   // Order-independent, and anything unrecognised is a hard error. The previous
   // version tested only args[0] and silently fell through: an unset shell
   // variable expands to an empty argument, which matched neither pattern, was
   // never shifted, and swallowed the day count behind it - producing a 60-day
   // default run from a command line that plainly said 360. A plausible-looking
   // report from the wrong window is worse than a crash.
-  const PAIR_LIST = /^[A-Z][A-Z0-9]*(,[A-Z][A-Z0-9]*)*$/;
+  const PAIR_LIST = /^[A-Z][A-Z0-9_]*(,[A-Z][A-Z0-9_]*)*$/;
   for (const a of args) {
     if (/^\d+$/.test(a)) { days = Number(a); continue; }
     if (PAIR_LIST.test(a)) { pairs = a.split(","); continue; }
@@ -1024,22 +1222,35 @@ async function main() {
     process.exit(1);
   }
 
-  if (SOURCE !== "oanda") {
-    console.error(
-      `BACKTEST_SOURCE must be 'oanda' (got '${SOURCE}').\n` +
-      `The Dukascopy feed returns no bars for any instrument.`,
-    );
+  if (SOURCE !== "oanda" && SOURCE !== "deriv") {
+    console.error(`BACKTEST_SOURCE must be 'oanda' or 'deriv' (got '${SOURCE}').`);
     process.exit(1);
   }
-  if (!OANDA_TOKEN) {
+  if (SOURCE === "oanda" && !OANDA_TOKEN) {
     console.error(
       "OANDA_API_TOKEN (or OANDA_API_KEY) is not set, and there is no working fallback.\n" +
       "  export OANDA_API_TOKEN=<token>",
     );
     process.exit(1);
   }
-  console.log(`source: ${SOURCE}`);
-  console.log(`entry tfs : ${ENTRY_TFS.join(", ")}`);
+  if (SOURCE === "deriv") {
+    const invalidPairs = pairs.filter((pair) => !isDerivPair(pair));
+    if (invalidPairs.length) {
+      console.error(`Deriv replay accepts only configured synthetic symbols; invalid pair(s): ${invalidPairs.join(", ")}`);
+      process.exit(1);
+    }
+    if (days <= OOS_DAYS) {
+      console.error(`Deriv replay needs more than ${OOS_DAYS} days so the final ${OOS_DAYS}-day holdout remains untouched.`);
+      process.exit(1);
+    }
+    if (OOS_DAYS !== 120) {
+      console.error(`The approved Deriv report keeps the final 120 days untouched; BACKTEST_OOS_DAYS must be 120 (got ${OOS_DAYS}).`);
+      process.exit(1);
+    }
+    configureDerivSpreadEstimates();
+  }
+  console.log(`source: ${SOURCE === "deriv" ? "Deriv CFDs (research only)" : SOURCE}`);
+  console.log(`entry tfs : ${SOURCE_ENTRY_TFS.join(", ")}`);
   console.log(`stop/target plan : ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}`);
   console.log(`breakeven : ${BE_ENABLED ? `armed at +${f(BE_TRIGGER_R, 2)}R (as the alert instructs)` : "OFF — fixed stop"}`);
   if (BIAS_ENABLED && BIAS_KIND_IGNORED.length) {
@@ -1081,8 +1292,16 @@ async function main() {
    *  Unset reproduces the shipped "any close beyond the zone" behaviour, so the
    *  A/B is the same window with and without the impulse requirement. */
   const flipImpulse = Number(process.env.BACKTEST_FLIP_IMPULSE_ATR ?? "");
+  const productionDefaultSlBuffer = defaultStrategy().slBufferAtr;
+  const configuredSlBuffer = Number(process.env.SL_BUFFER_ATR ?? "");
+  const derivSlBufferAtr = process.env.SL_BUFFER_ATR === undefined
+    ? 0.25 // current worker/wrangler.jsonc production value
+    : Number.isFinite(configuredSlBuffer) && configuredSlBuffer > 0
+      ? configuredSlBuffer
+      : productionDefaultSlBuffer;
   const strategy: StrategyConfig = {
     ...defaultStrategy(),
+    ...(SOURCE === "deriv" ? { slBufferAtr: derivSlBufferAtr } : {}),
     vLevelStopsTargets: VLEVEL_STOPS_TARGETS,
     requireRejectionClose: (process.env.BACKTEST_REJECT_CLOSE ?? "false") === "true",
     requireInducement: (process.env.BACKTEST_INDUCEMENT ?? "false") === "true",
@@ -1103,6 +1322,7 @@ async function main() {
       console.log(`\n*** BACKTEST OVERRIDE: ${name}=${val} (research comparison only) ***`);
     }
   }
+  if (SOURCE === "deriv") console.log(`Deriv strategy uses pair-specific overrides; stop buffer ${strategy.slBufferAtr} ATR`);
   // scanEntry logs every storyline transition, which is useful in production
   // but can overwhelm a long replay. Opt in with BACKTEST_VERBOSE=1.
   const originalInfo = console.info;
@@ -1110,6 +1330,9 @@ async function main() {
   const all: Trade[] = [];
   const contAll: Trade[] = [];
   const confAll: Trade[] = [];
+  const htfConflictSuppressedByPair: Record<string, number> = {};
+  const sameLevelSuppressedByPair: Record<string, number> = {};
+  const cooldownSuppressedByPair: Record<string, number> = {};
   const biasAll = emptyBias();
   try {
     for (const pair of pairs) {
@@ -1117,6 +1340,9 @@ async function main() {
       all.push(...r.origin);
       contAll.push(...r.continuation);
       confAll.push(...r.confirmation);
+      htfConflictSuppressedByPair[pair] = r.htfConflictSuppressed;
+      sameLevelSuppressedByPair[pair] = r.sameLevelSuppressed;
+      cooldownSuppressedByPair[pair] = r.cooldownSuppressed;
       mergeBias(biasAll, r.bias);
     }
   } finally {
@@ -1125,8 +1351,40 @@ async function main() {
 
   const cols = ["pair", "alerts", "TP", "SL", "BE", "EXP", "open", "win%", "netR", "avgR", "PF", "maxDD-R", "loseStrk"];
   console.log(`\n${cols.map((c) => c.padStart(9)).join("")}`);
-  let lines = `# TAYO walk-forward replay — last ${days} days (real OANDA data, live-engine gates)\n\n` +
-    `- Stop/target plan: ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}\n\n`;
+  let lines = SOURCE === "deriv"
+    ? `# DEO Edge Deriv CFD historical replay — ${days} days (research only)\n\n` +
+      `- Replay window UTC: ${new Date(REPLAY_END_MS - days * DAY_MS).toISOString()} to ${new Date(REPLAY_END_MS).toISOString()}.\n` +
+      `- Final holdout: ${OOS_DAYS} days from ${new Date(REPLAY_END_MS - OOS_DAYS * DAY_MS).toISOString()}; no tuning or selection on that period.\n` +
+      `- Synthetic entry timeframes: ${SOURCE_ENTRY_TFS.join(", ")}. Production routing is unchanged.\n` +
+      `- Pair-specific Deriv strategy; stop buffer ${strategy.slBufferAtr} ATR.\n` +
+      `- Stop/target plan: ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}\n\n`
+    : `# TAYO walk-forward replay — last ${days} days (real OANDA data, live-engine gates)\n\n` +
+      `- Stop/target plan: ${VLEVEL_STOPS_TARGETS ? "single-candle V-level (research comparison)" : "current invalidation stop + liquidity targets"}\n\n`;
+  const missing = pairs.filter((p2) => SPREAD_EST[p2] === undefined);
+  if (SOURCE === "deriv") {
+    const spreadInputNote = process.env.BACKTEST_DERIV_SPREADS?.trim()
+      ? `Fixed per-symbol spread inputs were supplied via BACKTEST_DERIV_SPREADS; they are not historical time-varying bid/ask quotes.`
+      : `No verified historical Deriv bid/ask spreads were supplied. Treat gross replay figures as primary; spread-adjusted tables currently charge zero spread for all requested Deriv pairs.`;
+    lines += `> **Execution-cost caveat:** ${spreadInputNote} Entries and exits use the historical candle OHLC model, not verified Deriv account fills. Commission, overnight financing/swap, slippage, changing spreads, contract sizing, and margin are not modeled. Prop-limit and challenge figures use the same fixed-spread inputs (or zero when missing), so without verified costs they are provisional and can understate losses. The separate sensitivity table uses transparent stop-relative scenarios; it is not a claim about Deriv's actual spread.\n\n`;
+    lines += `## Historical candle coverage\n\n| pair | timeframe | first bar UTC | last bar UTC | expected | received | missing | gaps | largest gap (s) |\n|---|---|---|---|---:|---:|---:|---:|---:|\n`;
+    for (const row of DERIV_HISTORY_COVERAGE) {
+      const first = row.firstBarMs === null ? "—" : new Date(row.firstBarMs).toISOString();
+      const last = row.lastBarMs === null ? "—" : new Date(row.lastBarMs).toISOString();
+      lines += `| ${row.pair} | ${row.timeframe} | ${first} | ${last} | ${row.expectedBars} | ${row.receivedBars} | ${row.missingBars} | ${row.gapCount} | ${row.maxGapSeconds} |\n`;
+    }
+    lines += `\n## Production Deriv delivery gates\n\n| pair | delivery cooldown suppressed | cross-TF same-level suppressed | HTF conflict suppressed |\n|---|---:|---:|---:|\n`;
+    for (const pair of pairs) {
+      lines += `| ${pair} | ${cooldownSuppressedByPair[pair] ?? 0} | ${sameLevelSuppressedByPair[pair] ?? 0} | ${htfConflictSuppressedByPair[pair] ?? 0} |\n`;
+    }
+    const cooldownTotal = Object.values(cooldownSuppressedByPair).reduce((sum, count) => sum + count, 0);
+    const sameLevelTotal = Object.values(sameLevelSuppressedByPair).reduce((sum, count) => sum + count, 0);
+    const conflictTotal = Object.values(htfConflictSuppressedByPair).reduce((sum, count) => sum + count, 0);
+    lines += `| **Combined** | **${cooldownTotal}** | **${sameLevelTotal}** | **${conflictTotal}** |\n\n`;
+    lines += `Delivery cooldown: ${strategy.cooldownMinutes}m, ${COOLDOWN_PER_TIMEFRAME ? "scoped per timeframe" : "scoped per pair/direction"}. ` +
+      `Cross-timeframe same-level dedupe: ${DEDUP_SAME_LEVEL_ENABLED ? "on" : "off"}. ` +
+      `HTF-conflict gate: ${FILTER_HTF_CONFLICT_ENABLED ? "on (production default)" : "off by FILTER_HTF_CONFLICT"}. ` +
+      `Suppressed setups are excluded from the tradable replay book.\n\n`;
+  }
   const emit = (spreadAdj: boolean) => {
     const block: string[] = [];
     block.push(`| pair | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`);
@@ -1148,13 +1406,13 @@ async function main() {
     // Per entry timeframe. Every origin trade has always carried its `tf`; it
     // was simply never grouped by. This is the table that says whether the
     // entries belong where production puts them.
-    if (ENTRY_TFS.length > 1) {
+    if (SOURCE_ENTRY_TFS.length > 1) {
       console.log("");
       const tfBlock = [
         `| entry tf | alerts | TP | SL | BE | EXPIRED | open | win% | netR | avgR | PF | maxDD (R) | lose streak |`,
         `|---|---|---|---|---|---|---|---|---|---|---|---|---|`,
       ];
-      for (const [etf, rows] of entryTfGroups(all, ENTRY_TFS)) {
+      for (const [etf, rows] of entryTfGroups(all, SOURCE_ENTRY_TFS)) {
         const s2 = stats(rows, spreadAdj);
         const line = [etf, String(s2.alerts), String(s2.tp), String(s2.sl), String(s2.be), String(s2.expired),
           String(s2.open), f(s2.winrate, 1), f(s2.finalR, 1), f(s2.avgR), f(s2.pf), f(s2.maxDD), String(s2.lossStreak)];
@@ -1260,7 +1518,7 @@ async function main() {
     // the year, which is the luckiest of sixteen at 2.4 sigma, a result pure
     // chance produces 13% of the time.
     for (const [bookName, bookRows] of [["ORIGIN", all], ["CONTINUATION", contAll]] as const) {
-      if (OOS_DAYS <= 0 || !bookRows.length) continue;
+      if (SOURCE === "deriv" || OOS_DAYS <= 0 || !bookRows.length) continue;
       const oos = oosReport(bookRows, spreadAdj, { heldOutDays: OOS_DAYS, minAlerts: OOS_MIN_ALERTS });
       const sel = Number.isFinite(oos.splitTime)
         ? new Date(oos.splitTime).toISOString().slice(0, 10) : "n/a";
@@ -1353,7 +1611,6 @@ async function main() {
     return { block: block.join("\n"), riskNote };
   };
 
-  const missing = pairs.filter((p2) => SPREAD_EST[p2] === undefined);
   if (missing.length) {
     console.log(
       `\n!! No spread estimate for: ${missing.join(", ")}.` +
@@ -1381,8 +1638,18 @@ async function main() {
 
   const raw = emit(false);
   const adj = emit(true);
-  lines += `### Raw fills (mid touch)\n\n${raw.block}\n\n`;
-  lines += `### Spread-adjusted (est. per-pair spread cost, 2× round trip)\n\n${adj.block}\n\n`;
+  const rawHeading = SOURCE === "deriv" ? "### Gross OHLC replay (no spread charged)" : "### Raw fills (mid touch)";
+  lines += `${rawHeading}\n\n${raw.block}\n\n`;
+  const adjustedHeading = SOURCE === "deriv"
+    ? missing.length
+      ? `### Partial fixed-spread adjustment (missing spreads charged as zero; NOT net performance)`
+      : `### Fixed-spread estimates (not historical; 2× round trip)`
+    : `### Spread-adjusted (est. per-pair spread cost, 2× round trip)`;
+  lines += `${adjustedHeading}\n\n${adj.block}\n\n`;
+  if (SOURCE === "deriv") {
+    lines += `${renderDerivSpreadSensitivity(pairs, all)}\n\n`;
+    lines += `${renderDerivHoldout(pairs, all)}\n\n`;
+  }
 
   // Three execution models off the SAME alerts, so the only thing that varies
   // is how the trade is entered.
@@ -1460,7 +1727,7 @@ async function main() {
       if (want === "none" || !t.dir) return false;
       return (b === t.dir) === (want === "agree");
     });
-    const midIso = new Date(Date.now() - END_OFFSET_DAYS * 86400_000 - (days / 2) * 86400_000)
+    const midIso = new Date(REPLAY_END_MS - (days / 2) * DAY_MS)
       .toISOString().slice(0, 10);
     const agreeRow = (label: string, rows: Trade[]): string => {
       const s = stats(rows, true);
@@ -1597,8 +1864,9 @@ async function main() {
     lines += `\n## Target sweep\n\n\`\`\`\n${sw}\n\`\`\`\n`;
   }
 
-  const planSuffix = VLEVEL_STOPS_TARGETS ? "-vlevel" : "";
-  const name = `backtest-report-${new Date().toISOString().slice(0, 10)}${planSuffix}.md`;
+  const planSuffix = `${SOURCE === "deriv" ? "-deriv" : ""}${VLEVEL_STOPS_TARGETS ? "-vlevel" : ""}`;
+  const runDate = new Date(REPLAY_END_MS).toISOString().slice(0, 10);
+  const name = `backtest-report-${runDate}${planSuffix}.md`;
   writeFileSync(name, lines);
   console.log(`\nreport written: ${name}\n(alert = entry that would have alerted; win% over TP+SL only; PF = Σwins/Σ|losses|)`);
 }
