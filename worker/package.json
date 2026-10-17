@@ -16,6 +16,7 @@
     "audit:suppression": "node --experimental-strip-types scripts/audit_suppression.ts",
     "backtest": "tsx scripts/backtest.ts",
     "backtest:deriv": "BACKTEST_SOURCE=deriv tsx scripts/backtest.ts",
+    "diagnose:deriv-history": "tsx scripts/diagnose_deriv_history.ts",
     "audit:shadow": "node --experimental-strip-types scripts/audit_shadow.ts"
   },
   "devDependencies": {
