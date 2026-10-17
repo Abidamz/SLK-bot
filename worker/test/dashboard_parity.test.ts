@@ -60,9 +60,11 @@ describe("dashboard parity sentinels", () => {
     expect(html).toContain("DEO EDGE | FREE SYNTHETICS");
     expect(html).not.toContain("@TAYO_radar");
     expect(html).not.toContain("@TAYO_Hub_synthetics_free");
-    // Keep the existing destinations; only the channel display names changed.
-    expect(html).toContain('href="https://t.me/TAYO_radar"');
-    expect(html).toContain('href="https://t.me/TAYO_Hub_synthetics_free"');
+    // Both public buttons must route to the newly supplied free channels.
+    expect(html).toContain('href="https://t.me/DEOEDGE"');
+    expect(html).toContain('href="https://t.me/DEO_EDGE_synthetics_free"');
+    expect(html).not.toContain("https://t.me/TAYO_radar");
+    expect(html).not.toContain("https://t.me/TAYO_Hub_synthetics_free");
   });
 
   it.each([

@@ -52,8 +52,12 @@ describe("dashboard view modes", () => {
   ])("%s terms use the renamed DEO EDGE Telegram channel titles", (_name, html) => {
     expect(html).toContain("DEO EDGE (FREE)");
     expect(html).toContain("DEO EDGE | FREE SYNTHETICS");
+    expect(html).toContain('href="https://t.me/DEOEDGE"');
+    expect(html).toContain('href="https://t.me/DEO_EDGE_synthetics_free"');
     expect(html).not.toContain("@TAYO_radar");
     expect(html).not.toContain("@TAYO_Hub_synthetics_free");
+    expect(html).not.toContain("https://t.me/TAYO_radar");
+    expect(html).not.toContain("https://t.me/TAYO_Hub_synthetics_free");
   });
 
   it.each([

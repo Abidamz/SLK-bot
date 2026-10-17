@@ -269,12 +269,12 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <!-- Discreet, clean community text links -->
         <div class="community-links-row marketing-only">
           <span>Free Telegram Hubs:</span>
-          <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" class="community-link">
+          <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="community-link">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
             <span>DEO EDGE (FREE)</span>
           </a>
           <span>·</span>
-          <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
+          <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
             <span>DEO EDGE | FREE SYNTHETICS</span>
           </a>
@@ -613,10 +613,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
           <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
           <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-            <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
+            <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
               Join DEO EDGE (FREE)
             </a>
-            <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
+            <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
               Join DEO EDGE | FREE SYNTHETICS
             </a>
           </div>
@@ -648,7 +648,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
               <span>👉 Deriv Synthetics VIP Signals (Instant Access)</span>
             </a>
-            <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
+            <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-tg-link free">
               <span>💬 Join DEO EDGE | FREE SYNTHETICS</span>
             </a>
           </div>
@@ -968,8 +968,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
         <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
         <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ Deriv Synthetics VIP</a>
-        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ DEO EDGE | FREE SYNTHETICS</a>
-        <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 DEO EDGE (FREE)</a>
+        <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ DEO EDGE | FREE SYNTHETICS</a>
+        <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 DEO EDGE (FREE)</a>
         <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
       </div>
     </div>
