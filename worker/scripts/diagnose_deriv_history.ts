@@ -77,6 +77,50 @@ function diagnosticCases(): DiagnosticCase[] {
       },
     );
   }
+
+  for (const daysAgo of [360, 364, 365, 366]) {
+    const start = epochForDaysAgo(daysAgo);
+    cases.push({
+      label: `1m ${daysAgo}d ago, start+end+count`,
+      request: {
+        ticks_history: SYMBOL,
+        style: "candles",
+        granularity: 60,
+        start,
+        end: start + 2 * 60,
+        count: 3,
+      },
+    });
+  }
+  const start370 = epochForDaysAgo(370);
+  cases.push({
+    label: "1m 370d ago, with adjust_start_time=1",
+    request: {
+      ticks_history: SYMBOL,
+      style: "candles",
+      granularity: 60,
+      start: start370,
+      end: start370 + 2 * 60,
+      count: 3,
+      adjust_start_time: 1,
+    },
+  });
+
+  const utcToday = Math.floor(Date.now() / 86_400_000) * 86_400;
+  for (const daysAgo of [350, 365, 385, 730]) {
+    const start = utcToday - daysAgo * 86_400;
+    cases.push({
+      label: `1d ${daysAgo}d ago, start+end+count`,
+      request: {
+        ticks_history: SYMBOL,
+        style: "candles",
+        granularity: 86_400,
+        start,
+        end: start + 2 * 86_400,
+        count: 3,
+      },
+    });
+  }
   return cases;
 }
 
@@ -218,7 +262,7 @@ async function runEndpoint(endpoint: DiagnosticEndpoint, cases: DiagnosticCase[]
 async function main(): Promise<void> {
   console.log("Deriv history bounds diagnostic (read-only; no trades are placed)");
   console.log(`Symbol: ${SYMBOL}; app id: ${APP_ID}`);
-  console.log("Checks a recent control and historical windows at 7, 350, and 370 days.");
+  console.log("Checks M1 availability near 360–370 days and D1 availability back to 730 days.");
   console.log("Compares both new-endpoint Origin modes and all legacy fallback WebSocket endpoints.");
   const cases = diagnosticCases();
   for (const endpoint of endpoints()) await runEndpoint(endpoint, cases);
