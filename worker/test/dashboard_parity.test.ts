@@ -55,6 +55,21 @@ describe("dashboard parity sentinels", () => {
   it.each([
     ["pages", pagesHtml],
     ["worker", workerHtml],
+  ])("%s: lists Netherlands 25 in institutional market coverage", (_name, html) => {
+    expect(html).toContain("NETHERLANDS25");
+    expect(html).toContain("14 Assets");
+  });
+
+  it.each([
+    ["pages app", pagesApp],
+    ["worker", workerHtml],
+  ])("%s: treats Netherlands 25 as an index in the position calculator", (_name, source) => {
+    expect(source).toContain("'NETHERLANDS25'");
+  });
+
+  it.each([
+    ["pages", pagesHtml],
+    ["worker", workerHtml],
   ])("%s: chart modal wrapper exists and opens before its backdrop", (_name, html) => {
     const w = html.indexOf(WRAPPER);
     const b = html.indexOf(BACKDROP);

@@ -1036,7 +1036,7 @@ function pointValuePerLot(pair, price) {
   const p = String(pair || '').toUpperCase();
   if (p.endsWith('JPY')) return 100000 / (price || 1);
   if (p === 'XAUUSD' || p === 'XAGUSD') return 100;
-  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'UK100', 'SPX500'].includes(p)) return 1;
+  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'NETHERLANDS25', 'UK100', 'SPX500'].includes(p)) return 1;
   if (/^V\d|^R_\d|1HZ/.test(p)) return 1;
   return 100000; // USD-quoted forex: $10 per pip per standard lot
 }

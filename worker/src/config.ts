@@ -378,7 +378,7 @@ export function loadConfig(env: EnvVars): WorkerConfig {
 // ------------------------------------------------------------ price helpers
 
 /** Instruments that quote in points, not pips (index CFD canonical names). */
-export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NAS100", "US100", "SPX500", "US500", "UK100"]);
+export const INDEX_POINT_PAIRS = new Set(["US30", "GER40", "DE40", "JAPAN225", "JP225", "N225", "NETHERLANDS25", "NAS100", "US100", "SPX500", "US500", "UK100"]);
 
 /** Deriv synthetic index instruments (24/7 continuous synthetic volatility). */
 export const DERIV_SYNTHETIC_PAIRS = new Set([

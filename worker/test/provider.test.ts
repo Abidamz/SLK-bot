@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, providerForPair, resetProviderCircuitBreakers, symbolFor, DataQualityError } from "../src/provider";
+import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, providerForPair, resetProviderCircuitBreakers, secondaryProviderFor, symbolFor, DataQualityError } from "../src/provider";
+import { INDEX_POINT_PAIRS, identityTick, isForexPair, pipSize } from "../src/config";
 import { dukaJson, flatIndexFeed } from "./fixtures";
 import type { Candle } from "../src/types";
 
@@ -15,6 +16,16 @@ describe("provider routing", () => {
     expect(providerForPair("US30")).toBe("dukascopy");
     expect(providerForPair("GER40")).toBe("dukascopy");
     expect(providerForPair("JAPAN225")).toBe("dukascopy");
+  });
+
+  it("classifies Netherlands 25 as an index CFD quoted in points", () => {
+    expect(INDEX_POINT_PAIRS.has("NETHERLANDS25")).toBe(true);
+    expect(providerForPair("NETHERLANDS25")).toBe("dukascopy");
+    expect(providerForPair("NETHERLANDS25", {}, true)).toBe("oanda");
+    expect(secondaryProviderFor("NETHERLANDS25", "twelvedata")).toBe("oanda");
+    expect(isForexPair("NETHERLANDS25")).toBe(false);
+    expect(pipSize("NETHERLANDS25")).toBe(1);
+    expect(identityTick("NETHERLANDS25")).toBe(1);
   });
 
   it("routes metals to OANDA when its token exists (broker-aligned gold), TD otherwise", () => {
@@ -121,6 +132,36 @@ describe("fetchOanda", () => {
     }
   });
 
+  it("falls back from the Netherlands 25 OANDA route to Dukascopy", async () => {
+    const urls: string[] = [];
+    const fetchFn: typeof fetch = async (u) => {
+      const url = String(u);
+      urls.push(url);
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({ errorMessage: "instrument unavailable" }), { status: 404 });
+      }
+      return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
+    };
+    const result = await fetchMarketData({
+      pair: "NETHERLANDS25", tf: "30m", limit: 120,
+      oandaToken: "TOK", providerMap: { NETHERLANDS25: "oanda" },
+      fetchFn, budget: 1,
+    });
+    expect(result.candles.length).toBeGreaterThan(0);
+    expect(urls.some((url) => url.includes("NLD.IDX-EUR"))).toBe(true);
+  });
+
+  it("maps Netherlands 25 to OANDA's NL25_EUR CFD instrument", async () => {
+    const seen: string[] = [];
+    const fake: typeof fetch = async (u) => {
+      seen.push(String(u));
+      return new Response(JSON.stringify({ instrument: "NL25_EUR", granularity: "M30", candles: [] }), { status: 200 });
+    };
+    expect(providerForPair("NETHERLANDS25", { NETHERLANDS25: "oanda" }, true)).toBe("oanda");
+    await fetchOanda("TOK", "NETHERLANDS25", "30m", 100, {}, fake);
+    expect(seen[0]).toContain("/instruments/NL25_EUR/candles");
+  });
+
   it("requires the token", async () => {
     await expect(fetchOanda("", "US30", "30m", 100, {}, fetch)).rejects.toThrow(/OANDA_API_TOKEN/);
   });
@@ -202,6 +243,9 @@ describe("fetchDukascopy", () => {
     urls.length = 0;
     await fetchDukascopy("JAPAN225", "30m", 120, {}, fetchFn);
     expect(urls.every((u) => u.includes("JPN.IDX-JPY"))).toBe(true);
+    urls.length = 0;
+    await fetchDukascopy("NETHERLANDS25", "30m", 120, {}, fetchFn);
+    expect(urls.every((u) => u.includes("NLD.IDX-EUR"))).toBe(true);
   });
 
   it("generic 6-letter pairs fall back to AAA-BBB codes", async () => {

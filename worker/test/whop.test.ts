@@ -5,6 +5,7 @@ import {
   kickTelegramMember,
   verifyWhopWebhookSignature,
   getChartUrl,
+  getTradingViewChartUrl,
 } from "../src/notify";
 import { MemStore } from "../src/store";
 
@@ -59,6 +60,12 @@ describe("Whop Webhook & Member Automation (Recommendation 4)", () => {
     it("maps US30 and indices to Currencycom / TradingView", () => {
       expect(getChartUrl("US30")).toBe("https://www.tradingview.com/chart/?symbol=CURRENCYCOM:US30");
       expect(getChartUrl("NAS100")).toBe("https://www.tradingview.com/chart/?symbol=CURRENCYCOM:US100");
+    });
+
+    it("maps Netherlands 25 to the OANDA TradingView symbol", () => {
+      const url = "https://www.tradingview.com/chart/?symbol=OANDA:NL25EUR";
+      expect(getChartUrl("NETHERLANDS25")).toBe(url);
+      expect(getTradingViewChartUrl("NETHERLANDS25")).toBe(url);
     });
 
     it("maps Deriv synthetics to Deriv DTrader chart app", () => {

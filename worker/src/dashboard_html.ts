@@ -307,10 +307,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
           <button type="button" class="segment-btn active" data-segment="all">
-            <span>🌍</span> All Markets <span class="seg-count">23</span>
+            <span>🌍</span> All Markets <span class="seg-count">24</span>
           </button>
           <button type="button" class="segment-btn" data-segment="institutional">
-            <span>🏛️</span> Institutional <span class="seg-count">13</span>
+            <span>🏛️</span> Institutional <span class="seg-count">14</span>
           </button>
           <button type="button" class="segment-btn" data-segment="synthetics">
             <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
@@ -326,10 +326,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">14 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">13 Markets</span>
+            <span class="pill" style="font-size:11px;">14 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
@@ -507,8 +507,8 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <dl>
             <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
             <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
-            <div><dt>Active Markets (4)</dt><dd id="pairs">JAPAN225 · NAS100 · EURUSD · XAUUSD</dd></div>
-            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">4 Institutional · evidence-selected 2026-10-11</dd></div>
+            <div><dt>Active Markets (5)</dt><dd id="pairs">JAPAN225 · NAS100 · EURUSD · XAUUSD · NETHERLANDS25</dd></div>
+            <div><dt>Market Coverage</dt><dd style="color: #c084fc; font-weight: 600;">5 Institutional · 4 evidence-selected; Netherlands 25 alert-only</dd></div>
             <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
           </dl>
         </article>
@@ -626,10 +626,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
         <button type="button" class="segment-btn active" data-segment="all">
-          <span>🌍</span> All Markets <span class="seg-count">23</span>
+          <span>🌍</span> All Markets <span class="seg-count">24</span>
         </button>
         <button type="button" class="segment-btn" data-segment="institutional">
-          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">13</span>
+          <span>🏛️</span> Institutional FX & Indices <span class="seg-count">14</span>
         </button>
         <button type="button" class="segment-btn" data-segment="synthetics">
           <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
@@ -691,10 +691,10 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">🏛️</span>
               <div>
                 <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">13 Assets · Asian, London & NY Sessions</small>
+                <small style="color:var(--muted); font-size:11px;">14 Assets · Asian, London & NY Sessions</small>
               </div>
             </div>
-            <span class="pill" style="font-size:11px;">13 Markets</span>
+            <span class="pill" style="font-size:11px;">14 Markets</span>
           </div>
           <div class="seg-card-stats">
             <div><span>Win Rate</span><strong id="segInstWinRate" class="profit-text">—</strong></div>
@@ -1947,7 +1947,7 @@ function pointValuePerLot(pair, price) {
   const p = String(pair || '').toUpperCase();
   if (p.endsWith('JPY')) return 100000 / (price || 1);
   if (p === 'XAUUSD' || p === 'XAGUSD') return 100;
-  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'UK100', 'SPX500'].includes(p)) return 1;
+  if (['US30', 'NAS100', 'GER40', 'DE40', 'JAPAN225', 'JP225', 'NETHERLANDS25', 'UK100', 'SPX500'].includes(p)) return 1;
   if (/^V\\d|^R_\\d|1HZ/.test(p)) return 1;
   return 100000; // USD-quoted forex: $10 per pip per standard lot
 }

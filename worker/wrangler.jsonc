@@ -52,7 +52,7 @@
     // PAPER_NOTIFY=true, so alerts stay explicitly marked PAPER and the MT5
     // bridge remains inactive; no orders are placed. The 360-day Deriv CFD
     // replay is still unvalidated because older history is unavailable.
-    "PAIRS": "JAPAN225,NAS100,EURUSD,XAUUSD,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S",
+    "PAIRS": "JAPAN225,NAS100,EURUSD,XAUUSD,NETHERLANDS25,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S",
     "ENTRY_TFS": "15m,30m,1h",
     // Deriv synthetics confirm on the selected primary timeframes; institutional
     // pairs continue to use the full ENTRY_TFS set.
@@ -144,7 +144,7 @@
     // proof, but it is the first real evidence and it points this way.
     // Set "false" to disable.
     "DEDUP_SAME_LEVEL": "true",
-    "PROVIDER_MAP": "{\"EURUSD\":\"oanda\",\"GBPUSD\":\"oanda\",\"USDJPY\":\"oanda\",\"AUDJPY\":\"oanda\",\"GBPJPY\":\"oanda\",\"USDCAD\":\"oanda\",\"NZDUSD\":\"oanda\",\"EURJPY\":\"oanda\",\"XAUUSD\":\"oanda\",\"US30\":\"oanda\",\"GER40\":\"oanda\",\"JAPAN225\":\"oanda\",\"NAS100\":\"oanda\"}"
+    "PROVIDER_MAP": "{\"EURUSD\":\"oanda\",\"GBPUSD\":\"oanda\",\"USDJPY\":\"oanda\",\"AUDJPY\":\"oanda\",\"GBPJPY\":\"oanda\",\"USDCAD\":\"oanda\",\"NZDUSD\":\"oanda\",\"EURJPY\":\"oanda\",\"XAUUSD\":\"oanda\",\"US30\":\"oanda\",\"GER40\":\"oanda\",\"JAPAN225\":\"oanda\",\"NAS100\":\"oanda\",\"NETHERLANDS25\":\"oanda\"}"
   }
   // secrets (set via `npx wrangler secret put ...`):
   //   TWELVEDATA_API_KEY  TELEGRAM_BOT_TOKEN  TELEGRAM_CHAT_ID

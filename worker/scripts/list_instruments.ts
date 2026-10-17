@@ -2,7 +2,7 @@
  * Enumerate every instrument the OANDA account can actually trade.
  *
  * The universe for a book-wide backtest has to come from the account, not from
- * a hand-maintained list. OANDA_INSTRUMENTS in src/provider.ts maps 16
+ * a hand-maintained list. OANDA_INSTRUMENTS in src/provider.ts maps 17
  * instruments; a prop book needs on the order of 30 uncorrelated ones. Guessing
  * which extra symbols a given account offers wastes a full run per mistake, so
  * this asks the API instead and emits a paste-ready block for what is missing.
@@ -10,7 +10,7 @@
  *   cd worker && npx tsx scripts/list_instruments.ts
  *
  * No unit test: this is a one-shot enumeration with no logic to get wrong. The
- * ALREADY_MAPPED set below mirrors src/provider.ts as of 2026-10-13 and must be
+ * ALREADY_MAPPED set below mirrors src/provider.ts as of 2026-10-17 and must be
  * updated if that map grows.
  */
 
@@ -18,10 +18,10 @@ const TOKEN = process.env.OANDA_API_TOKEN ?? process.env.OANDA_API_KEY ?? "";
 
 const BASES = ["https://api-fxpractice.oanda.com", "https://api-fxtrade.oanda.com"];
 
-/** RHS values already present in OANDA_INSTRUMENTS (src/provider.ts:68). */
+/** RHS values already present in OANDA_INSTRUMENTS (src/provider.ts:69). */
 const ALREADY_MAPPED = new Set([
   "AUD_JPY", "DE30_EUR", "EUR_JPY", "EUR_USD", "GBP_JPY", "GBP_USD",
-  "JP225_USD", "NAS100_USD", "NZD_USD", "SPX500_USD", "UK100_GBP",
+  "JP225_USD", "NAS100_USD", "NL25_EUR", "NZD_USD", "SPX500_USD", "UK100_GBP",
   "US30_USD", "USD_CAD", "USD_JPY", "XAG_USD", "XAU_USD",
 ]);
 

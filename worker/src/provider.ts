@@ -63,12 +63,12 @@ export async function fetchTwelveData(
 // --------------------------------------------------------------------- OANDA
 // Practice-account v3 REST — free signup, official API, broker-grade live
 // quotes, no per-credit counting. Primary source for index CFDs
-// (US30_USD / DE40_EUR / JP225_USD) and eligible for forex+metals too.
+// (US30_USD / DE30_EUR / JP225_USD / NL25_EUR) and eligible for forex+metals too.
 
 /** OANDA instrument names for our canonical pairs. */
 const OANDA_INSTRUMENTS: Record<string, string> = {
   US30: "US30_USD", GER40: "DE30_EUR", DE40: "DE30_EUR", DE30: "DE30_EUR",
-  JAPAN225: "JP225_USD", JP225: "JP225_USD",
+  JAPAN225: "JP225_USD", JP225: "JP225_USD", NETHERLANDS25: "NL25_EUR",
   NAS100: "NAS100_USD", US100: "NAS100_USD", SPX500: "SPX500_USD", US500: "SPX500_USD",
   UK100: "UK100_GBP", XAUUSD: "XAU_USD", XAGUSD: "XAG_USD",
   EURUSD: "EUR_USD", GBPUSD: "GBP_USD", USDJPY: "USD_JPY", AUDJPY: "AUD_JPY", GBPJPY: "GBP_JPY",
@@ -282,7 +282,7 @@ async function pageOandaRange(
 const DUKA_ROOT = "https://jetta.dukascopy.com/v1/candles";
 const DUKA_INSTRUMENTS: Record<string, string> = {
   US30: "USA30.IDX-USD", GER40: "DEU.IDX-EUR", DE40: "DEU.IDX-EUR",
-  JAPAN225: "JPN.IDX-JPY", JP225: "JPN.IDX-JPY",
+  JAPAN225: "JPN.IDX-JPY", JP225: "JPN.IDX-JPY", NETHERLANDS25: "NLD.IDX-EUR",
   NAS100: "USATECH.IDX-USD", US100: "USATECH.IDX-USD",
   SPX500: "USA500.IDX-USD", US500: "USA500.IDX-USD", UK100: "GBR.IDX-GBP",
   XAUUSD: "XAU-USD", XAGUSD: "XAG-USD",

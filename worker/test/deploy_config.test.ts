@@ -4,9 +4,9 @@
  *  that define the live cadence and the gates that must not move are pinned
  *  here. A silent edit to the deployed file (or a revert of the cadence
  *  decision) fails this suite instead of quietly changing production. The
- *  separately authorized Deriv rollout is pinned as alert-only: the ten
- *  supported volatility indices are included while the Worker stays in paper
- *  mode with notifications on.
+ *  approved Deriv and Netherlands 25 additions are pinned as alert-only: the
+ *  ten supported volatility indices plus the new index are included while the
+ *  Worker stays in paper mode with notifications on.
  *
  *  Why 2 markets per tick: after the 2026-10-07 scheduler/store work a full
  *  tick measured 5-15 s against the 60 s cron budget (11-15 s for
@@ -33,12 +33,13 @@ describe("deployed wrangler.jsonc", () => {
     expect(compact).toContain('"PAIR_BATCH_SIZE":"2"');
   });
 
-  it("routes the ten supported Deriv indices for signal alerts only", () => {
+  it("routes Netherlands 25 and the ten supported Deriv indices for alert-only signals", () => {
     expect(compact).toContain(
-      '"PAIRS":"JAPAN225,NAS100,EURUSD,XAUUSD,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S"',
+      '"PAIRS":"JAPAN225,NAS100,EURUSD,XAUUSD,NETHERLANDS25,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S"',
     );
     expect(compact).toContain('"MODE":"paper"');
     expect(compact).toContain('"PAPER_NOTIFY":"true"');
+    expect(compact).toMatch(/NETHERLANDS25.{0,20}oanda/);
   });
 
   it("keeps paper mode and the standing gates byte-identical", () => {
