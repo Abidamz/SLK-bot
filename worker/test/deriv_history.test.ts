@@ -70,7 +70,7 @@ class FakeSocket implements DerivSocketLike {
 }
 
 describe("Deriv historical candle paging", () => {
-  it("walks backwards in bounded pages and returns ordered canonical candles", async () => {
+  it("walks forward through bounded time windows and returns ordered candles", async () => {
     const sockets: FakeSocket[] = [];
     let url = "";
     let headers: Record<string, string> = {};
@@ -82,7 +82,7 @@ describe("Deriv historical candle paging", () => {
         headers = socketHeaders;
         const socket = new FakeSocket((request) => ({
           req_id: request.req_id,
-          candles: history.filter((c) => c.epoch <= request.end).slice(-request.count),
+          candles: history.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
         }));
         sockets.push(socket);
         return socket;
@@ -92,25 +92,32 @@ describe("Deriv historical candle paging", () => {
     expect(url).toBe("wss://api.derivws.com/trading/v1/options/ws/public");
     expect(headers).toEqual({});
     expect(result.symbol).toBe("R_75");
-    expect(result.pages).toBe(2);
+    expect(result.pages).toBe(4);
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
-    expect(sockets[0].sent.map((request) => request.end)).toEqual([359, 180]);
+    expect(sockets[0].sent.map(({ start, end }) => [start, end])).toEqual([
+      [120, 179], [180, 239], [240, 299], [300, 359],
+    ]);
     expect(sockets[0].sent.every((request) => request.count === 2)).toBe(true);
   });
 
-  it("continues backward when a candle epoch exactly equals the requested end", async () => {
-    const rows = [history[1], history[2]];
+  it("includes candles at the first and final requested timestamps", async () => {
+    const rows = [history[0], history[1], history[2]];
+    const sent: Record<string, unknown>[] = [];
     const result = await fetchDerivHistoryRange("V75", 60, 120_000, 241_000, {
       pageSize: 1,
       pageDelayMs: 0,
-      createSocket: () => new FakeSocket((request) => ({
-        req_id: request.req_id,
-        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
-      })),
+      createSocket: () => new FakeSocket((request) => {
+        sent.push(request);
+        return {
+          req_id: request.req_id,
+          candles: rows.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
+        };
+      }),
     });
 
-    expect(result.candles.map((c) => c.t)).toEqual([180_000, 240_000]);
+    expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000]);
     expect(result.pages).toBe(3);
+    expect(sent.map(({ start, end }) => [start, end])).toEqual([[120, 179], [180, 239], [240, 240]]);
   });
 
   it("skips an isolated off-grid candle without shifting it and reports the omission", async () => {
@@ -121,7 +128,7 @@ describe("Deriv historical candle paging", () => {
       pageDelayMs: 0,
       createSocket: () => new FakeSocket((request) => ({
         req_id: request.req_id,
-        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+        candles: rows.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
       })),
     });
 
@@ -130,22 +137,22 @@ describe("Deriv historical candle paging", () => {
     expect(result.skippedMisalignedSamples).toEqual([135]);
   });
 
-  it("keeps the paging cursor aligned after skipping an off-grid oldest candle", async () => {
+  it("keeps the next bounded history window fixed after an off-grid candle", async () => {
     const rows = [
       history[0],
       { epoch: 181, open: 10.5, high: 12, low: 10, close: 11.5 },
       history[2],
       history[3],
     ];
-    const requestedEnds: number[] = [];
+    const requestedPages: [number, number][] = [];
     const result = await fetchDerivHistoryRange("V75", 60, 120_000, 360_000, {
       pageSize: 3,
       pageDelayMs: 0,
       createSocket: () => new FakeSocket((request) => {
-        requestedEnds.push(request.end);
+        requestedPages.push([request.start, request.end]);
         return {
           req_id: request.req_id,
-          candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+          candles: rows.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
         };
       }),
     });
@@ -153,7 +160,7 @@ describe("Deriv historical candle paging", () => {
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 240_000, 300_000]);
     expect(result.skippedMisalignedCandles).toBe(1);
     expect(result.skippedMisalignedSamples).toEqual([181]);
-    expect(requestedEnds).toEqual([359, 180]);
+    expect(requestedPages).toEqual([[120, 239], [240, 359]]);
   });
 
   it("fails early when a page is systematically off the requested candle grid", async () => {
@@ -169,7 +176,7 @@ describe("Deriv historical candle paging", () => {
       pageDelayMs: 0,
       createSocket: () => new FakeSocket((request) => ({
         req_id: request.req_id,
-        candles: rows.filter((c) => c.epoch <= request.end),
+        candles: rows.filter((c) => c.epoch >= request.start && c.epoch <= request.end),
       })),
     })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted dataset/);
   });
@@ -182,12 +189,12 @@ describe("Deriv historical candle paging", () => {
       low: 9,
       close: 10.5,
     }));
-    await expect(fetchDerivHistoryRange("V75", 60, 60_000, 400_000, {
+    await expect(fetchDerivHistoryRange("V75", 60, 120_000, 400_000, {
       pageSize: 1,
       pageDelayMs: 0,
       createSocket: () => new FakeSocket((request) => ({
         req_id: request.req_id,
-        candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+        candles: rows.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
       })),
     })).rejects.toThrow(/off the 60s grid.*refusing a likely shifted dataset/);
   });
@@ -217,7 +224,7 @@ describe("Deriv historical candle paging", () => {
         }
         return new FakeSocket((request) => ({
           req_id: request.req_id,
-          candles: history.filter((c) => c.epoch <= request.end).slice(-request.count),
+          candles: history.filter((c) => c.epoch >= request.start && c.epoch <= request.end).slice(0, request.count),
         }));
       },
     });
@@ -266,7 +273,7 @@ describe("Deriv historical candle paging", () => {
     ]);
   });
 
-  it("fails closed if a response repeats a page without moving backward", async () => {
+  it("rejects a response outside the explicitly requested history window", async () => {
     await expect(fetchDerivHistoryRange("V75", 60, 120_000, 360_000, {
       pageSize: 2,
       pageDelayMs: 0,
@@ -274,7 +281,18 @@ describe("Deriv historical candle paging", () => {
         req_id: request.req_id,
         candles: [history[3]],
       })),
-    })).rejects.toThrow("pagination made no progress");
+    })).rejects.toThrow(/outside requested page/);
+  });
+
+  it("refuses to return a partial result when a bounded page is empty", async () => {
+    await expect(fetchDerivHistoryRange("V75", 60, 120_000, 240_000, {
+      pageSize: 1,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => ({
+        req_id: request.req_id,
+        candles: [],
+      })),
+    })).rejects.toThrow(/returned no candles.*refusing a partial history window/);
   });
 
   it("rejects invalid time ranges rather than returning an empty-looking report", async () => {

@@ -92,6 +92,7 @@ function parseResponse(raw: unknown): DerivResponse {
 interface DecodedCandlePage {
   candles: Candle[];
   oldestEpoch: number | null;
+  newestEpoch: number | null;
   skippedMisalignedCandles: number;
   misalignedSamples: number[];
 }
@@ -100,6 +101,7 @@ function decodeCandles(rows: DerivCandle[], granularitySeconds: number): Decoded
   const out: Candle[] = [];
   const misalignedSamples: number[] = [];
   let oldestEpoch: number | null = null;
+  let newestEpoch: number | null = null;
   let skippedMisalignedCandles = 0;
   for (const row of rows) {
     const epochSeconds = Number(row.epoch);
@@ -125,6 +127,7 @@ function decodeCandles(rows: DerivCandle[], granularitySeconds: number): Decoded
       throw new Error(`Deriv history returned an invalid OHLC range (${values})`);
     }
     oldestEpoch = oldestEpoch === null ? epochSeconds : Math.min(oldestEpoch, epochSeconds);
+    newestEpoch = newestEpoch === null ? epochSeconds : Math.max(newestEpoch, epochSeconds);
     if (epochSeconds % granularitySeconds !== 0) {
       skippedMisalignedCandles++;
       if (misalignedSamples.length < MAX_OFF_GRID_SAMPLES) misalignedSamples.push(epochSeconds);
@@ -135,6 +138,7 @@ function decodeCandles(rows: DerivCandle[], granularitySeconds: number): Decoded
   return {
     candles: out.sort((a, b) => a.t - b.t),
     oldestEpoch,
+    newestEpoch,
     skippedMisalignedCandles,
     misalignedSamples,
   };
@@ -297,6 +301,7 @@ class DerivHistoryClient {
     symbol: string;
     granularitySeconds: number;
     count: number;
+    startEpoch: number;
     endEpoch: number;
   }): Promise<DerivCandle[]> {
     await this.connect();
@@ -317,6 +322,7 @@ class DerivHistoryClient {
           style: "candles",
           granularity: args.granularitySeconds,
           count: args.count,
+          start: args.startEpoch,
           end: args.endEpoch,
           req_id: reqId,
         }));
@@ -342,9 +348,9 @@ class DerivHistoryClient {
 }
 
 /**
- * Download a historical candle range from Deriv by paging backwards from the
- * requested end time. This is a script-only helper for offline research; live
- * Worker fetching still uses its small latest-candle request.
+ * Download a historical candle range from Deriv using explicit, oldest-first
+ * time windows. This is a script-only helper for offline research; live Worker
+ * fetching still uses its small latest-candle request.
  */
 export async function fetchDerivHistoryRange(
   pair: string,
@@ -401,28 +407,40 @@ export async function fetchDerivHistoryRange(
   );
 
   const fromEpoch = Math.floor(fromMs / 1000);
+  const lastEpoch = Math.floor((toMs - 1) / 1000);
   const endExclusiveMs = toMs;
-  let endEpoch = Math.floor((toMs - 1) / 1000);
-  const maxPages = Math.ceil((endEpoch - fromEpoch + 1) / (granularitySeconds * pageSize)) + 3;
+  // Leave a small count margin for an isolated off-grid record inside a page's
+  // time window; Deriv's count is an upper limit, not a guaranteed row count.
+  const intervalsPerPage = Math.max(1, Math.floor(pageSize / (1 + MAX_OFF_GRID_FRACTION)));
+  const pageSpanSeconds = granularitySeconds * intervalsPerPage;
+  const maxPages = Math.ceil((lastEpoch - fromEpoch + 1) / pageSpanSeconds) + 3;
   const candles: Candle[] = [];
   let pages = 0;
   let downloadedCandles = 0;
   let skippedMisalignedCandles = 0;
   const skippedMisalignedSamples: number[] = [];
+  let pageStartEpoch = fromEpoch;
   try {
-    while (endEpoch >= fromEpoch) {
+    while (pageStartEpoch <= lastEpoch) {
       if (pages >= maxPages) {
         throw new Error(`Deriv pagination exceeded ${maxPages} pages for ${pairKey}; refusing a partial backtest window`);
       }
+      const pageEndEpoch = Math.min(lastEpoch, pageStartEpoch + pageSpanSeconds - 1);
       let raw: DerivCandle[] = [];
       for (let attempt = 0; attempt < MAX_HISTORY_REQUEST_ATTEMPTS; attempt++) {
         try {
-          raw = await client.historyPage({ symbol, granularitySeconds, count: pageSize, endEpoch });
+          raw = await client.historyPage({
+            symbol,
+            granularitySeconds,
+            count: pageSize,
+            startEpoch: pageStartEpoch,
+            endEpoch: pageEndEpoch,
+          });
           break;
         } catch (error) {
           if (attempt >= MAX_HISTORY_REQUEST_ATTEMPTS - 1) {
             throw new Error(
-              `Deriv history failed after ${MAX_HISTORY_REQUEST_ATTEMPTS} attempts for ${pairKey} at ${endEpoch}: ${errorMessage(error)}`,
+              `Deriv history failed after ${MAX_HISTORY_REQUEST_ATTEMPTS} attempts for ${pairKey} in ${new Date(pageStartEpoch * 1000).toISOString()}–${new Date(pageEndEpoch * 1000).toISOString()}: ${errorMessage(error)}`,
             );
           }
           const delayMs = Math.min(MAX_RETRY_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** attempt);
@@ -430,8 +448,24 @@ export async function fetchDerivHistoryRange(
         }
       }
       pages++;
-      if (raw.length === 0) break;
+      if (raw.length === 0) {
+        throw new Error(
+          `Deriv returned no candles for ${pairKey} in requested page ${new Date(pageStartEpoch * 1000).toISOString()}–${new Date(pageEndEpoch * 1000).toISOString()}; refusing a partial history window`,
+        );
+      }
       const decoded = decodeCandles(raw, granularitySeconds);
+      if (
+        decoded.oldestEpoch === null
+        || decoded.newestEpoch === null
+        || decoded.oldestEpoch < pageStartEpoch
+        || decoded.newestEpoch > pageEndEpoch
+      ) {
+        const first = decoded.oldestEpoch === null ? "no valid epoch" : new Date(decoded.oldestEpoch * 1000).toISOString();
+        const last = decoded.newestEpoch === null ? "no valid epoch" : new Date(decoded.newestEpoch * 1000).toISOString();
+        throw new Error(
+          `Deriv returned ${raw.length} candle(s) for ${pairKey} outside requested page ${new Date(pageStartEpoch * 1000).toISOString()}–${new Date(pageEndEpoch * 1000).toISOString()} (received ${first}–${last}); refusing out-of-range history`,
+        );
+      }
       const nextDownloadedCandles = downloadedCandles + raw.length;
       const nextSkippedMisalignedCandles = skippedMisalignedCandles + decoded.skippedMisalignedCandles;
       const offGridLimit = Math.max(1, Math.floor(raw.length * MAX_OFF_GRID_FRACTION));
@@ -455,18 +489,8 @@ export async function fetchDerivHistoryRange(
       candles.push(...decoded.candles.filter((c) => c.t >= fromMs && c.t < endExclusiveMs));
       options.onProgress?.({ pair: pairKey, symbol, pages, bars: candles.length });
 
-      const oldestEpoch = decoded.oldestEpoch;
-      if (oldestEpoch === null) break;
-      if (oldestEpoch > endEpoch) {
-        throw new Error(
-          `Deriv pagination made no progress for ${pairKey}: requested end ${new Date(endEpoch * 1000).toISOString()}, but the page's oldest candle is ${new Date(oldestEpoch * 1000).toISOString()} (${raw.length} candles on page ${pages})`,
-        );
-      }
-      if (oldestEpoch <= fromEpoch) break;
-      endEpoch = oldestEpoch % granularitySeconds === 0
-        ? oldestEpoch - granularitySeconds
-        : Math.floor(oldestEpoch / granularitySeconds) * granularitySeconds;
-      if (pageDelayMs > 0) await sleep(pageDelayMs);
+      pageStartEpoch = pageEndEpoch + 1;
+      if (pageDelayMs > 0 && pageStartEpoch <= lastEpoch) await sleep(pageDelayMs);
     }
   } finally {
     client.close();
