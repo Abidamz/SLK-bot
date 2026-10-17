@@ -452,6 +452,7 @@ function renderHealth(h) {
   if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
   if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
   if (h.pairs && h.pairs.length) {
+    if ($('activePairCount')) $('activePairCount').textContent = String(h.pairs.length);
     if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
     const pairSelect = $('alertPair');
     if (pairSelect) {

@@ -55,9 +55,20 @@ describe("dashboard parity sentinels", () => {
   it.each([
     ["pages", pagesHtml],
     ["worker", workerHtml],
-  ])("%s: lists Netherlands 25 in institutional market coverage", (_name, html) => {
+  ])("%s: distinguishes the live scanner from institutional pairs not scanned now", (_name, html) => {
     expect(html).toContain("NETHERLANDS25");
     expect(html).toContain("14 Assets");
+    expect(html).toContain('Live Scanner (<span id="activePairCount">15</span>)');
+    expect(html).toContain("Other institutional pairs — not scanned now (9)");
+    expect(html).toContain("GBPUSD · USDJPY · AUDJPY · GBPJPY · US30 · GER40 · USDCAD · NZDUSD · EURJPY");
+  });
+
+  it.each([
+    ["pages app", pagesApp],
+    ["worker", workerHtml],
+  ])("%s: updates the live scanner count from the health response", (_name, source) => {
+    expect(source).toContain("activePairCount");
+    expect(source).toContain("String(h.pairs.length)");
   });
 
   it.each([
