@@ -240,8 +240,8 @@ export const TERMS_HTML = `<!doctype html>
       <span>DEO Edge · Algorithmic Quantitative Portfolio · Research & Educational Alerts</span>
       <div>
         <a href="/" style="color:var(--muted); margin-right: 18px; text-decoration:none;">Performance Journal</a>
-        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #c084fc; margin-right: 18px; text-decoration:none; font-weight:600;">⚡ Free Synthetics (@TAYO_Hub_synthetics_free)</a>
-        <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; margin-right: 18px; text-decoration:none; font-weight:600;">Free Telegram</a>
+        <a href="https://t.me/TAYO_Hub_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #c084fc; margin-right: 18px; text-decoration:none; font-weight:600;">⚡ DEO EDGE | FREE SYNTHETICS</a>
+        <a href="https://t.me/TAYO_radar" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; margin-right: 18px; text-decoration:none; font-weight:600;">DEO EDGE (FREE)</a>
         <a href="/terms" style="color: var(--accent); font-weight: 600; text-decoration:none;">Terms & Conditions</a>
       </div>
     </div>

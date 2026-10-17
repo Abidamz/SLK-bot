@@ -55,6 +55,19 @@ describe("dashboard parity sentinels", () => {
   it.each([
     ["pages", pagesHtml],
     ["worker", workerHtml],
+  ])("%s: uses the renamed DEO EDGE Telegram channel titles", (_name, html) => {
+    expect(html).toContain("DEO EDGE (FREE)");
+    expect(html).toContain("DEO EDGE | FREE SYNTHETICS");
+    expect(html).not.toContain("@TAYO_radar");
+    expect(html).not.toContain("@TAYO_Hub_synthetics_free");
+    // Keep the existing destinations; only the channel display names changed.
+    expect(html).toContain('href="https://t.me/TAYO_radar"');
+    expect(html).toContain('href="https://t.me/TAYO_Hub_synthetics_free"');
+  });
+
+  it.each([
+    ["pages", pagesHtml],
+    ["worker", workerHtml],
   ])("%s: distinguishes the live scanner from institutional pairs not scanned now", (_name, html) => {
     expect(html).toContain("NETHERLANDS25");
     expect(html).toContain("14 Assets");

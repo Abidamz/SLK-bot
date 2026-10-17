@@ -3296,7 +3296,7 @@ export default {
         ok: true,
         targetFreeChatId: freeChatId,
         results,
-        message: "Test Bias Confirmation sent! Check the VIP channel and Free Telegram channel (@TAYO_radar).",
+        message: "Test Bias Confirmation sent! Check the VIP channel and DEO EDGE (FREE).",
       });
     }
 

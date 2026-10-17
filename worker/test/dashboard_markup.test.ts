@@ -49,6 +49,16 @@ describe("dashboard view modes", () => {
   it.each([
     ["Pages", termsHtml],
     ["Worker", embeddedTerms],
+  ])("%s terms use the renamed DEO EDGE Telegram channel titles", (_name, html) => {
+    expect(html).toContain("DEO EDGE (FREE)");
+    expect(html).toContain("DEO EDGE | FREE SYNTHETICS");
+    expect(html).not.toContain("@TAYO_radar");
+    expect(html).not.toContain("@TAYO_Hub_synthetics_free");
+  });
+
+  it.each([
+    ["Pages", termsHtml],
+    ["Worker", embeddedTerms],
   ])("%s terms use DEO Edge branding and clarify Deriv is alert-only", (_name, html) => {
     expect(html).toContain("<strong>DEO Edge</strong>");
     expect(html).not.toContain("TAYO Radar");
