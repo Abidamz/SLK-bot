@@ -7,7 +7,7 @@
 > - Official Terms & Legal Disclaimer: `https://deoedge.pages.dev/terms`
 > - VIP Signal Telegram Delivery (Automated Whop Bot Integration)
 >
-> **Current market-scope note:** The dashboard lists a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only and does not enable production alerts or order execution. Keep existing Telegram handles and URLs until an owner changes them.
+> **Current market-scope note:** The production scanner is configured to send real-time, paper/research signal alerts for all ten supported Deriv volatility indices. No orders are placed; the 360-day Deriv CFD replay remains unvalidated. Keep existing Telegram handles and URLs until an owner changes them.
 > **Before publishing:** Recheck pricing, performance, and other marketing claims against current product facts.
 
 ---
@@ -39,7 +39,7 @@ Most retail signal channels fail because they are anonymous admins taking random
 ### Persona B: The Busy Professional Trader
 * **Profile:** Full-time job, unable to stare at TradingView for 8 hours during London or New York sessions.
 * **Pain Point:** Sees setups after they’ve already moved 150 points.
-* **Why They Buy:** DEO Edge provides paper alerts for currently configured production instruments and shows Deriv synthetics in a separate, display-only 10-symbol watchlist. The Deriv list is not an active signal or execution feed.
+* **Why They Buy:** DEO Edge sends paper/research signal alerts for currently configured production instruments, including all ten supported Deriv volatility indices. These are not automated executions; do not market Deriv profitability until the required historical replay is validated.
 * **Pitch Angle:** *"You don't need to stare at charts all day. Let the DEO Edge scanner monitor configured markets and send SLK-method research alerts directly to your pocket."*
 
 ---
@@ -95,7 +95,7 @@ Most retail traders lose money because they trade blind: chasing lagging indicat
 
 **DEO Edge is different.**
 
-The dashboard separates currently configured production instruments from a 10-symbol Deriv synthetic watchlist for 24/7 observation. The Deriv list is display-only and does not activate production alerts or execution:
+The production scanner includes all ten supported Deriv volatility indices for real-time paper/research signal alerts. No orders are placed, and the required 360-day Deriv CFD replay remains unvalidated:
 
 ✅ Higher Timeframe Liquidity Sweep (External Liquidity Purged)
 ✅ Market Structure Shift (BOS Displacement on 15m/30m/1H)

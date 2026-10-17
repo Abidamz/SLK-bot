@@ -49,11 +49,11 @@ describe("dashboard view modes", () => {
   it.each([
     ["Pages", termsHtml],
     ["Worker", embeddedTerms],
-  ])("%s terms use DEO Edge branding and clarify Deriv is watchlist-only", (_name, html) => {
+  ])("%s terms use DEO Edge branding and clarify Deriv is alert-only", (_name, html) => {
     expect(html).toContain("<strong>DEO Edge</strong>");
     expect(html).not.toContain("TAYO Radar");
-    expect(html).toContain("The Deriv synthetic-markets watchlist is for observation only");
-    expect(html).toContain("live Deriv trade alerts and automated order execution are not active");
+    expect(html).toContain("The production scanner includes all ten supported Deriv Volatility Indices for paper/research signal alerts only");
+    expect(html).toContain("The current configuration does not place automated orders");
   });
 
   it.each([

@@ -47,8 +47,8 @@ describe("dashboard parity sentinels", () => {
     expect(html).toContain("<strong>DEO Edge</strong>");
     expect(html).toContain("DEO EDGE CONFIRMATION METHOD");
     expect(html).toContain("DEO Edge · Confirmation Engine & Research Ledger");
-    expect(html).toContain("Deriv synthetic watchlist covers 10 symbols for 24/7 observation");
-    expect(html).toContain("this display does not activate production alerts or execution");
+    expect(html).toContain("Deriv coverage includes all 10 supported Volatility Indices");
+    expect(html).toContain("the production scanner sends paper/research signal alerts for these symbols but places no orders");
     expect(html).not.toContain("<strong>TAYO Radar</strong>");
   });
 

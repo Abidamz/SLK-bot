@@ -47,12 +47,12 @@
     // being measured, and the older 90d run is a sub-window rather than
     // out-of-sample. Expect forward results to come in below these figures.
     //
-    // All ten Deriv synthetics were removed here. They have never produced a
-    // stored alert, and the backtest cannot produce a result for them at all:
-    // it requires OANDA, which does not carry them. Cut as UNPROVEN, not as
-    // measured losers. SYNTH_ENTRY_TFS and the Deriv routing are left in place
-    // so they can return without further code changes.
-    "PAIRS": "JAPAN225,NAS100,EURUSD,XAUUSD",
+    // Deriv is included for real-time, research-only signal messages across
+    // the 10 supported volatility indices. MODE remains paper and
+    // PAPER_NOTIFY=true, so alerts stay explicitly marked PAPER and the MT5
+    // bridge remains inactive; no orders are placed. The 360-day Deriv CFD
+    // replay is still unvalidated because older history is unavailable.
+    "PAIRS": "JAPAN225,NAS100,EURUSD,XAUUSD,V75,V100,V50,V25,V10,V75_1S,V100_1S,V50_1S,V25_1S,V10_1S",
     "ENTRY_TFS": "15m,30m,1h",
     // Deriv synthetics confirm on the selected primary timeframes; institutional
     // pairs continue to use the full ENTRY_TFS set.

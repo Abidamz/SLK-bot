@@ -16,8 +16,10 @@ H1/30m (entry) ─┴─▶ XYZ execution:  MAP → TOUCH → SWEEP → SHIFT �
                                                                             🧪 paper mode first)
 ```
 
-**Status: paper-alert scanner.** Deliberately no trade execution. Rules are
-engineering defaults distilled from research into your source material
+**Status: paper-alert scanner.** This rollout sends signal messages only; the
+Worker is in paper mode and does not place orders. Automated execution is
+deferred until separately authorized. Rules are engineering defaults distilled
+from research into your source material
 (see [`docs/TAYO_MODEL_SPEC.md`](docs/TAYO_MODEL_SPEC.md)) — they are not
 creator-issued and no profitability is claimed. Your own chart examples remain
 the authority; if a rule here disagrees with how *you* apply the SLK method, say so and
@@ -123,7 +125,7 @@ Dukascopy index feed, and Deriv synthetic relay.
 | **Dukascopy** | Public feed | Index-CFD fallback where a supported instrument mapping exists |
 | **Deriv** | Relay configuration | Synthetic-index candles through the Worker relay |
 
-The dashboard also shows a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only: it does not add those symbols to production alert routing or enable order execution.
+The production scanner also covers all ten supported Deriv synthetic indices for real-time, paper/research signal messages. These alerts do not place orders, and the required 360-day Deriv CFD replay is still unvalidated.
 
 The Python runner fetches 1h (resampled to 4h) + entry TFs at every cycle and
 the daily context once per UTC day — roughly **3 credits/pair/hour** on a

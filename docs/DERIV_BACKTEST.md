@@ -1,6 +1,6 @@
 # Separate Deriv CFD historical replay
 
-This is a **research-only** path for the ten synthetic symbols already shown on the watchlist: `V75`, `V100`, `V50`, `V25`, `V10`, `V75_1S`, `V100_1S`, `V50_1S`, `V25_1S`, and `V10_1S`. It does not add Deriv to production pairs, change routing, or alter live behavior.
+This is a **research-only** downloader/replay for the ten supported Deriv synthetic symbols: `V75`, `V100`, `V50`, `V25`, `V10`, `V75_1S`, `V100_1S`, `V50_1S`, `V25_1S`, and `V10_1S`. It does not itself change production routing. Separately, the production scanner is configured for paper/research signal messages on all ten indices; it places no orders. The required 360-day replay remains blocked by the public history boundary, so these signals are unvalidated.
 
 ## Run it in the full-egress Codespace
 

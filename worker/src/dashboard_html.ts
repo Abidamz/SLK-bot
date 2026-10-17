@@ -254,7 +254,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       <div>
         <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
         <h1>DEO Edge · Confirmation Engine & Research Ledger</h1>
-          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. A separate Deriv synthetic watchlist covers 10 symbols for 24/7 observation; this display does not activate production alerts or execution.</p>
+          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. Deriv coverage includes all 10 supported Volatility Indices; the production scanner sends paper/research signal alerts for these symbols but places no orders. The required 360-day Deriv CFD replay remains unvalidated.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -345,7 +345,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">⚡</span>
               <div>
                 <strong style="color:#f3e8ff; font-size:14px; display:block;">Deriv Synthetic Watchlist</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · Continuous 24/7/365 · Watchlist only</small>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · 24/7 · Alert-only · No orders</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
@@ -641,7 +641,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <div class="synth-banner-content">
           <span class="synth-badge">⚡ Deriv · 24/7 Watchlist</span>
           <h3>Deriv Synthetic Watchlist (10 Volatility Assets)</h3>
-          <p>The watchlist covers the supported Volatility Indices (V75, V100, V50, V25, V10 and the 1s series) for separate, 24/7 research. This display does not switch on production alerts or place orders for Deriv.</p>
+          <p>The Deriv scanner covers the supported Volatility Indices (V75, V100, V50, V25, V10 and the 1s series) for 24/7 paper/research signal alerts. No orders are placed, and the required 360-day Deriv CFD replay remains unvalidated.</p>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
             <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="synth-tg-link">
               <span>👉 Deriv Synthetics VIP Signals (Instant Access)</span>
@@ -710,7 +710,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
               <span style="font-size:18px;">⚡</span>
               <div>
                 <strong style="color:#f3e8ff; font-size:14px; display:block;">Deriv Synthetic Watchlist</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · Continuous 24/7/365 · Watchlist only</small>
+                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · 24/7 · Alert-only · No orders</small>
               </div>
             </div>
             <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>

@@ -6,7 +6,7 @@ Create a lightweight, read-only dashboard for the DEO Edge alert Worker. The das
 
 The dashboard improves observability and trust; it does **not** imply higher profitability or replace the replay and paper-validation process.
 
-The public dashboard also shows a separate 10-symbol Deriv synthetic watchlist for 24/7 observation. It is display-only and does not add Deriv symbols to production alert routing or enable execution.
+The public dashboard covers all ten supported Deriv volatility indices. The production scanner is configured to send real-time paper/research signal messages for them only; no orders are placed, and the required 360-day Deriv CFD replay remains unvalidated.
 
 ## Current system state
 

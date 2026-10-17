@@ -11,7 +11,7 @@
 
 Welcome to the institutional trading room. 
 
-DEO Edge uses the SLK method (Structure · Liquidity · Key Levels) for paper-research alerts. Deriv synthetic indices are shown in a separate 10-symbol, 24/7 watchlist; that watchlist does not activate production alerts or place orders.
+DEO Edge uses the SLK method (Structure · Liquidity · Key Levels) for paper-research alerts. Production alerts cover all ten supported Deriv indices, but no orders are placed; Deriv's required 360-day historical replay remains unvalidated.
 
 Please read this execution protocol carefully before placing your first trade.
 

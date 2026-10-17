@@ -172,7 +172,7 @@ export const TERMS_HTML = `<!doctype html>
       </div>
 
       <h2>1. Nature of the Service & No Financial Advice</h2>
-      <p>DEO Edge is an automated algorithmic research system that monitors institutional market structure, liquidity sweeps, order blocks, and key-level retests across select currency pairs, metals, and indices. The Deriv synthetic-markets watchlist is for observation only; live Deriv trade alerts and automated order execution are not active.</p>
+      <p>DEO Edge is an automated algorithmic research system that monitors institutional market structure, liquidity sweeps, order blocks, and key-level retests across select currency pairs, metals, and indices. The production scanner includes all ten supported Deriv Volatility Indices for paper/research signal alerts only. The current configuration does not place automated orders; the 360-day historical Deriv CFD replay remains unvalidated.</p>
       <ul>
         <li><strong>Informational & Educational Use Only:</strong> All alerts, directional bias cards, watch notifications, technical levels, and journal entries are provided strictly for educational and informational purposes.</li>
         <li><strong>Not an Investment Advisor:</strong> DEO Edge, its authors, and affiliates are not registered investment advisors (RIA), commodity trading advisors (CTA), or broker-dealers.</li>

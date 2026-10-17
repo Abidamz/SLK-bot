@@ -3,8 +3,9 @@
 Cloudflare Worker for DEO Edge alerts using the SLK method. It runs the full
 ABC-storyline → XYZ-execution state machine on a 1-minute Cron Trigger,
 confirms signals on **closed candles only**, and delivers paper alerts to
-Telegram and Discord. State lives in D1. **Research tool — it never places
-trades and never will.**
+Telegram and Discord. State lives in D1. **This rollout is alert-only; the
+Worker is in paper mode and does not place orders. Automated execution is
+deferred until separately authorized.**
 
 ## Architecture
 
@@ -20,8 +21,7 @@ Configured feeds (Twelve Data/OANDA/Dukascopy/Deriv) ──► Cron */1 * * * * 
                           (outbound only — no inbound webhooks required)
 ```
 
-Deriv synthetics are also listed in a separate 10-symbol, display-only watchlist;
-that display does not add them to production alert routing or enable execution.
+The production scanner includes all ten supported Deriv volatility indices for real-time paper/research signal alerts. They remain alert-only: the Worker is in paper mode, the MT5 bridge is inactive, and no orders are placed. The 360-day CFD replay is still unvalidated.
 
 - **Engine** (`src/features.ts`, `src/storyline.ts`, `src/engine.ts`,
   `src/outcomes.ts`): dependency-free port of the Python v2 engine
