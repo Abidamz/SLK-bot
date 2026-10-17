@@ -94,7 +94,7 @@ describe("Deriv historical candle paging", () => {
     expect(result.symbol).toBe("R_75");
     expect(result.pages).toBe(2);
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
-    expect(sockets[0].sent.map((request) => request.end)).toEqual([359, 239]);
+    expect(sockets[0].sent.map((request) => request.end)).toEqual([359, 180]);
     expect(sockets[0].sent.every((request) => request.count === 2)).toBe(true);
   });
 
@@ -128,6 +128,32 @@ describe("Deriv historical candle paging", () => {
     expect(result.candles.map((c) => c.t)).toEqual([120_000, 180_000, 240_000, 300_000]);
     expect(result.skippedMisalignedCandles).toBe(1);
     expect(result.skippedMisalignedSamples).toEqual([135]);
+  });
+
+  it("keeps the paging cursor aligned after skipping an off-grid oldest candle", async () => {
+    const rows = [
+      history[0],
+      { epoch: 181, open: 10.5, high: 12, low: 10, close: 11.5 },
+      history[2],
+      history[3],
+    ];
+    const requestedEnds: number[] = [];
+    const result = await fetchDerivHistoryRange("V75", 60, 120_000, 360_000, {
+      pageSize: 3,
+      pageDelayMs: 0,
+      createSocket: () => new FakeSocket((request) => {
+        requestedEnds.push(request.end);
+        return {
+          req_id: request.req_id,
+          candles: rows.filter((c) => c.epoch <= request.end).slice(-request.count),
+        };
+      }),
+    });
+
+    expect(result.candles.map((c) => c.t)).toEqual([120_000, 240_000, 300_000]);
+    expect(result.skippedMisalignedCandles).toBe(1);
+    expect(result.skippedMisalignedSamples).toEqual([181]);
+    expect(requestedEnds).toEqual([359, 180]);
   });
 
   it("fails early when a page is systematically off the requested candle grid", async () => {

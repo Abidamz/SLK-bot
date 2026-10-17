@@ -463,7 +463,9 @@ export async function fetchDerivHistoryRange(
         );
       }
       if (oldestEpoch <= fromEpoch) break;
-      endEpoch = oldestEpoch - 1;
+      endEpoch = oldestEpoch % granularitySeconds === 0
+        ? oldestEpoch - granularitySeconds
+        : Math.floor(oldestEpoch / granularitySeconds) * granularitySeconds;
       if (pageDelayMs > 0) await sleep(pageDelayMs);
     }
   } finally {
