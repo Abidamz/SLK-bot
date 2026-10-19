@@ -6,6 +6,12 @@ on:
       - 'arena/**'
       - main
   workflow_dispatch:
+    inputs:
+      worker_only:
+        description: "Deploy the Worker only; skip Pages and D1 migrations."
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   test:
@@ -65,6 +71,7 @@ jobs:
       # the asset URLs with the commit SHA gives every deploy a fresh cache key
       # so returning visitors never run a stale app.js for hours after a release.
       - name: Stamp Dashboard Asset Versions
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.worker_only != true }}
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           sed -i "s/app\.js?v=[A-Za-z0-9]*/app.js?v=${SHORT_SHA}/" dashboard/index.html
@@ -75,6 +82,7 @@ jobs:
       # existing links transition. Pages projects are not auto-created by
       # `pages deploy`, so `deoedge` must exist in Cloudflare first.
       - name: Deploy Cloudflare Pages
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.worker_only != true }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -102,7 +110,9 @@ jobs:
     name: Apply D1 Migrations
     needs: deploy
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main'
+    if: >-
+      (startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main') &&
+      (github.event_name != 'workflow_dispatch' || inputs.worker_only != true)
     # Blocking by design. This was temporarily continue-on-error while
     # diagnosing a failure that turned out to be CLOUDFLARE_API_TOKEN lacking
     # D1:Edit -- the "Edit Cloudflare Workers" token template does not include

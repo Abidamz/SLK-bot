@@ -104,6 +104,78 @@ describe("scheduled scan cycle", () => {
     expect(store.events).toHaveLength(6);
   });
 
+  it("hydrates the free Telegram destination from KV for confirmed-entry teasers", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    await store.setKv("telegram_free_chat_id", "-100_FREE_RADAR");
+    const telegramTargets: string[] = [];
+    const fixtureFetch = makeFakeFetch(calls);
+    const fetchFn: typeof fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("api.telegram.org") && url.includes("/sendMessage")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { chat_id?: string };
+        if (body.chat_id) telegramTargets.push(body.chat_id);
+      }
+      return fixtureFetch(input, init);
+    };
+    const summary = await scanAll(makeEnv(), {
+      now: NOW, fetchFn, force: true, storeOverride: store,
+    });
+    expect(summary.alerts).toBe(1);
+    expect(telegramTargets).toContain("123");
+    expect(telegramTargets).toContain("-100_FREE_RADAR");
+    expect(calls.telegram.some((text) => text.includes("DEO EDGE — CONFIRMED SIGNAL"))).toBe(true);
+    expect(calls.discord).toHaveLength(1);
+  });
+
+  it("hydrates the Deriv free Telegram destination from KV for confirmed-entry teasers", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    await store.setKv("telegram_deriv_free_chat_id", "-100_FREE_SYNTHETICS");
+    const telegramTargets: string[] = [];
+    const fixtureFetch = makeFakeFetch(calls);
+    const fetchFn: typeof fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("api.telegram.org") && url.includes("/sendMessage")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { chat_id?: string };
+        if (body.chat_id) telegramTargets.push(body.chat_id);
+      }
+      return fixtureFetch(input, init);
+    };
+    const env = makeEnv({ TELEGRAM_DERIV_CHAT_ID: "456" });
+    const derivAlert = {
+      pair: "V75",
+      direction: "LONG" as const,
+      entryTf: "1h",
+      mapTf: "4h",
+      keyLevelBounds: [44900, 45000] as [number, number],
+      keyLevelTested: true,
+      keyLevelFlipped: false,
+      imbalanceContext: [],
+      keyLevelType: "V" as const,
+      alertStatus: "PAPER" as const,
+      entry: 45000,
+      stopLoss: 44700,
+      tpInternal: 45900,
+      tpExternal: 46500,
+      drawOnLiquidity: null,
+      rrInternal: 3,
+      invalidationLevel: 44700,
+      opposingLiquidityStanding: true,
+      sweepTime: NOW - 3600_000,
+      bosTime: NOW - 1800_000,
+      returnTime: NOW,
+      setupId: "test-deriv-kv-entry",
+      environment: "BULLISH",
+      phase: "EXPANSION",
+      htfAlignment: "ALIGNED",
+    };
+    await deliver(env, store, derivAlert as any, loadConfig(env), true, fetchFn);
+    expect(telegramTargets).toContain("456");
+    expect(telegramTargets).toContain("-100_FREE_SYNTHETICS");
+    expect(calls.telegram.some((text) => text.includes("DEO EDGE — CONFIRMED SIGNAL"))).toBe(true);
+  });
+
   it("default index CFD route is the Dukascopy public feed (no token needed)", async () => {
     const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
     const store = new MemStore();

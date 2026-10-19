@@ -1091,10 +1091,19 @@ export async function deliver(
     return;
   }
   const dmChatId = env.TELEGRAM_DM_CHAT_ID || (await store.getKv("telegram_dm_chat_id")) || undefined;
+  const freeChatId = env.TELEGRAM_FREE_CHAT_ID || (await store.getKv("telegram_free_chat_id")) || undefined;
   const derivChatId = env.TELEGRAM_DERIV_CHAT_ID || (await store.getKv("telegram_deriv_chat_id")) || undefined;
+  const derivFreeChatId = env.TELEGRAM_DERIV_FREE_CHAT_ID || (await store.getKv("telegram_deriv_free_chat_id")) || undefined;
   const chartImgKey = env.CHART_IMG_API_KEY || (await store.getKv("chart_img_api_key")) || undefined;
   const deliveryResults = await notifyAlert(
-    { ...env, fetchFn, TELEGRAM_DM_CHAT_ID: dmChatId, TELEGRAM_DERIV_CHAT_ID: derivChatId, CHART_IMG_API_KEY: chartImgKey },
+    {
+      ...env, fetchFn,
+      TELEGRAM_DM_CHAT_ID: dmChatId,
+      TELEGRAM_FREE_CHAT_ID: freeChatId,
+      TELEGRAM_DERIV_CHAT_ID: derivChatId,
+      TELEGRAM_DERIV_FREE_CHAT_ID: derivFreeChatId,
+      CHART_IMG_API_KEY: chartImgKey,
+    },
     alert,
   );
   await persistNotificationDeliveryResults(store, "confirmed_entry", {
