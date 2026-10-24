@@ -1,13 +1,15 @@
 import { DEO_EDGE_LOGO_DATA_URI } from "./brand_logo";
+import { DASHBOARD_THEME_CSS } from "./dashboard_theme_css";
 
 export const DASHBOARD_HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DEO Edge · Trading Research & Live Trade Journal</title>
+  <title>DEO Edge · Confirmation Engine & Research Ledger</title>
+  <meta name="theme-color" content="#080b0e">
   <style>
-:root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:inline-flex;align-items:center;gap:10px;min-width:0;padding:6px 15px 6px 6px;border:1px solid rgba(140,240,198,.28);border-radius:999px;background:linear-gradient(180deg,#111923,#0b1018);box-shadow:0 8px 24px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.04);color:var(--text);text-decoration:none;font-size:20px;letter-spacing:-.03em;transition:transform 140ms cubic-bezier(.23,1,.32,1),border-color 140ms cubic-bezier(.23,1,.32,1),box-shadow 140ms cubic-bezier(.23,1,.32,1)}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:block;flex:0 0 38px;width:38px;height:38px;object-fit:contain;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:#000}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.mc-verdict{margin-top:26px;border-top:1px solid var(--line);padding-top:18px}.mc-verdict h3{margin:0 0 6px;font-size:15px}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+:root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:inline-flex;align-items:center;gap:10px;min-width:0;padding:6px 15px 6px 6px;border:1px solid rgba(140,240,198,.28);border-radius:999px;background:linear-gradient(180deg,#111923,#0b1018);box-shadow:0 8px 24px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.04);color:var(--text);text-decoration:none;font-size:20px;letter-spacing:-.03em;transition:transform 140ms cubic-bezier(.23,1,.32,1),border-color 140ms cubic-bezier(.23,1,.32,1),box-shadow 140ms cubic-bezier(.23,1,.32,1)}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:block;flex:0 0 38px;width:38px;height:38px;object-fit:contain;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#000}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.mc-verdict{margin-top:26px;border-top:1px solid var(--line);padding-top:18px}.mc-verdict h3{margin:0 0 6px;font-size:15px}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
 .alert-row:hover{border-color:#54719c;background:#142033}
 .alert-row strong,.alert-row .alert-pair,.alert-row .alert-val{display:block;font-size:14px;color:#f1f5f9!important;font-weight:700;margin-top:2px}
 .alert-row small,.alert-row .alert-meta{display:block;color:#94a3b8!important;font-size:12px;margin-top:3px}
@@ -205,6 +207,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
 @media(hover:hover) and (pointer:fine){.brand:hover{border-color:rgba(140,240,198,.58);box-shadow:0 10px 30px rgba(0,0,0,.28),0 0 18px rgba(140,240,198,.08)}}
 @media(prefers-reduced-motion:reduce){.brand{transition:none}.brand:active{transform:none}}
 </style>
+  <style>${DASHBOARD_THEME_CSS}</style>
 </head>
 <body>
   <header class="topbar">
@@ -217,19 +220,15 @@ body:not(.operator-mode) .operator-only{display:none!important}
     </a>
     <div class="header-actions">
       <div class="mode-switcher-wrap" style="display: flex; align-items: center; gap: 8px;">
-        <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
-          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">
+        <div class="mode-switcher" role="group" aria-label="Terminal View Mode">
+          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public" aria-pressed="true">
             <span class="mode-dot"></span> 📊 Public Overview
           </button>
-          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">
+          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator" aria-pressed="false">
             <span class="mode-dot"></span> 🖥️ Operator Terminal
           </button>
         </div>
         <span id="activeModeLabel" class="pill gray">Viewing: Public Overview</span>
-      </div>
-      <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
-        <span id="statusDot" class="dot ok"></span>
-        <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
       <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -238,7 +237,27 @@ body:not(.operator-mode) .operator-only{display:none!important}
     </div>
   </header>
 
-  <main class="shell">
+  <section class="status-rail marketing-only" aria-label="System and execution status">
+    <div class="status-rail-item status-rail-health">
+      <div class="status" id="systemStatusPill" title="Latest worker health response" aria-live="polite" aria-atomic="true">
+        <span id="statusDot" class="dot ok"></span>
+        <span id="statusText">Checking worker status…</span>
+      </div>
+      <small>Paper pipeline</small>
+    </div>
+    <div class="status-rail-item">
+      <span class="status-rail-icon" aria-hidden="true">⌁</span>
+      <span><strong>Configured data sources</strong><small>OANDA v3 · Twelve Data · Dukascopy · Deriv</small></span>
+    </div>
+    <div class="status-rail-item">
+      <span class="status-rail-icon" aria-hidden="true">◷</span>
+      <span><strong>Feed freshness</strong><small>See Market Health for the latest check</small></span>
+    </div>
+    <div class="safety-lock"><span aria-hidden="true">▣</span>PAPER SIMULATION · NO LIVE ORDERS</div>
+  </section>
+
+  <a class="skip-link" href="#mainContent">Skip to dashboard content</a>
+  <main id="mainContent" class="shell" tabindex="-1">
     <div class="announcement-banner marketing-only">
       <div class="banner-left">
         <span class="banner-badge">FOUNDING COHORT</span>
@@ -255,7 +274,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span class="dot ok"></span>
         <div>
           <span>Worker Engine</span>
-          <strong id="opWorkerHealth">v2.5.3 · Sub-millisecond CPU</strong>
+          <strong id="opWorkerHealth">v2.5.3 · Checking health</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -269,7 +288,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <span style="font-size:16px;">⏱️</span>
         <div>
           <span>Scan Freshness</span>
-          <strong id="opLastScan">Synchronized with bar close</strong>
+          <strong id="opLastScan">Waiting for the latest health check</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -283,9 +302,11 @@ body:not(.operator-mode) .operator-only{display:none!important}
 
     <section class="hero">
       <div>
-        <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
-        <h1>DEO Edge · Confirmation Engine & Research Ledger</h1>
-          <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. Deriv coverage includes all 10 supported Volatility Indices; the production scanner sends paper/research signal alerts for these symbols but places no orders. The required 360-day Deriv CFD replay remains unvalidated.</p>
+        <p class="eyebrow">QUANTITATIVE RESEARCH &amp; CONFIRMATION ENGINE</p>
+        <h1>Make the close<br><em>earn its place.</em></h1>
+        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts, and confirmation entries across supported markets.</p>
+        <p class="hero-disclaimer"><span aria-hidden="true">!</span> Research and education only; the production scanner sends paper/research signal alerts for these symbols but places no orders. Historical or simulated outcomes do not guarantee future results.</p>
+        <p class="research-caveat">Deriv coverage includes all 10 supported Volatility Indices for paper/research alerts only; the required 360-day Deriv CFD replay remains unvalidated.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -311,25 +332,25 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </a>
         </div>
       </div>
-      <div class="execution-badge" style="border-color: #78531a; background: #1c150b;">
-        <span style="color: #f6c66d;">EXECUTION PIPELINE</span>
-        <strong style="color: #f6c66d;">PAPER SIMULATION</strong>
-        <small style="color: #cbd5e1;">Rule-checked · No live orders</small>
+      <div class="execution-badge" aria-label="Execution safety: paper simulation only">
+        <span>EXECUTION SAFETY</span>
+        <strong>PAPER SIMULATION</strong>
+        <small>Rule-checked research · No live orders</small>
       </div>
     </section>
         <small>Automated Cloud Scanner</small>
       </div>
     </section>
 
-    <nav class="tabs" aria-label="Dashboard sections">
-      <button class="tab active" data-tab="overview">Overview</button>
-      <button class="tab" data-tab="performance">Performance</button>
-      <button class="tab" data-tab="alerts">Trade Journal & Alerts</button>
-      <button class="tab" data-tab="health">Market Health</button>
-      <button class="tab" data-tab="preferences">Channel Settings</button>
+    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button type="button" class="tab active" id="tabOverview" role="tab" data-tab="overview" aria-controls="overview" aria-selected="true" tabindex="0">Overview</button>
+      <button type="button" class="tab" id="tabPerformance" role="tab" data-tab="performance" aria-controls="performance" aria-selected="false" tabindex="-1">Performance</button>
+      <button type="button" class="tab" id="tabAlerts" role="tab" data-tab="alerts" aria-controls="alerts" aria-selected="false" tabindex="-1">Trade Journal &amp; Alerts</button>
+      <button type="button" class="tab" id="tabHealth" role="tab" data-tab="health" aria-controls="health" aria-selected="false" tabindex="-1">Market Health</button>
+      <button type="button" class="tab" id="tabPreferences" role="tab" data-tab="preferences" aria-controls="preferences" aria-selected="false" tabindex="-1">Channel Settings</button>
     </nav>
 
-    <section id="overview" class="tab-panel active">
+    <section id="overview" class="tab-panel active" role="tabpanel" aria-labelledby="tabOverview" tabindex="0">
       <!-- Market Segment Header on Overview -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
         <div>
@@ -337,13 +358,13 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <h2 style="margin:0; font-size:18px;">Institutional Markets & Deriv Synthetic Watchlist</h2>
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
-          <button type="button" class="segment-btn active" data-segment="all">
+          <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
             <span>🌍</span> All Markets <span class="seg-count">24</span>
           </button>
-          <button type="button" class="segment-btn" data-segment="institutional">
+          <button type="button" class="segment-btn" data-segment="institutional" aria-pressed="false">
             <span>🏛️</span> Institutional <span class="seg-count">14</span>
           </button>
-          <button type="button" class="segment-btn" data-segment="synthetics">
+          <button type="button" class="segment-btn" data-segment="synthetics" aria-pressed="false">
             <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
           </button>
         </div>
@@ -351,7 +372,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
 
       <!-- Segment Comparative Performance Overview -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" title="Click to filter Overview by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -370,7 +391,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Click to filter Overview by the Deriv synthetic watchlist">
+        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -655,16 +676,16 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </article>
     </section>
 
-    <section id="performance" class="tab-panel">
+    <section id="performance" class="tab-panel" role="tabpanel" aria-labelledby="tabPerformance" tabindex="0" hidden>
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
-        <button type="button" class="segment-btn active" data-segment="all">
+        <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
           <span>🌍</span> All Markets <span class="seg-count">24</span>
         </button>
-        <button type="button" class="segment-btn" data-segment="institutional">
+        <button type="button" class="segment-btn" data-segment="institutional" aria-pressed="false">
           <span>🏛️</span> Institutional FX & Indices <span class="seg-count">14</span>
         </button>
-        <button type="button" class="segment-btn" data-segment="synthetics">
+        <button type="button" class="segment-btn" data-segment="synthetics" aria-pressed="false">
           <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
         </button>
       </div>
@@ -718,7 +739,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
 
       <!-- Market Segment Comparative Performance -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInst" data-target-segment="institutional" title="Click to filter by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInst" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" title="Click to filter by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -737,7 +758,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Click to filter by the Deriv synthetic watchlist">
+        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" title="Click to filter by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -786,7 +807,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </article>
     </section>
 
-    <section id="alerts" class="tab-panel">
+    <section id="alerts" class="tab-panel" role="tabpanel" aria-labelledby="tabAlerts" tabindex="0" hidden>
       <div class="panel-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div>
           <p class="eyebrow">SIGNAL LEDGER</p>
@@ -829,7 +850,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </div>
     </section>
 
-    <section id="health" class="tab-panel">
+    <section id="health" class="tab-panel" role="tabpanel" aria-labelledby="tabHealth" tabindex="0" hidden>
       <article class="panel">
         <div class="panel-head">
           <div>
@@ -844,7 +865,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
       </article>
     </section>
 
-    <section id="preferences" class="tab-panel">
+    <section id="preferences" class="tab-panel" role="tabpanel" aria-labelledby="tabPreferences" tabindex="0" hidden>
       <article class="panel">
         <div class="panel-head">
           <div>
@@ -1039,20 +1060,48 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .tab-panel').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    const panel = $(btn.dataset.tab);
-    if (panel) panel.classList.add('active');
+const dashboardTabs = Array.from(document.querySelectorAll('.tab'));
+function activateDashboardTab(btn, moveFocus = false) {
+  const selectedPanelId = btn.dataset.tab;
+  dashboardTabs.forEach(item => {
+    const selected = item === btn;
+    item.classList.toggle('active', selected);
+    item.setAttribute('aria-selected', String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    const selected = panel.id === selectedPanelId;
+    panel.classList.toggle('active', selected);
+    panel.hidden = !selected;
+  });
+  if (moveFocus) btn.focus();
+}
+dashboardTabs.forEach(btn => {
+  btn.addEventListener('click', () => activateDashboardTab(btn));
+  btn.addEventListener('keydown', event => {
+    const currentIndex = dashboardTabs.indexOf(btn);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % dashboardTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + dashboardTabs.length) % dashboardTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = dashboardTabs.length - 1;
+    else return;
+    event.preventDefault();
+    activateDashboardTab(dashboardTabs[nextIndex], true);
   });
 });
 
 function setViewMode(mode) {
   state.viewMode = mode === 'operator' ? 'operator' : 'public';
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
-  if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
-  if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  if ($('modePublicBtn')) {
+    $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+    $('modePublicBtn').setAttribute('aria-pressed', String(state.viewMode === 'public'));
+  }
+  if ($('modeOperatorBtn')) {
+    $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+    $('modeOperatorBtn').setAttribute('aria-pressed', String(state.viewMode === 'operator'));
+  }
   if ($('activeModeLabel')) {
     $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
   }
@@ -1071,11 +1120,15 @@ if ($('heroLedgerBtn')) {
 function setMarketSegment(seg) {
   state.marketSegment = seg || 'all';
   document.querySelectorAll('.segment-btn').forEach(b => {
-    b.classList.toggle('active', (b.dataset.segment || 'all') === state.marketSegment);
+    const selected = (b.dataset.segment || 'all') === state.marketSegment;
+    b.classList.toggle('active', selected);
+    b.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.segment-card').forEach(card => {
     const target = card.dataset.targetSegment;
-    card.classList.toggle('active', target === state.marketSegment);
+    const selected = target === state.marketSegment;
+    card.classList.toggle('active', selected);
+    card.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.syntheticsNotice').forEach(el => {
     el.hidden = state.marketSegment !== 'synthetics';
@@ -1095,14 +1148,15 @@ document.querySelectorAll('.segment-btn').forEach(btn => {
 });
 
 document.querySelectorAll('.segment-card').forEach(card => {
-  card.addEventListener('click', () => {
+  const activate = () => {
     const target = card.dataset.targetSegment;
-    if (target) {
-      if (state.marketSegment === target) {
-        setMarketSegment('all');
-      } else {
-        setMarketSegment(target);
-      }
+    if (target) setMarketSegment(state.marketSegment === target ? 'all' : target);
+  };
+  card.addEventListener('click', activate);
+  card.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate();
     }
   });
 });

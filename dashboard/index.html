@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DEO Edge · Trading Research & Live Trade Journal</title>
+  <title>DEO Edge · Confirmation Engine & Research Ledger</title>
   <link rel="icon" type="image/png" sizes="128x128" href="/favicon.png?v=2">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2">
-  <meta name="theme-color" content="#090c12">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <meta name="theme-color" content="#080b0e">
+  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="mhuzex.css?v=20">
 </head>
 <body>
   <header class="topbar">
@@ -20,19 +21,15 @@
     </a>
     <div class="header-actions">
       <div class="mode-switcher-wrap" style="display: flex; align-items: center; gap: 8px;">
-        <div class="mode-switcher" role="radiogroup" aria-label="Terminal View Mode">
-          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public">
+        <div class="mode-switcher" role="group" aria-label="Terminal View Mode">
+          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public" aria-pressed="true">
             <span class="mode-dot"></span> 📊 Public Overview
           </button>
-          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator">
+          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator" aria-pressed="false">
             <span class="mode-dot"></span> 🖥️ Operator Terminal
           </button>
         </div>
         <span id="activeModeLabel" class="pill gray">Viewing: Public Overview</span>
-      </div>
-      <div class="status" id="systemStatusPill" title="Deployment Status: System Operational">
-        <span id="statusDot" class="dot ok"></span>
-        <span id="statusText">Worker Online · Paper Pipeline</span>
       </div>
       <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -41,7 +38,27 @@
     </div>
   </header>
 
-  <main class="shell">
+  <section class="status-rail marketing-only" aria-label="System and execution status">
+    <div class="status-rail-item status-rail-health">
+      <div class="status" id="systemStatusPill" title="Latest worker health response" aria-live="polite" aria-atomic="true">
+        <span id="statusDot" class="dot ok"></span>
+        <span id="statusText">Checking worker status…</span>
+      </div>
+      <small>Paper pipeline</small>
+    </div>
+    <div class="status-rail-item">
+      <span class="status-rail-icon" aria-hidden="true">⌁</span>
+      <span><strong>Configured data sources</strong><small>OANDA v3 · Twelve Data · Dukascopy · Deriv</small></span>
+    </div>
+    <div class="status-rail-item">
+      <span class="status-rail-icon" aria-hidden="true">◷</span>
+      <span><strong>Feed freshness</strong><small>See Market Health for the latest check</small></span>
+    </div>
+    <div class="safety-lock"><span aria-hidden="true">▣</span>PAPER SIMULATION · NO LIVE ORDERS</div>
+  </section>
+
+  <a class="skip-link" href="#mainContent">Skip to dashboard content</a>
+  <main id="mainContent" class="shell" tabindex="-1">
     <div class="announcement-banner marketing-only">
       <div class="banner-left">
         <span class="banner-badge">FOUNDING COHORT</span>
@@ -58,7 +75,7 @@
         <span class="dot ok"></span>
         <div>
           <span>Worker Engine</span>
-          <strong id="opWorkerHealth">v2.5.3 · Sub-millisecond CPU</strong>
+          <strong id="opWorkerHealth">v2.5.3 · Checking health</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -72,7 +89,7 @@
         <span style="font-size:16px;">⏱️</span>
         <div>
           <span>Scan Freshness</span>
-          <strong id="opLastScan">Synchronized with bar close</strong>
+          <strong id="opLastScan">Waiting for the latest health check</strong>
         </div>
       </div>
       <div class="operator-status-item">
@@ -86,9 +103,11 @@
 
     <section class="hero">
       <div>
-        <p class="eyebrow">QUANTITATIVE RESEARCH & CONFIRMATION ENGINE</p>
-        <h1>DEO Edge · Confirmation Engine & Research Ledger</h1>
-        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts (BOS), and confirmation entries across supported markets. Deriv coverage includes all 10 supported Volatility Indices; the production scanner sends paper/research signal alerts for these symbols but places no orders. The required 360-day Deriv CFD replay remains unvalidated.</p>
+        <p class="eyebrow">QUANTITATIVE RESEARCH &amp; CONFIRMATION ENGINE</p>
+        <h1>Make the close<br><em>earn its place.</em></h1>
+        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts, and confirmation entries across supported markets.</p>
+        <p class="hero-disclaimer"><span aria-hidden="true">!</span> Research and education only; the production scanner sends paper/research signal alerts for these symbols but places no orders. Historical or simulated outcomes do not guarantee future results.</p>
+        <p class="research-caveat">Deriv coverage includes all 10 supported Volatility Indices for paper/research alerts only; the required 360-day Deriv CFD replay remains unvalidated.</p>
         
         <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
@@ -114,22 +133,22 @@
           </a>
         </div>
       </div>
-      <div class="execution-badge" style="border-color: #78531a; background: #1c150b;">
-        <span style="color: #f6c66d;">EXECUTION PIPELINE</span>
-        <strong style="color: #f6c66d;">PAPER SIMULATION</strong>
-        <small style="color: #cbd5e1;">Rule-checked · No live orders</small>
+      <div class="execution-badge" aria-label="Execution safety: paper simulation only">
+        <span>EXECUTION SAFETY</span>
+        <strong>PAPER SIMULATION</strong>
+        <small>Rule-checked research · No live orders</small>
       </div>
     </section>
 
-    <nav class="tabs" aria-label="Dashboard sections">
-      <button class="tab active" data-tab="overview">Overview</button>
-      <button class="tab" data-tab="performance">Performance</button>
-      <button class="tab" data-tab="alerts">Trade Journal & Alerts</button>
-      <button class="tab" data-tab="health">Market Health</button>
-      <button class="tab" data-tab="preferences">Channel Settings</button>
+    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button type="button" class="tab active" id="tabOverview" role="tab" data-tab="overview" aria-controls="overview" aria-selected="true" tabindex="0">Overview</button>
+      <button type="button" class="tab" id="tabPerformance" role="tab" data-tab="performance" aria-controls="performance" aria-selected="false" tabindex="-1">Performance</button>
+      <button type="button" class="tab" id="tabAlerts" role="tab" data-tab="alerts" aria-controls="alerts" aria-selected="false" tabindex="-1">Trade Journal &amp; Alerts</button>
+      <button type="button" class="tab" id="tabHealth" role="tab" data-tab="health" aria-controls="health" aria-selected="false" tabindex="-1">Market Health</button>
+      <button type="button" class="tab" id="tabPreferences" role="tab" data-tab="preferences" aria-controls="preferences" aria-selected="false" tabindex="-1">Channel Settings</button>
     </nav>
 
-    <section id="overview" class="tab-panel active">
+    <section id="overview" class="tab-panel active" role="tabpanel" aria-labelledby="tabOverview" tabindex="0">
       <!-- Market Segment Header on Overview -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
         <div>
@@ -137,13 +156,13 @@
           <h2 style="margin:0; font-size:18px;">Institutional Markets & Deriv Synthetic Watchlist</h2>
         </div>
         <div class="market-segment-bar" style="margin-bottom:0;">
-          <button type="button" class="segment-btn active" data-segment="all">
+          <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
             <span>🌍</span> All Markets <span class="seg-count">24</span>
           </button>
-          <button type="button" class="segment-btn" data-segment="institutional">
+          <button type="button" class="segment-btn" data-segment="institutional" aria-pressed="false">
             <span>🏛️</span> Institutional <span class="seg-count">14</span>
           </button>
-          <button type="button" class="segment-btn" data-segment="synthetics">
+          <button type="button" class="segment-btn" data-segment="synthetics" aria-pressed="false">
             <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
           </button>
         </div>
@@ -151,7 +170,7 @@
 
       <!-- Segment Comparative Performance Overview -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" title="Click to filter Overview by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -170,7 +189,7 @@
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" title="Click to filter Overview by the Deriv synthetic watchlist">
+        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -454,16 +473,16 @@
       </article>
     </section>
 
-    <section id="performance" class="tab-panel">
+    <section id="performance" class="tab-panel" role="tabpanel" aria-labelledby="tabPerformance" tabindex="0" hidden>
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
-        <button type="button" class="segment-btn active" data-segment="all">
+        <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
           <span>🌍</span> All Markets <span class="seg-count">24</span>
         </button>
-        <button type="button" class="segment-btn" data-segment="institutional">
+        <button type="button" class="segment-btn" data-segment="institutional" aria-pressed="false">
           <span>🏛️</span> Institutional FX & Indices <span class="seg-count">14</span>
         </button>
-        <button type="button" class="segment-btn" data-segment="synthetics">
+        <button type="button" class="segment-btn" data-segment="synthetics" aria-pressed="false">
           <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
         </button>
       </div>
@@ -517,7 +536,7 @@
 
       <!-- Market Segment Comparative Performance -->
       <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInst" data-target-segment="institutional" title="Click to filter by Institutional FX & Indices">
+        <div class="segment-card" id="segCardInst" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" title="Click to filter by Institutional FX & Indices">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">🏛️</span>
@@ -536,7 +555,7 @@
           </div>
         </div>
 
-        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" title="Click to filter by the Deriv synthetic watchlist">
+        <div class="segment-card synth-card" id="segCardSynth" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" title="Click to filter by the Deriv synthetic watchlist">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:18px;">⚡</span>
@@ -585,7 +604,7 @@
       </article>
     </section>
 
-    <section id="alerts" class="tab-panel">
+    <section id="alerts" class="tab-panel" role="tabpanel" aria-labelledby="tabAlerts" tabindex="0" hidden>
       <div class="panel-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div>
           <p class="eyebrow">SIGNAL LEDGER</p>
@@ -628,7 +647,7 @@
       </div>
     </section>
 
-    <section id="health" class="tab-panel">
+    <section id="health" class="tab-panel" role="tabpanel" aria-labelledby="tabHealth" tabindex="0" hidden>
       <article class="panel">
         <div class="panel-head">
           <div>
@@ -654,7 +673,7 @@
       </article>
     </section>
 
-    <section id="preferences" class="tab-panel">
+    <section id="preferences" class="tab-panel" role="tabpanel" aria-labelledby="tabPreferences" tabindex="0" hidden>
       <article class="panel">
         <div class="panel-head">
           <div>

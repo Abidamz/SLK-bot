@@ -17,20 +17,48 @@ const state = {
 
 const $ = id => document.getElementById(id);
 
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab, .tab-panel').forEach(x => x.classList.remove('active'));
-    btn.classList.add('active');
-    const panel = $(btn.dataset.tab);
-    if (panel) panel.classList.add('active');
+const dashboardTabs = Array.from(document.querySelectorAll('.tab'));
+function activateDashboardTab(btn, moveFocus = false) {
+  const selectedPanelId = btn.dataset.tab;
+  dashboardTabs.forEach(item => {
+    const selected = item === btn;
+    item.classList.toggle('active', selected);
+    item.setAttribute('aria-selected', String(selected));
+    item.tabIndex = selected ? 0 : -1;
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    const selected = panel.id === selectedPanelId;
+    panel.classList.toggle('active', selected);
+    panel.hidden = !selected;
+  });
+  if (moveFocus) btn.focus();
+}
+dashboardTabs.forEach(btn => {
+  btn.addEventListener('click', () => activateDashboardTab(btn));
+  btn.addEventListener('keydown', event => {
+    const currentIndex = dashboardTabs.indexOf(btn);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % dashboardTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + dashboardTabs.length) % dashboardTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = dashboardTabs.length - 1;
+    else return;
+    event.preventDefault();
+    activateDashboardTab(dashboardTabs[nextIndex], true);
   });
 });
 
 function setViewMode(mode) {
   state.viewMode = mode === 'operator' ? 'operator' : 'public';
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
-  if ($('modePublicBtn')) $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
-  if ($('modeOperatorBtn')) $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+  if ($('modePublicBtn')) {
+    $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+    $('modePublicBtn').setAttribute('aria-pressed', String(state.viewMode === 'public'));
+  }
+  if ($('modeOperatorBtn')) {
+    $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+    $('modeOperatorBtn').setAttribute('aria-pressed', String(state.viewMode === 'operator'));
+  }
   if ($('activeModeLabel')) {
     $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
     $('activeModeLabel').className = state.viewMode === 'operator' ? 'pill green' : 'pill gray';
@@ -50,11 +78,15 @@ if ($('heroLedgerBtn')) {
 function setMarketSegment(seg) {
   state.marketSegment = seg || 'all';
   document.querySelectorAll('.segment-btn').forEach(b => {
-    b.classList.toggle('active', (b.dataset.segment || 'all') === state.marketSegment);
+    const selected = (b.dataset.segment || 'all') === state.marketSegment;
+    b.classList.toggle('active', selected);
+    b.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.segment-card').forEach(card => {
     const target = card.dataset.targetSegment;
-    card.classList.toggle('active', target === state.marketSegment);
+    const selected = target === state.marketSegment;
+    card.classList.toggle('active', selected);
+    card.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.syntheticsNotice').forEach(el => {
     el.hidden = state.marketSegment !== 'synthetics';
@@ -74,14 +106,15 @@ document.querySelectorAll('.segment-btn').forEach(btn => {
 });
 
 document.querySelectorAll('.segment-card').forEach(card => {
-  card.addEventListener('click', () => {
+  const activate = () => {
     const target = card.dataset.targetSegment;
-    if (target) {
-      if (state.marketSegment === target) {
-        setMarketSegment('all');
-      } else {
-        setMarketSegment(target);
-      }
+    if (target) setMarketSegment(state.marketSegment === target ? 'all' : target);
+  };
+  card.addEventListener('click', activate);
+  card.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate();
     }
   });
 });
