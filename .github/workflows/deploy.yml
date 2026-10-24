@@ -12,6 +12,11 @@ on:
         type: boolean
         required: false
         default: false
+      skip_d1_migrations:
+        description: "Deploy Worker and Pages but skip D1 migrations."
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   test:
@@ -112,7 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       (startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main') &&
-      (github.event_name != 'workflow_dispatch' || inputs.worker_only != true)
+      (github.event_name != 'workflow_dispatch' || inputs.worker_only != true) &&
+      (github.event_name != 'workflow_dispatch' || inputs.skip_d1_migrations != true)
     # Blocking by design. This was temporarily continue-on-error while
     # diagnosing a failure that turned out to be CLOUDFLARE_API_TOKEN lacking
     # D1:Edit -- the "Edit Cloudflare Workers" token template does not include
