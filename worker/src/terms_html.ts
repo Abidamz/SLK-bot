@@ -1,3 +1,5 @@
+import { DEO_EDGE_LOGO_DATA_URI } from "./brand_logo";
+
 export const TERMS_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -33,11 +35,30 @@ export const TERMS_HTML = `<!doctype html>
       backdrop-filter: blur(14px);
     }
     .brand {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 11px;
+      gap: 10px;
+      min-width: 0;
+      padding: 6px 15px 6px 6px;
+      border: 1px solid rgba(140, 240, 198, 0.28);
+      border-radius: 999px;
+      background: linear-gradient(180deg, #111923, #0b1018);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      text-decoration: none;
       font-size: 20px;
       letter-spacing: -0.03em;
+      transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), border-color 140ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 140ms cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    .brand-copy { min-width: 0; }
+    .brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    .brand:active { transform: scale(0.97); }
+    @media (hover: hover) and (pointer: fine) {
+      .brand:hover { border-color: rgba(140, 240, 198, 0.58); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 0 18px rgba(140, 240, 198, 0.08); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .brand { transition: none; }
+      .brand:active { transform: none; }
     }
     .brand small {
       display: block;
@@ -47,15 +68,14 @@ export const TERMS_HTML = `<!doctype html>
       text-transform: uppercase;
     }
     .brand-mark {
-      display: grid;
-      place-items: center;
+      display: block;
+      flex: 0 0 38px;
       width: 38px;
       height: 38px;
-      border: 1px solid #4c806e;
-      border-radius: 12px;
-      color: var(--accent);
-      font-weight: 800;
-      font-size: 12px;
+      object-fit: contain;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      background: #000;
     }
     .vip-btn {
       display: inline-flex;
@@ -68,6 +88,20 @@ export const TERMS_HTML = `<!doctype html>
       font-size: 12px;
       padding: 8px 15px;
       border-radius: 10px;
+    }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    @media (max-width: 800px) {
+      .topbar { height: auto; min-height: 72px; flex-wrap: wrap; gap: 10px 16px; padding: 12px 16px; }
+      .brand { flex: 0 1 auto; width: fit-content; max-width: 100%; gap: 10px; }
+      .header-actions { width: 100%; min-width: 0; flex: 1 1 100%; flex-wrap: wrap; }
+      .header-actions .vip-btn { min-height: 44px; }
+    }
+    @media (max-width: 400px) {
+      .topbar { padding-inline: 14px; }
+      .brand { font-size: 18px; gap: 10px; }
+      .brand-mark { flex-basis: 38px; width: 38px; height: 38px; }
+      .brand small { font-size: 8px; letter-spacing: 0.08em; }
     }
     .legal-shell {
       max-width: 860px;
@@ -145,13 +179,13 @@ export const TERMS_HTML = `<!doctype html>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">DEO</span>
-      <div>
+    <a class="brand" href="/" aria-label="DEO Edge home" title="Go to dashboard home">
+      <img class="brand-mark" src="${DEO_EDGE_LOGO_DATA_URI}" alt="" aria-hidden="true" width="40" height="40">
+      <span class="brand-copy">
         <strong>DEO Edge</strong>
         <small>Structure · Liquidity · Key Levels</small>
-      </div>
-    </div>
+      </span>
+    </a>
     <div class="header-actions">
       <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>

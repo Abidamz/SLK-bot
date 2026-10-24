@@ -42,7 +42,7 @@ describe("responsive dashboard header", () => {
   });
 
   it("serves the fresh Pages stylesheet URL while retaining the desktop header", () => {
-    expect(pagesHtml).toContain('href="styles.css?v=16"');
+    expect(pagesHtml).toContain('href="styles.css?v=19"');
     expect(pagesCss).toContain(".topbar{height:72px");
   });
 });
