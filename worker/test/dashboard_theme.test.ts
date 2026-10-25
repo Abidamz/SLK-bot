@@ -33,6 +33,7 @@ describe("integrated DEO Edge terminal theme", () => {
     expect(theme).toContain("@media (max-width: 780px)");
     expect(theme).toContain("(hover: hover) and (pointer: fine)");
     expect(theme).toContain("(hover: none), (pointer: coarse)");
+    expect(theme).toMatch(/\.universe-row strong #activePairCount\s*\{\s*display:\s*inline;/);
   });
 
   it("keeps the home-linked supplied mark, paper warnings, and feature hooks", () => {

@@ -391,4 +391,12 @@ button { color: inherit; cursor: pointer; }
 .engine-pulse .pill.green { color: var(--cyan); background: var(--cyan-soft); border-color: rgba(98,230,255,.28); }
 .engine-pulse-stat { border-color: rgba(98,230,255,.14); }
 .engine-pulse-stat strong { color: var(--cyan); }
+
+/* Keep the live scanner count and closing parenthesis on the heading line. */
+.universe-row strong #activePairCount {
+  display: inline;
+  color: inherit;
+  font: inherit;
+  margin: 0;
+}
 `;
