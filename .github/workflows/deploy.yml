@@ -65,6 +65,8 @@ jobs:
         run: npm ci --prefix worker
 
       - name: Deploy Cloudflare Worker (slk-alert-worker)
+        # Automatic pushes publish Pages only; Worker deploy remains manual.
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -81,6 +83,7 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           sed -i "s/app\.js?v=[A-Za-z0-9]*/app.js?v=${SHORT_SHA}/" dashboard/index.html
           sed -i "s/styles\.css?v=[A-Za-z0-9]*/styles.css?v=${SHORT_SHA}/" dashboard/index.html
+          sed -i "s/mhuzex\.css?v=[A-Za-z0-9]*/mhuzex.css?v=${SHORT_SHA}/" dashboard/index.html
 
       # The branded dashboard is deployed to the separate `deoedge` Pages
       # project. Keep the old `slk-radar` project intact as a fallback while
@@ -94,10 +97,8 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dashboard --project-name=deoedge --branch=main
 
-  # D1 migrations are not applied by `wrangler deploy`, so a schema change can
-  # sit unapplied while the code that expects it is already live. That happened
-  # with 0010_fill_confirmed: it shipped, the column probe found nothing, and
-  # fill tracking silently no-op'ed.
+  # Automatic pushes publish the dashboard only: no Worker deploy and no D1 migration.
+  # Database migrations remain available only through an explicit manual dispatch.
   #
   # This applies them automatically, but only after a successful deploy and as
   # its own job, so a migration failure reads as a migration failure rather
@@ -115,10 +116,12 @@ jobs:
     name: Apply D1 Migrations
     needs: deploy
     runs-on: ubuntu-latest
+    # D1 migrations run only from an explicit manual dispatch; pushes skip them.
     if: >-
+      github.event_name == 'workflow_dispatch' &&
       (startsWith(github.ref, 'refs/heads/arena/') || github.ref == 'refs/heads/main') &&
-      (github.event_name != 'workflow_dispatch' || inputs.worker_only != true) &&
-      (github.event_name != 'workflow_dispatch' || inputs.skip_d1_migrations != true)
+      inputs.worker_only != true &&
+      inputs.skip_d1_migrations != true
     # Blocking by design. This was temporarily continue-on-error while
     # diagnosing a failure that turned out to be CLOUDFLARE_API_TOKEN lacking
     # D1:Edit -- the "Edit Cloudflare Workers" token template does not include

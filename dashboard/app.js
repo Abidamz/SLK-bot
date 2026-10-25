@@ -23,12 +23,14 @@ function activateDashboardTab(btn, moveFocus = false) {
   dashboardTabs.forEach(item => {
     const selected = item === btn;
     item.classList.toggle('active', selected);
+    item.classList.toggle('is-active', selected);
     item.setAttribute('aria-selected', String(selected));
     item.tabIndex = selected ? 0 : -1;
   });
   document.querySelectorAll('.tab-panel').forEach(panel => {
     const selected = panel.id === selectedPanelId;
     panel.classList.toggle('active', selected);
+    panel.classList.toggle('is-visible', selected);
     panel.hidden = !selected;
   });
   if (moveFocus) btn.focus();
@@ -53,10 +55,12 @@ function setViewMode(mode) {
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
   if ($('modePublicBtn')) {
     $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+    $('modePublicBtn').classList.toggle('is-active', state.viewMode === 'public');
     $('modePublicBtn').setAttribute('aria-pressed', String(state.viewMode === 'public'));
   }
   if ($('modeOperatorBtn')) {
     $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+    $('modeOperatorBtn').classList.toggle('is-active', state.viewMode === 'operator');
     $('modeOperatorBtn').setAttribute('aria-pressed', String(state.viewMode === 'operator'));
   }
   if ($('activeModeLabel')) {
@@ -80,12 +84,14 @@ function setMarketSegment(seg) {
   document.querySelectorAll('.segment-btn').forEach(b => {
     const selected = (b.dataset.segment || 'all') === state.marketSegment;
     b.classList.toggle('active', selected);
+    b.classList.toggle('is-active', selected);
     b.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.segment-card').forEach(card => {
     const target = card.dataset.targetSegment;
     const selected = target === state.marketSegment;
     card.classList.toggle('active', selected);
+    card.classList.toggle('is-active', selected);
     card.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.syntheticsNotice').forEach(el => {
@@ -118,6 +124,42 @@ document.querySelectorAll('.segment-card').forEach(card => {
     }
   });
 });
+
+const methodStages = [
+  { code: 'MAP', title: 'HTF Directional Vantage Point', copy: 'Weekly and daily opposing liquidity draw is established. A 4H structural A/V-level is armed before the lower-timeframe radar begins.', rule: '4H structural direction and 1H execution context must align directionally.' },
+  { code: 'TOUCH', title: 'Origin Zone Mitigation', copy: 'Price reaches and mitigates the origin key level, activating the lower-timeframe radar.', rule: 'The origin-level interaction is checked before later confirmation stages.' },
+  { code: 'SWEEP', title: 'Liquidity Pool Run', copy: 'A false breakout purges an internal liquidity pool beyond a swing high or low extreme.', rule: 'A recorded sweep must be followed by the specified structure confirmation.' },
+  { code: 'SHIFT', title: 'Market Structure Break', copy: 'Displacement breaks pullback structure on a candle close and forms a Fair Value Gap.', rule: 'The structure break is evaluated on a finalized candle; no intrabar confirmation.' },
+  { code: 'RETEST', title: 'Inefficiency Rebalance', copy: 'Price makes a controlled retracement into the Fair Value Gap and an entry candidate prepares.', rule: 'The retest must satisfy the engine’s risk and target checks before entry.' },
+  { code: 'ENTRY', title: 'Confirmed Entry Close', copy: 'A finalized candle close locks the entry price and stop-loss floor. The recorded entry is not retrospectively repainted.', rule: 'Setups below the minimum 2.5R target floor are rejected automatically.' },
+  { code: 'OUTCOME', title: 'Deterministic Resolution', copy: 'A recorded setup resolves at its configured target, stop loss, or stale-expiration rule.', rule: 'Current method disclosure: Target 1 (+3.0R), Stop Loss (−1.0R), or 120-bar stale expiration.' }
+];
+document.querySelectorAll('[data-stage-index]').forEach(button => {
+  button.addEventListener('click', () => {
+    const index = Number(button.dataset.stageIndex);
+    const stage = methodStages[index];
+    if (!stage) return;
+    document.querySelectorAll('[data-stage-index]').forEach(item => {
+      const selected = item === button;
+      item.classList.toggle('is-active', selected);
+      item.setAttribute('aria-pressed', String(selected));
+    });
+    if ($('lifecycleStageLabel')) $('lifecycleStageLabel').textContent = `Selected stage / ${stage.code}`;
+    if ($('lifecycleStageTitle')) $('lifecycleStageTitle').textContent = stage.title;
+    if ($('lifecycleStageCopy')) $('lifecycleStageCopy').textContent = stage.copy;
+    if ($('lifecycleStageRule')) $('lifecycleStageRule').textContent = stage.rule;
+  });
+});
+if ($('showRulesBtn') && $('ruleReference')) {
+  $('showRulesBtn').addEventListener('click', () => {
+    const rules = $('ruleReference');
+    rules.open = !rules.open;
+    $('showRulesBtn').setAttribute('aria-expanded', String(rules.open));
+  });
+  $('ruleReference').addEventListener('toggle', () => {
+    $('showRulesBtn').setAttribute('aria-expanded', String($('ruleReference').open));
+  });
+}
 
 document.querySelectorAll('.period-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -367,10 +409,14 @@ async function loadAll() {
       api('/api/engine-pulse').catch(() => null)
     ]);
     if (health) renderHealth(health);
+    else {
+      setStatus('Health response unavailable', 'bad');
+      if ($('headerWorkerState')) $('headerWorkerState').textContent = 'Health response unavailable';
+      if ($('headerLastChecked')) $('headerLastChecked').textContent = 'Not available';
+    }
     if (prefs) renderPreferences(prefs);
     renderEnginePulse(pulse);
     await loadAlerts();
-    setStatus('Worker Online · Pipeline Healthy', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
@@ -474,51 +520,65 @@ async function loadStats() {
 
 function setStatus(text, kind) {
   if ($('statusText')) $('statusText').textContent = text;
-  if ($('statusDot')) $('statusDot').className = `dot ${kind}`;
+  if ($('statusDot')) $('statusDot').className = `status-dot ${kind === 'ok' ? 'online' : kind === 'muted' ? 'checking' : 'bad'}`;
 }
 
 function renderHealth(h) {
   if (!h) return;
-  if ($('mode')) $('mode').textContent = 'PAPER PIPELINE · RULE-CHECKED';
-  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
-  if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
-  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${esc(h.version || 'v2.5.3')} · Healthy (${esc(String(h.mode || 'PAPER').toUpperCase())})`;
-  if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
-  if (h.pairs && h.pairs.length) {
+  const healthy = Boolean(h.ok);
+  const version = String(h.version || 'version unavailable');
+  const checked = h.time ? fmtDate(h.time) : 'Time not reported';
+  const pairs = Array.isArray(h.pairs) ? h.pairs : [];
+  const feeds = h.oandaConfigured
+    ? 'OANDA v3 · Twelve Data · Dukascopy · Deriv'
+    : 'Twelve Data · Dukascopy · Deriv';
+
+  if ($('mode')) $('mode').textContent = 'PAPER SIMULATION · NO LIVE ORDERS';
+  if ($('workerName')) $('workerName').textContent = `slk-alert-worker ${version}`;
+  if ($('lastResponse')) $('lastResponse').textContent = checked;
+  if ($('headerLastChecked')) $('headerLastChecked').textContent = checked;
+  if ($('workerVersionLabel')) $('workerVersionLabel').textContent = `Engine ${version}`;
+  if ($('headerWorkerState')) $('headerWorkerState').textContent = healthy ? 'Health response received' : 'Health response reports degraded status';
+  if ($('overviewStatusDot')) $('overviewStatusDot').className = `status-dot ${healthy ? 'online' : 'bad'}`;
+  if ($('statusText')) $('statusText').textContent = healthy ? 'Worker Online · Health checked' : 'Worker responded · Review health';
+  if ($('statusDot')) $('statusDot').className = `status-dot ${healthy ? 'online' : 'bad'}`;
+  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = `${version} · ${healthy ? 'Healthy' : 'Degraded'} (${String(h.mode || 'PAPER').toUpperCase()})`;
+  if ($('opLastScan')) $('opLastScan').textContent = h.time ? fmtDate(h.time) : 'Time not reported by health endpoint';
+  if ($('opFeeds')) $('opFeeds').textContent = feeds;
+  if ($('opFeedSummary')) $('opFeedSummary').textContent = feeds;
+
+  if (Array.isArray(h.pairs)) {
     if ($('activePairCount')) $('activePairCount').textContent = String(h.pairs.length);
-    if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
+    if ($('pairs')) $('pairs').textContent = pairs.length ? pairs.join(' · ') : 'No scanner pairs reported by the health endpoint';
     const pairSelect = $('alertPair');
     if (pairSelect) {
       const curVal = pairSelect.value;
-      pairSelect.innerHTML = '<option value="">All pairs</option>' + h.pairs.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+      pairSelect.innerHTML = '<option value="">All pairs</option>' + pairs.map(pair => `<option value="${esc(pair)}">${esc(pair)}</option>`).join('');
       pairSelect.value = curVal;
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? 'Worker Online' : 'Degraded';
-    $('healthPill').className = `pill ${h.ok ? 'green' : 'gray'}`;
-  }
-  if ($('opFeeds')) {
-    $('opFeeds').textContent = h.oandaConfigured
-      ? 'OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
-      : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
+    $('healthPill').textContent = healthy ? 'WORKER ONLINE' : 'DEGRADED';
+    $('healthPill').className = `panel-status ${healthy ? 'online' : 'bad'}`;
   }
   if ($('healthDetails')) {
+    const entryTfs = Array.isArray(h.entryTfs) && h.entryTfs.length ? h.entryTfs.join(' · ') : 'Not reported by health endpoint';
+    const relay = h.relayUrl ? esc(h.relayUrl) : 'Not reported by health endpoint';
+    const feedStatus = h.feedStatus ? esc(h.feedStatus) : 'Not reported by health endpoint';
     $('healthDetails').innerHTML = `
-      <div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>
-      <div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">${esc(h.version || 'v2.5.3')} (Production)</strong></div>
-      <div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>
-      <div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">${esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)')}</strong></div>
-      <div class="health-item"><span>Active Timeframes</span><strong>${esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h')}</strong></div>
-      <div class="health-item"><span>Deriv Synthetics Relay</span><strong>${esc(h.relayUrl || 'https://slk-bot.vercel.app')} · Connected</strong></div>
-      <div class="health-item"><span>Server Time (UTC)</span><strong>${esc(h.time || '—')}</strong></div>
-      <div class="health-item"><span>Coverage</span><strong>${(h.pairs || []).length} Markets Active</strong></div>
-      <div class="health-item"><span>Execution Mode</span><strong>Paper Pipeline · Rule-Checked (Simulation Only)</strong></div>
-      <div class="health-item"><span>Signals Destination</span><strong>Trade journal Channel</strong></div>
+      <div class="health-item"><span>Cloud service</span><strong>slk-alert-worker</strong></div>
+      <div class="health-item"><span>Engine version</span><strong>${esc(version)}</strong></div>
+      <div class="health-item"><span>System status</span><strong>${healthy ? 'Healthy' : 'Degraded'}</strong></div>
+      <div class="health-item"><span>Notification policy</span><strong>${feedStatus}</strong></div>
+      <div class="health-item"><span>Active timeframes</span><strong>${esc(entryTfs)}</strong></div>
+      <div class="health-item"><span>Deriv relay URL</span><strong>${relay}</strong></div>
+      <div class="health-item"><span>Server time (UTC)</span><strong>${esc(h.time || 'Not reported')}</strong></div>
+      <div class="health-item"><span>Scanner coverage</span><strong>${pairs.length} markets reported by health endpoint</strong></div>
+      <div class="health-item"><span>Execution mode</span><strong>Paper simulation · no live orders</strong></div>
+      <div class="health-item"><span>Data source configuration</span><strong>${esc(feeds)}</strong></div>
     `;
   }
 }
-
 function fmtDateOnly(x) {
   if (!x) return '';
   const d = new Date(x);
@@ -530,6 +590,7 @@ function renderStats(s) {
   const netRNum = Number(s.netR || 0);
   const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : `${netRNum > 0 ? '+' : ''}${netRNum.toFixed(2)}R`;
   if ($('total')) $('total').textContent = s.total != null ? String(s.total) : '0';
+  if ($('alertTabCount')) $('alertTabCount').textContent = s.total != null ? String(s.total) : '—';
   if ($('open')) $('open').textContent = s.open != null ? String(s.open) : '0';
   if ($('tp')) $('tp').textContent = s.tp != null ? String(s.tp) : '0';
   if ($('sl')) $('sl').textContent = s.sl != null ? String(s.sl) : '0';
@@ -610,7 +671,7 @@ function renderStats(s) {
   ['overviewNetRSegmentBadge', 'overviewWinRateSegmentBadge', 'overviewOpenSegmentBadge', 'overviewTotalSegmentBadge'].forEach(id => {
     if ($(id)) $(id).textContent = segBadgeText;
   });
-  
+
   if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
   if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';
   if ($('perfDateSpan')) {
@@ -1369,34 +1430,39 @@ async function loadPropVerdict() {
 }
 loadPropVerdict();
 
-// ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
-// The tape starts at the LIVE EDGE: the first poll asks for the newest rows
-// (`tail=1`) and adopts their max id as the cursor, so /api/recent-events
-// never replays stored history as if it were live. Every later poll streams
-// strictly forward with `since=cursor`.
-const liveDesk = { cursor: 0, timer: null, chime: false, audio: null, primed: false };
+// ── Live Desk: cursor-polled, real API event rows; never seeded with demo data ──
+// The bootstrap request loads the newest rows and adopts the API cursor. Later
+// requests fetch only newer rows, so stored history is never framed as new.
+const liveDesk = {
+  cursor: 0, timer: null, chime: false, audio: null, primed: false,
+  paused: false, history: [], lastPollMs: null
+};
 function liveDeskBeep(freq) {
   if (!liveDesk.chime) return;
   try {
     if (!liveDesk.audio) liveDesk.audio = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = liveDesk.audio, o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = freq || 880;
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + 0.4);
-  } catch (e) { /* audio unavailable */ }
+    const ctx = liveDesk.audio, oscillator = ctx.createOscillator(), gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = freq || 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.4);
+  } catch (_) { /* Audio may be blocked or unavailable. */ }
 }
-// Stored events are UTC; the tape shows "HH:MM UTC" for today and
-// "MM-DD HH:MM UTC" for anything older so history can never look live.
-function liveDeskTime(ev) {
+function liveDeskEventTime(ev) {
   const raw = String(ev.createdUtc || ev.candleTime || '');
   const ms = Date.parse(raw);
-  if (!Number.isFinite(ms)) return '';
+  return Number.isFinite(ms) ? ms : null;
+}
+// Stored event timestamps are UTC. Older rows include the date so history is
+// not accidentally presented as a current signal.
+function liveDeskTime(ev) {
+  const ms = liveDeskEventTime(ev);
+  if (ms == null) return 'Time unavailable';
   const d = new Date(ms), now = new Date();
   const p2 = n => String(n).padStart(2, '0');
   const hhmm = p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes());
@@ -1405,53 +1471,123 @@ function liveDeskTime(ev) {
     && d.getUTCDate() === now.getUTCDate();
   return today ? hhmm + ' UTC' : p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) + ' ' + hhmm + ' UTC';
 }
-function liveDeskRow(ev) {
+function liveDeskRow(ev, animate = false) {
   const li = document.createElement('li');
-  li.className = 'live-row live-' + String(ev.state).toLowerCase();
-  li.innerHTML = '<span class="live-time">' + esc(liveDeskTime(ev)) + '</span>'
-    + '<span class="live-state">' + esc(ev.state) + '</span>'
-    + '<span class="live-pair">' + esc(ev.pair) + '</span>'
-    + '<span class="live-reason">' + esc(ev.reason || '') + '</span>';
+  const stateName = String(ev.state || 'EVENT').toLowerCase();
+  const tone = stateName === 'retest' || stateName === 'confirmed' ? 'violet'
+    : stateName === 'sweep' || stateName === 'shift' ? 'amber' : '';
+  li.className = `event-row live-row live-${stateName}${animate ? ' live-event-enter' : ''}`;
+  li.innerHTML = '<time class="live-time">' + esc(liveDeskTime(ev)) + '</time>'
+    + '<span class="event-tone ' + tone + '" aria-hidden="true"></span>'
+    + '<span><strong>' + esc(ev.pair || 'Unknown pair') + ' <b>' + esc(ev.state || 'EVENT') + '</b></strong>'
+    + '<small>' + esc(ev.reason || 'Recorded engine event') + '</small></span>'
+    + '<span class="event-arrow" aria-hidden="true">↗</span>';
   return li;
 }
+function updateLiveDeskChart() {
+  const now = Date.now();
+  const rangeMs = 12 * 60 * 60 * 1000;
+  const start = now - rangeMs;
+  const timed = liveDesk.history
+    .map(event => ({ event, time: liveDeskEventTime(event) }))
+    .filter(row => row.time != null);
+  const within = timed.filter(row => row.time >= start && row.time <= now);
+  const counts = Array.from({ length: 12 }, () => 0);
+  within.forEach(row => {
+    const bin = Math.min(11, Math.max(0, Math.floor((row.time - start) / (60 * 60 * 1000))));
+    counts[bin] += 1;
+  });
+  const line = $('liveLine'), band = $('liveBand');
+  const status = $('liveChartStatus'), endLabel = $('chartEndLabel');
+  const count12h = $('liveEventCount12h'), latest = $('liveUpdatedAt'), response = $('livePollMs');
+  const max = Math.max(0, ...counts);
+  if (line && band) {
+    if (max === 0) {
+      line.removeAttribute('d');
+      band.removeAttribute('d');
+    } else {
+      const points = counts.map((count, index) => {
+        const x = 8 + index * (584 / (counts.length - 1));
+        const y = 194 - (count / max) * 148;
+        return [x, y];
+      });
+      const d = points.map((point, index) => `${index ? 'L' : 'M'} ${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(' ');
+      line.setAttribute('d', d);
+      band.setAttribute('d', `${d} L 592 210 L 8 210 Z`);
+    }
+  }
+  if (status) status.textContent = max ? 'LOADED ROWS' : (timed.length ? 'NO ROWS IN 12H' : 'NO TIMESTAMPED ROWS');
+  if (endLabel) endLabel.textContent = max ? `${counts[11]} latest hour` : 'No data';
+  if (count12h) count12h.textContent = String(within.length);
+  if (latest) {
+    const newest = timed.sort((a, b) => b.time - a.time)[0];
+    latest.textContent = newest ? liveDeskTime(newest.event) : '—';
+  }
+  if (response) response.textContent = liveDesk.lastPollMs == null ? '—' : `${liveDesk.lastPollMs} ms`;
+  if ($('liveEventCount')) $('liveEventCount').textContent = `${liveDesk.history.length} event rows in view`;
+}
 async function liveDeskPoll(initial) {
+  if (liveDesk.paused && !initial) return;
+  const started = performance.now();
   try {
-    // Bootstrap: newest 12 rows + cursor at the max event id. Afterwards: strictly
-    // forward from the cursor, so nothing already on the tape is re-rendered.
-    const d = await api(initial
+    const data = await api(initial
       ? '/api/recent-events?tail=1&limit=12'
       : '/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
-    const items = (d.items || []).slice();
-    const cursor = Number(d.cursor);
+    const items = Array.isArray(data.items) ? data.items.slice() : [];
+    const cursor = Number(data.cursor);
     if (Number.isFinite(cursor)) liveDesk.cursor = Math.max(liveDesk.cursor, cursor);
     const tape = $('liveTape');
     if (!tape) return;
+    liveDesk.lastPollMs = Math.max(0, Math.round(performance.now() - started));
     if (initial) {
-      tape.innerHTML = '';
-      items.slice().reverse().forEach(ev => tape.appendChild(liveDeskRow(ev)));
-      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded yet — the tape fills as scans run.</li>';
+      liveDesk.history = items.slice(-500);
+      tape.replaceChildren();
+      items.slice().reverse().forEach(event => tape.appendChild(liveDeskRow(event)));
+      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded in the returned history. The tape fills as scans record events.</li>';
       liveDesk.primed = true;
-      return; // history is rendered, never chimed
+    } else if (items.length) {
+      liveDesk.history.push(...items);
+      if (liveDesk.history.length > 500) liveDesk.history.splice(0, liveDesk.history.length - 500);
+      if (tape.querySelector('.live-empty')) tape.replaceChildren();
+      items.slice().reverse().forEach(event => tape.insertBefore(liveDeskRow(event, true), tape.firstChild));
+      while (tape.children.length > 30) tape.removeChild(tape.lastChild);
+      // Only newly cursor-returned events can trigger a sound or brief visual cue.
+      if (liveDesk.primed) {
+        liveDeskBeep(items.some(event => event.state === 'RETEST' || event.state === 'SHIFT') ? 1046 : 784);
+        const desk = $('liveDesk');
+        if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
+      }
     }
-    if (!items.length) return;
-    if (tape.querySelector('.live-empty')) tape.innerHTML = '';
-    items.slice().reverse().forEach(ev => tape.insertBefore(liveDeskRow(ev), tape.firstChild));
-    while (tape.children.length > 30) tape.removeChild(tape.lastChild);
-    // Chime/flash only for genuinely new events arriving after the initial render.
-    if (!liveDesk.primed) { liveDesk.primed = true; return; }
-    liveDeskBeep(items.some(ev => ev.state === 'RETEST' || ev.state === 'SHIFT') ? 1046 : 784);
-    const desk = $('liveDesk');
-    if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
-  } catch (e) { /* silent retry on next tick */ }
+    if (!liveDesk.primed) liveDesk.primed = true;
+    if ($('liveDeskStatus')) $('liveDeskStatus').textContent = liveDesk.paused ? 'DISPLAY PAUSED' : 'READ-ONLY';
+    updateLiveDeskChart();
+  } catch (_) {
+    if ($('liveDeskStatus')) $('liveDeskStatus').textContent = 'DATA UNAVAILABLE';
+    if ($('liveChartStatus')) $('liveChartStatus').textContent = 'API UNAVAILABLE';
+    if ($('liveTape') && !$('liveTape').children.length) {
+      $('liveTape').innerHTML = '<li class="live-empty">Event feed unavailable; retrying automatically.</li>';
+    }
+  }
 }
 function liveDeskStart() {
   if (liveDesk.timer || !$('liveTape')) return;
   liveDeskPoll(true);
-  liveDesk.timer = setInterval(() => { if (!document.hidden) liveDeskPoll(false); }, 15000);
+  liveDesk.timer = setInterval(() => {
+    if (!document.hidden && !liveDesk.paused) liveDeskPoll(false);
+  }, 15000);
 }
+if ($('tapePause')) $('tapePause').addEventListener('click', () => {
+  liveDesk.paused = !liveDesk.paused;
+  $('tapePause').setAttribute('aria-pressed', String(liveDesk.paused));
+  $('tapePause').textContent = liveDesk.paused ? 'Resume display' : 'Pause display';
+  $('tapePause').title = liveDesk.paused ? 'Resume display updates; the scanner continues.' : 'Pause this display only; the scanner continues.';
+  if ($('liveDeskStatus')) $('liveDeskStatus').textContent = liveDesk.paused ? 'DISPLAY PAUSED' : 'READ-ONLY';
+  if (!liveDesk.paused) liveDeskPoll(false);
+});
 if ($('liveChimeToggle')) $('liveChimeToggle').addEventListener('click', () => {
   liveDesk.chime = !liveDesk.chime;
-  $('liveChimeToggle').textContent = liveDesk.chime ? '🔔 Chime on' : '🔕 Chime off';
-  if (liveDesk.chime) liveDeskBeep(880); // user gesture unlocks browser audio
+  $('liveChimeToggle').textContent = liveDesk.chime ? 'Chime on' : 'Chime off';
+  $('liveChimeToggle').setAttribute('aria-pressed', String(liveDesk.chime));
+  if (liveDesk.chime) liveDeskBeep(880); // User gesture unlocks browser audio.
 });
 liveDeskStart();

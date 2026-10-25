@@ -6,7 +6,10 @@ export const DASHBOARD_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="DEO Edge confirmation engine and paper research ledger." />
   <title>DEO Edge · Confirmation Engine & Research Ledger</title>
+  <link rel="icon" type="image/png" sizes="128x128" href="${DEO_EDGE_LOGO_DATA_URI}">
+  <link rel="apple-touch-icon" sizes="180x180" href="${DEO_EDGE_LOGO_DATA_URI}">
   <meta name="theme-color" content="#080b0e">
   <style>
 :root{--bg:#090c12;--panel:#111722;--panel2:#151d2a;--line:#273245;--text:#eef3fb;--muted:#94a3b8;--accent:#8cf0c6;--blue:#38bdf8;--danger:#ff8f9b;--amber:#f6c66d;--radius:18px}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#1c2b3f 0,transparent 35%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.topbar{height:72px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:#0b1018cc;backdrop-filter:blur(14px)}.brand{display:inline-flex;align-items:center;gap:10px;min-width:0;padding:6px 15px 6px 6px;border:1px solid rgba(140,240,198,.28);border-radius:999px;background:linear-gradient(180deg,#111923,#0b1018);box-shadow:0 8px 24px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.04);color:var(--text);text-decoration:none;font-size:20px;letter-spacing:-.03em;transition:transform 140ms cubic-bezier(.23,1,.32,1),border-color 140ms cubic-bezier(.23,1,.32,1),box-shadow 140ms cubic-bezier(.23,1,.32,1)}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.brand-mark{display:block;flex:0 0 38px;width:38px;height:38px;object-fit:contain;border:1px solid rgba(255,255,255,.14);border-radius:12px;background:#000}.status{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.dot.ok{background:var(--accent);box-shadow:0 0 12px var(--accent)}.dot.bad{background:var(--danger)}.shell{max-width:1180px;margin:0 auto;padding:54px 24px 70px}.hero{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:34px}.eyebrow{color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.16em;margin:0 0 8px;text-transform:uppercase}.hero h1{font-size:clamp(32px,5vw,58px);line-height:1.03;letter-spacing:-.06em;margin:0 0 15px;max-width:720px}.lede{color:var(--muted);font-size:16px;max-width:590px;margin:0}.execution-badge{border:1px solid #8b713b;background:#211c12;border-radius:16px;padding:17px 20px;min-width:170px}.execution-badge span,.execution-badge small{display:block;color:var(--amber);font-size:10px;letter-spacing:.13em;text-transform:uppercase}.execution-badge strong{display:block;font-size:21px;margin:3px 0;color:#ffe0a0}.execution-badge small{letter-spacing:0;color:#bd9e65;text-transform:none}.panel{border:1px solid var(--line);background:linear-gradient(145deg,#131b27e6,#0f151fe6);border-radius:var(--radius);padding:22px;box-shadow:0 18px 55px #00000022}.connection{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:32px}.panel h2{font-size:17px;letter-spacing:-.02em;margin:0 0 4px}.panel p{color:var(--muted);margin:0}.connection-form{display:flex;gap:8px;min-width:min(610px,100%)}input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);background:#0c121b;color:var(--text);padding:10px 12px}input[type=url]{flex:1;min-width:230px}input[type=password]{width:180px}button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#07110d;font-weight:750}button:hover{filter:brightness(1.08)}button.secondary{background:transparent;border-color:var(--line);color:var(--text)}.error{color:var(--danger)!important;margin-top:10px!important}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin-bottom:24px}.tab{background:transparent;border:0;color:var(--muted);border-radius:0;padding:12px 15px;border-bottom:2px solid transparent}.tab.active{color:var(--text);border-bottom-color:var(--accent)}.tab-panel{display:none}.tab-panel.active{display:block}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}.metric{border:1px solid var(--line);background:var(--panel);border-radius:var(--radius);padding:19px}.metric span,.metric small{display:block;color:var(--muted);font-size:12px}.metric strong{display:block;font-size:30px;letter-spacing:-.05em;margin:9px 0 3px}.metric .small-value{font-size:18px;margin-top:17px;color:var(--amber)}.two-col{display:grid;grid-template-columns:1.35fr .8fr;gap:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:18px;margin-bottom:20px}.pill{border-radius:999px;padding:5px 9px;font-size:10px;white-space:nowrap}.pill.green{color:var(--accent);background:#153126;border:1px solid #295b47}.pill.gray{color:var(--muted);background:#1a2230;border:1px solid var(--line)}.steps{display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:#8e9bb0;font-size:11px}.steps b{color:var(--accent);background:#153126;border-radius:8px;padding:6px 8px}.steps i{font-style:normal;color:#536074}.muted-copy{font-size:12px;margin-top:22px!important}.mc-verdict{margin-top:26px;border-top:1px solid var(--line);padding-top:18px}.mc-verdict h3{margin:0 0 6px;font-size:15px}.health-card dl{margin:0}.health-card dl div{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:10px 0}.health-card dt{color:var(--muted)}.health-card dd{margin:0;text-align:right}.alert-list{display:grid;gap:10px}.alert-row{display:grid;grid-template-columns:1.1fr .7fr .7fr .8fr;gap:12px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:16px;background:#0e151f;color:#eef3fb!important;width:100%;text-align:left;cursor:pointer;transition:background .15s ease,border-color .15s ease}
@@ -210,263 +213,153 @@ body:not(.operator-mode) .operator-only{display:none!important}
   <style>${DASHBOARD_THEME_CSS}</style>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="DEO Edge home" title="Go to dashboard home">
-      <img class="brand-mark" src="${DEO_EDGE_LOGO_DATA_URI}" alt="" aria-hidden="true" width="40" height="40">
-      <span class="brand-copy">
-        <strong>DEO Edge</strong>
-        <small>Structure · Liquidity · Key Levels</small>
-      </span>
-    </a>
-    <div class="header-actions">
-      <div class="mode-switcher-wrap" style="display: flex; align-items: center; gap: 8px;">
-        <div class="mode-switcher" role="group" aria-label="Terminal View Mode">
-          <button type="button" class="mode-btn active" id="modePublicBtn" data-view-mode="public" aria-pressed="true">
-            <span class="mode-dot"></span> 📊 Public Overview
-          </button>
-          <button type="button" class="mode-btn" id="modeOperatorBtn" data-view-mode="operator" aria-pressed="false">
-            <span class="mode-dot"></span> 🖥️ Operator Terminal
-          </button>
-        </div>
-        <span id="activeModeLabel" class="pill gray">Viewing: Public Overview</span>
-      </div>
-      <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn marketing-only" title="Join VIP Signals with code FOUNDING20">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        <span>VIP Access ($100/mo)</span>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DEO Edge home" title="Go to dashboard home">
+        <img class="brand-mark" src="${DEO_EDGE_LOGO_DATA_URI}" alt="" aria-hidden="true" width="28" height="28">
+        <span class="brand-copy"><strong>DEO</strong><small>DEO Edge</small><span class="sr-only"><strong>DEO Edge</strong></span></span>
       </a>
-    </div>
-  </header>
+      <div class="product-line">Structure <span>·</span> Liquidity <span>·</span> Key Levels</div>
+      <div class="topbar-actions">
+        <div class="mode-switch" role="group" aria-label="Product mode">
+          <button id="modePublicBtn" class="mode-button is-active" data-view-mode="public" type="button" aria-pressed="true">Public Overview</button>
+          <button id="modeOperatorBtn" class="mode-button" data-view-mode="operator" type="button" aria-pressed="false">Operator Terminal</button>
+        </div>
+        <span id="activeModeLabel" class="sr-only" aria-live="polite">Viewing: Public Overview</span>
+        <a class="text-link" href="#vip">VIP Access <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
 
-  <section class="status-rail marketing-only" aria-label="System and execution status">
-    <div class="status-rail-item status-rail-health">
-      <div class="status" id="systemStatusPill" title="Latest worker health response" aria-live="polite" aria-atomic="true">
-        <span id="statusDot" class="dot ok"></span>
-        <span id="statusText">Checking worker status…</span>
-      </div>
-      <small>Paper pipeline</small>
-    </div>
-    <div class="status-rail-item">
-      <span class="status-rail-icon" aria-hidden="true">⌁</span>
-      <span><strong>Configured data sources</strong><small>OANDA v3 · Twelve Data · Dukascopy · Deriv</small></span>
-    </div>
-    <div class="status-rail-item">
-      <span class="status-rail-icon" aria-hidden="true">◷</span>
-      <span><strong>Feed freshness</strong><small>See Market Health for the latest check</small></span>
-    </div>
-    <div class="safety-lock"><span aria-hidden="true">▣</span>PAPER SIMULATION · NO LIVE ORDERS</div>
-  </section>
+    <a class="skip-link" href="#mainContent">Skip to dashboard content</a>
+    <main id="mainContent" class="dashboard-main" tabindex="-1">
+      <span id="top" class="sr-only" aria-hidden="true"></span>
+      <section class="status-rail" aria-label="System status">
+        <div class="status-item"><span id="statusDot" class="status-dot checking" aria-hidden="true"></span><span><b id="statusText" aria-live="polite">Checking worker status…</b><small>Paper pipeline</small></span></div>
+        <div class="status-item"><span class="status-icon" aria-hidden="true">⌁</span><span><b id="workerVersionLabel">Engine v2.5.3</b><small id="headerWorkerState">Cloud worker · status pending</small></span></div>
+        <div class="status-item"><span class="status-icon" aria-hidden="true">◌</span><span><b>Configured feeds</b><small id="opFeeds">Awaiting Worker health response</small></span></div>
+        <div class="status-item warning"><span class="status-icon" aria-hidden="true">◷</span><span><b>Last checked</b><small id="headerLastChecked">Waiting for health response</small></span></div>
+        <div class="safety-lock"><span aria-hidden="true">▣</span> PAPER SIMULATION · NO LIVE ORDERS</div>
+      </section>
 
-  <a class="skip-link" href="#mainContent">Skip to dashboard content</a>
-  <main id="mainContent" class="shell" tabindex="-1">
-    <div class="announcement-banner marketing-only">
-      <div class="banner-left">
-        <span class="banner-badge">FOUNDING COHORT</span>
-        <span>VIP regular <strong>$100/mo</strong> — lock in <strong>$49/mo</strong> lifetime with code <strong class="code-pill">FOUNDING20</strong> (Batch 1: 90% full)</span>
-      </div>
-      <div class="banner-right">
-        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="banner-vip">Claim Founding Desk ($49/mo) →</a>
-      </div>
-    </div>
-
-    <!-- Operator Status Bar (Operator Terminal Mode) -->
-    <div class="operator-status-bar operator-only" id="operatorStatusBar">
-      <div class="operator-status-item">
-        <span class="dot ok"></span>
-        <div>
-          <span>Worker Engine</span>
-          <strong id="opWorkerHealth">v2.5.3 · Checking health</strong>
-        </div>
-      </div>
-      <div class="operator-status-item">
-        <span style="font-size:16px;">📡</span>
-        <div>
-          <span>Market Feeds</span>
-          <strong id="opFeeds">OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)</strong>
-        </div>
-      </div>
-      <div class="operator-status-item">
-        <span style="font-size:16px;">⏱️</span>
-        <div>
-          <span>Scan Freshness</span>
-          <strong id="opLastScan">Waiting for the latest health check</strong>
-        </div>
-      </div>
-      <div class="operator-status-item">
-        <span style="font-size:16px;">🛡️</span>
-        <div>
-          <span>Execution Safety</span>
-          <strong style="color: #8cf0c6;">PAPER SIMULATION · No Real Orders</strong>
-        </div>
-      </div>
-    </div>
-
-    <section class="hero">
-      <div>
-        <p class="eyebrow">QUANTITATIVE RESEARCH &amp; CONFIRMATION ENGINE</p>
-        <h1>Make the close<br><em>earn its place.</em></h1>
-        <p class="lede">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts, and confirmation entries across supported markets.</p>
-        <p class="hero-disclaimer"><span aria-hidden="true">!</span> Research and education only; the production scanner sends paper/research signal alerts for these symbols but places no orders. Historical or simulated outcomes do not guarantee future results.</p>
-        <p class="research-caveat">Deriv coverage includes all 10 supported Volatility Indices for paper/research alerts only; the required 360-day Deriv CFD replay remains unvalidated.</p>
-        
-        <div class="marketing-only" style="margin-top: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" class="vip-btn" style="padding: 11px 22px; font-size: 13px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span>Join VIP Signals ($100/mo · $49 with code FOUNDING20)</span>
-          </a>
-          <button type="button" class="secondary" id="heroLedgerBtn" style="padding: 11px 18px; font-size: 13px; font-weight: 600;">
-            Audit Trade Ledger ↓
-          </button>
-        </div>
-
-        <!-- Discreet, clean community text links -->
-        <div class="community-links-row marketing-only">
-          <span>Free Telegram Hubs:</span>
-          <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="community-link">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.863.926z"/></svg>
-            <span>DEO EDGE (FREE)</span>
-          </a>
-          <span>·</span>
-          <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
-            <span>DEO EDGE | FREE SYNTHETICS</span>
-          </a>
-        </div>
-      </div>
-      <div class="execution-badge" aria-label="Execution safety: paper simulation only">
-        <span>EXECUTION SAFETY</span>
-        <strong>PAPER SIMULATION</strong>
-        <small>Rule-checked research · No live orders</small>
-      </div>
-    </section>
-        <small>Automated Cloud Scanner</small>
-      </div>
-    </section>
-
-    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
-      <button type="button" class="tab active" id="tabOverview" role="tab" data-tab="overview" aria-controls="overview" aria-selected="true" tabindex="0">Overview</button>
-      <button type="button" class="tab" id="tabPerformance" role="tab" data-tab="performance" aria-controls="performance" aria-selected="false" tabindex="-1">Performance</button>
-      <button type="button" class="tab" id="tabAlerts" role="tab" data-tab="alerts" aria-controls="alerts" aria-selected="false" tabindex="-1">Trade Journal &amp; Alerts</button>
-      <button type="button" class="tab" id="tabHealth" role="tab" data-tab="health" aria-controls="health" aria-selected="false" tabindex="-1">Market Health</button>
-      <button type="button" class="tab" id="tabPreferences" role="tab" data-tab="preferences" aria-controls="preferences" aria-selected="false" tabindex="-1">Channel Settings</button>
-    </nav>
-
-    <section id="overview" class="tab-panel active" role="tabpanel" aria-labelledby="tabOverview" tabindex="0">
-      <!-- Market Segment Header on Overview -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
-        <div>
-          <p class="eyebrow" style="margin:0 0 2px;">PERFORMANCE BY MARKET SEGMENT</p>
-          <h2 style="margin:0; font-size:18px;">Institutional Markets & Deriv Synthetic Watchlist</h2>
-        </div>
-        <div class="market-segment-bar" style="margin-bottom:0;">
-          <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
-            <span>🌍</span> All Markets <span class="seg-count">24</span>
-          </button>
-          <button type="button" class="segment-btn" data-segment="institutional" aria-pressed="false">
-            <span>🏛️</span> Institutional <span class="seg-count">14</span>
-          </button>
-          <button type="button" class="segment-btn" data-segment="synthetics" aria-pressed="false">
-            <span>⚡</span> Deriv Watchlist <span class="seg-count">10</span>
-          </button>
-        </div>
+      <div class="operator-status-bar operator-only" id="operatorStatusBar" aria-label="Private operator status">
+        <div class="operator-status-item"><span class="status-dot checking" aria-hidden="true"></span><div><span>Worker Engine</span><strong id="opWorkerHealth">Checking health</strong></div></div>
+        <div class="operator-status-item"><span aria-hidden="true">⌁</span><div><span>Market Feeds</span><strong id="opFeedSummary">Configured data sources · see health details</strong></div></div>
+        <div class="operator-status-item"><span aria-hidden="true">◷</span><div><span>Scan Freshness</span><strong id="opLastScan">Waiting for the latest health check</strong></div></div>
+        <div class="operator-status-item"><span aria-hidden="true">▣</span><div><span>Execution Safety</span><strong>PAPER SIMULATION · NO LIVE ORDERS</strong></div></div>
       </div>
 
-      <!-- Segment Comparative Performance Overview -->
-      <div class="segment-comparison-grid">
-        <div class="segment-card" id="segCardInstOverview" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by Institutional FX & Indices">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:18px;">🏛️</span>
-              <div>
-                <strong style="color:var(--text); font-size:14px; display:block;">Institutional FX & Indices</strong>
-                <small style="color:var(--muted); font-size:11px;">14 Assets · Asian, London & NY Sessions</small>
-              </div>
-            </div>
-            <span class="pill" style="font-size:11px;">14 Markets</span>
+      <section class="hero section-grid" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-rule"></span> Quantitative research &amp; confirmation engine</p>
+          <h1 id="hero-title">Make the close<br><em>earn its place.</em></h1>
+          <p class="hero-text">Point-in-time paper outcomes from key-level liquidity sweeps, structure shifts, and confirmation entries across supported markets.</p>
+          <div class="hero-actions marketing-only">
+            <a class="button button-primary" href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer">Join VIP Signals <span aria-hidden="true">↗</span></a>
+            <button class="button button-quiet" id="heroLedgerBtn" type="button">Audit Trade Ledger <span aria-hidden="true">↓</span></button>
           </div>
-          <div class="seg-card-stats">
-            <div><span>Win Rate</span><strong id="segInstWinRateOverview" class="profit-text">—</strong></div>
-            <div><span>Net Return</span><strong id="segInstNetROverview" class="accent-text">—</strong></div>
-            <div><span>TP / SL</span><strong id="segInstOutcomesOverview" style="color:var(--text);">—</strong></div>
-            <div><span>Signals</span><strong id="segInstSignalsOverview" style="color:var(--text);">—</strong></div>
+          <p class="disclaimer"><span class="inline-alert">!</span> Research and education only; the production scanner sends paper/research signal alerts for these symbols but places no orders. Historical or simulated outcomes do not guarantee future results.</p>
+          <p class="research-caveat">Deriv coverage includes all 10 supported Volatility Indices for paper/research alerts only; the required 360-day Deriv CFD replay remains unvalidated.</p>
+          <div class="community-links-row marketing-only">
+            <span>Free Telegram hubs:</span>
+            <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="community-link">DEO EDGE (FREE)</a><span aria-hidden="true">·</span>
+            <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="community-link">DEO EDGE | FREE SYNTHETICS</a>
           </div>
         </div>
-
-        <div class="segment-card synth-card" id="segCardSynthOverview" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" title="Click to filter Overview by the Deriv synthetic watchlist">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:18px;">⚡</span>
-              <div>
-                <strong style="color:#f3e8ff; font-size:14px; display:block;">Deriv Synthetic Watchlist</strong>
-                <small style="color:var(--muted); font-size:11px;">10 Volatility Indices · 24/7 · Alert-only · No orders</small>
-              </div>
-            </div>
-            <span class="pill" style="font-size:11px; background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4);">24/7 Feed</span>
+        <div class="hero-pulse" role="img" aria-label="Illustrative engine-process graphic; not a performance chart or live metric">
+          <div class="pulse-header"><span>ENGINE PULSE</span><span class="pulse-live"><i></i> READ-ONLY</span></div>
+          <div class="pulse-graph" aria-hidden="true">
+            <div class="graph-grid"></div>
+            <svg viewBox="0 0 540 240" preserveAspectRatio="none">
+              <defs><linearGradient id="pulseFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#62e6ff" stop-opacity=".26"/><stop offset="1" stop-color="#62e6ff" stop-opacity="0"/></linearGradient></defs>
+              <path class="fill" d="M0 208 C42 208 42 184 78 184 S115 216 148 168 S188 126 216 144 S255 170 282 112 S310 104 334 122 S355 78 382 92 S416 122 440 68 S466 72 486 44 S516 26 540 36 V240 H0 Z"/>
+              <path class="line" d="M0 208 C42 208 42 184 78 184 S115 216 148 168 S188 126 216 144 S255 170 282 112 S310 104 334 122 S355 78 382 92 S416 122 440 68 S466 72 486 44 S516 26 540 36"/>
+              <circle cx="440" cy="68" r="4"/><circle class="glow-dot" cx="440" cy="68" r="10"/>
+            </svg>
+            <div class="graph-labels"><span>MAP</span><span>TOUCH</span><span>SWEEP</span><span>SHIFT</span><span>RETEST</span></div>
           </div>
-          <div class="seg-card-stats">
-            <div><span>Win Rate</span><strong id="segSynthWinRateOverview" style="color:#a855f7;">—</strong></div>
-            <div><span>Net Return</span><strong id="segSynthNetROverview" class="accent-text">—</strong></div>
-            <div><span>TP / SL</span><strong id="segSynthOutcomesOverview" style="color:var(--text);">—</strong></div>
-            <div><span>Signals</span><strong id="segSynthSignalsOverview" style="color:var(--text);">—</strong></div>
-          </div>
+          <div class="pulse-footer"><span>Process graphic · not performance data</span><strong>24h diagnostics below</strong></div>
         </div>
-      </div>
+      </section>
 
-      <div class="metric-grid">
-        <article class="metric">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Paper Net Return</span>
-            <span id="overviewNetRSegmentBadge" class="seg-badge-pill">All</span>
-          </div>
-          <strong id="overviewNetR" class="accent-text">Syncing…</strong>
-          <small>Simulated R on broker tick feeds</small>
-        </article>
-        <article class="metric">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Win Rate</span>
-            <span id="overviewWinRateSegmentBadge" class="seg-badge-pill">All</span>
-          </div>
-          <strong id="winRate">Syncing…</strong>
-          <small>TP / (TP + SL)</small>
-        </article>
-        <article class="metric">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Active / Open</span>
-            <span id="overviewOpenSegmentBadge" class="seg-badge-pill">All</span>
-          </div>
-          <strong id="open">Syncing…</strong>
-          <small>simulated trades in market</small>
-        </article>
-        <article class="metric">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Total Signals</span>
-            <span id="overviewTotalSegmentBadge" class="seg-badge-pill">All</span>
-          </div>
-          <strong id="total">Syncing…</strong>
-          <small>confirmed setups</small>
-        </article>
-      </div>
+      <nav class="section-tabs" role="tablist" aria-label="Dashboard sections">
+        <button class="section-tab tab is-active active" id="tabOverview" role="tab" data-tab="overview" aria-controls="overview" aria-selected="true" tabindex="0" type="button">Overview</button>
+        <button class="section-tab tab" id="tabPerformance" role="tab" data-tab="performance" aria-controls="performance" aria-selected="false" tabindex="-1" type="button">Performance</button>
+        <button class="section-tab tab" id="tabAlerts" role="tab" data-tab="alerts" aria-controls="alerts" aria-selected="false" tabindex="-1" type="button">Trade Journal <span class="tab-count" id="alertTabCount">—</span></button>
+        <button class="section-tab tab" id="tabHealth" role="tab" data-tab="health" aria-controls="health" aria-selected="false" tabindex="-1" type="button">Market Health</button>
+        <button class="section-tab tab" id="tabPreferences" role="tab" data-tab="preferences" aria-controls="preferences" aria-selected="false" tabindex="-1" type="button">Channel</button>
+      </nav>
 
-      <div class="two-col">
-        <article class="panel lifecycle">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">DEO EDGE CONFIRMATION METHOD (STRUCTURE · LIQUIDITY · KEY LEVELS)</p>
-              <h2>7-Stage Execution Lifecycle</h2>
-            </div>
-            <span class="pill amber">Deterministic rules</span>
-          </div>
-          <div class="steps">
-            <span>MAP</span><i>→</i>
-            <span>TOUCH</span><i>→</i>
-            <span>SWEEP</span><i>→</i>
-            <span>SHIFT (BOS)</span><i>→</i>
-            <span>RETEST</span><i>→</i>
-            <b style="background:#153126; color:var(--accent);">CONFIRMED ENTRY</b><i>→</i>
-            <span>OUTCOME</span>
-          </div>
+      <section class="overview section-grid tab-panel is-visible active" id="overview" data-panel="overview" role="tabpanel" aria-labelledby="tabOverview" tabindex="0">
+        <div class="section-heading"><div><p class="eyebrow">01 / Overview</p><h2 id="overview-heading">A ledger built for <em>proof.</em></h2></div><div class="section-note"><span id="overviewStatusDot" class="status-dot checking" aria-hidden="true"></span> Read-only · paper signals only</div></div>
+        <div class="segment-switch" role="group" aria-label="Market segment">
+          <button class="segment-button segment-btn is-active active" data-segment="all" type="button" aria-pressed="true"><span aria-hidden="true">◎</span> All Markets <b>24</b></button>
+          <button class="segment-button segment-btn" data-segment="institutional" type="button" aria-pressed="false"><span aria-hidden="true">◈</span> Institutional <b>14</b></button>
+          <button class="segment-button segment-btn" data-segment="synthetics" type="button" aria-pressed="false"><span aria-hidden="true">ϟ</span> Deriv Watchlist <b>10</b></button>
+        </div>
+        <div class="metric-grid">
+          <article class="metric-card featured"><div class="metric-top"><span>Paper net return</span><span class="metric-tag" id="overviewNetRSegmentBadge">ALL</span></div><strong id="overviewNetR">—</strong><small>cumulative R · recorded outcomes only</small></article>
+          <article class="metric-card"><div class="metric-top"><span>Win rate</span><span class="metric-symbol">%</span></div><strong id="winRate">—</strong><small>TP ÷ (TP + SL)</small></article>
+          <article class="metric-card"><div class="metric-top"><span>Active / open</span><span class="metric-symbol">◉</span></div><strong id="open">—</strong><small>simulated trades in market</small></article>
+          <article class="metric-card"><div class="metric-top"><span>Total signals</span><span class="metric-symbol">⌁</span></div><strong id="total">—</strong><small>confirmed setups recorded</small></article>
+        </div>
+        <div class="segment-detail-grid">
+          <article class="segment-card" id="segCardInstOverview" data-target-segment="institutional" role="button" tabindex="0" aria-pressed="false" aria-label="Filter to institutional markets">
+            <div class="segment-title"><span class="segment-icon blue" aria-hidden="true">◈</span><div><h3>Institutional FX &amp; Indices</h3><p>14 assets · Asian, London &amp; NY sessions</p></div><span class="card-arrow" aria-hidden="true">↗</span></div>
+            <div class="segment-kpis"><span><b id="segInstSignalsOverview">—</b><small>signals</small></span><span><b id="segInstWinRateOverview">—</b><small>win rate</small></span><span><b id="segInstNetROverview">—</b><small>net return</small></span><span><b id="segInstOutcomesOverview">—</b><small>TP / SL</small></span></div>
+          </article>
+          <article class="segment-card deriv-card" id="segCardSynthOverview" data-target-segment="synthetics" role="button" tabindex="0" aria-pressed="false" aria-label="Filter to the Deriv watchlist">
+            <div class="segment-title"><span class="segment-icon violet" aria-hidden="true">ϟ</span><div><h3>Deriv Synthetic Watchlist</h3><p>10 volatility indices · 24/7 · alert-only</p></div><span class="card-arrow" aria-hidden="true">↗</span></div>
+            <div class="segment-kpis"><span><b id="segSynthSignalsOverview">—</b><small>signals</small></span><span><b id="segSynthWinRateOverview">—</b><small>win rate</small></span><span><b id="segSynthNetROverview">—</b><small>net return</small></span><span><b id="segSynthOutcomesOverview">—</b><small>TP / SL</small></span></div>
+          </article>
+        </div>
+        <p class="chart-disclaimer">Reported outcomes are from the connected paper/research ledger. A blank or unavailable value is not a zero and is not a forecast.</p>
+      </section>
 
-          <!-- Detailed 7-Stage Execution Lifecycle Table -->
-          <div class="lifecycle-table-wrap">
+      <article class="panel engine-pulse section-grid" id="enginePulse">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">LIVE ENGINE ACTIVITY · LAST 24H</p>
+            <h2>Engine Pulse</h2>
+          </div>
+          <span class="pill green">Read-only</span>
+        </div>
+        <p class="muted-copy" id="enginePulseSummary">Loading 24-hour engine activity…</p>
+        <div class="engine-pulse-grid" id="enginePulseGrid">
+          <div class="engine-pulse-stat"><span>MAP event rows</span><strong id="epEvaluated">—</strong></div>
+          <div class="engine-pulse-stat"><span>TOUCH event rows</span><strong id="epTouch">—</strong></div>
+          <div class="engine-pulse-stat"><span>SWEEP event rows</span><strong id="epSweep">—</strong></div>
+          <div class="engine-pulse-stat"><span>SHIFT event rows</span><strong id="epShift">—</strong></div>
+          <div class="engine-pulse-stat"><span>RETEST event rows</span><strong id="epRetest">—</strong></div>
+          <div class="engine-pulse-stat"><span>Alert rows inserted</span><strong id="epConfirmed">—</strong></div>
+          <div class="engine-pulse-stat"><span>Scans run</span><strong id="epScans">—</strong></div>
+          <div class="engine-pulse-stat"><span>Pairs covered</span><strong id="epPairs">—</strong></div>
+        </div>
+        <p class="muted-copy" id="enginePulseRejections" style="margin:10px 0 0;"></p>
+        <p class="muted-copy" id="enginePulseFunnel" style="margin:10px 0 0;"></p>
+        <p class="muted-copy" id="enginePulseTiming" style="margin:10px 0 0;"></p>
+        <p class="chart-disclaimer">Read-only aggregate of recorded scan diagnostics — no orders, no predictions. Paper simulation — research only.</p>
+      </article>
+
+      <section class="lifecycle section-grid" aria-labelledby="lifecycle-heading">
+        <div class="section-heading"><div><p class="eyebrow">02 / DEO EDGE CONFIRMATION METHOD</p><h2 id="lifecycle-heading">Seven stages. <em>No shortcuts.</em></h2></div><div class="section-note">Deterministic rules · bar-close finality</div></div>
+        <div class="lifecycle-card">
+          <div class="lifecycle-rail" role="group" aria-label="Confirmation method stages">
+            <div class="rail-line" aria-hidden="true"></div>
+            <button class="stage is-active" data-stage-index="0" type="button" aria-pressed="true" aria-controls="lifecycleDetail"><span class="stage-node">01</span><b>MAP</b><small>HTF bias</small></button>
+            <button class="stage" data-stage-index="1" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">02</span><b>TOUCH</b><small>Origin zone</small></button>
+            <button class="stage" data-stage-index="2" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">03</span><b>SWEEP</b><small>Liquidity run</small></button>
+            <button class="stage" data-stage-index="3" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">04</span><b>SHIFT</b><small>BOS</small></button>
+            <button class="stage" data-stage-index="4" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">05</span><b>RETEST</b><small>FVG rebalance</small></button>
+            <button class="stage" data-stage-index="5" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">06</span><b>ENTRY</b><small>Close locked</small></button>
+            <button class="stage" data-stage-index="6" type="button" aria-pressed="false" aria-controls="lifecycleDetail"><span class="stage-node">07</span><b>OUTCOME</b><small>Resolved</small></button>
+          </div>
+          <div class="lifecycle-detail" id="lifecycleDetail" aria-live="polite">
+            <p class="eyebrow" id="lifecycleStageLabel">Selected stage / MAP</p><h3 id="lifecycleStageTitle">HTF Directional Vantage Point</h3>
+            <p id="lifecycleStageCopy">Weekly and daily opposing liquidity draw established. A 4H structural A/V-level is armed before the lower-timeframe radar begins.</p>
+            <div class="rule-line"><span>Verification</span><strong id="lifecycleStageRule">4H structure + 1H execution context must align directionally.</strong></div>
+            <div class="detail-actions"><button id="showRulesBtn" class="button button-small" type="button" aria-expanded="false" aria-controls="ruleReference">View deterministic rules <span aria-hidden="true">→</span></button><span class="sim-tag">RESEARCH RULES</span></div>
+          </div>
+          <details class="rule-reference" id="ruleReference"><summary>Full verification table and safeguards</summary><p class="research-caveat">This is the stated method description. The UI does not claim each stage was reached for a given market unless the live diagnostics show it.</p><div class="lifecycle-table-wrap">
             <table class="lifecycle-table">
               <thead>
                 <tr>
@@ -513,10 +406,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <!-- Confirmation Requirements Checklist -->
-          <div class="confirmation-checklist">
+          </div><div class="confirmation-checklist">
             <div class="checklist-item">
               <span>✓</span>
               <div>
@@ -545,138 +435,25 @@ body:not(.operator-mode) .operator-only{display:none!important}
                 <small>Alert timestamp, entry price, and R-multiples freeze permanently on bar close.</small>
               </div>
             </div>
-          </div>
-        </article>
-
-        <article class="panel health-card">
-          <div class="panel-head">
-            <div>
-              <p class="eyebrow">SYSTEM & DATA PROVENANCE</p>
-              <h2>Engine Status</h2>
-            </div>
-            <span id="healthPill" class="pill green">Worker Online</span>
-          </div>
-          <dl>
-            <div><dt>Cloud Engine</dt><dd id="workerName">slk-alert-worker v2.5.3</dd></div>
-            <div><dt>Execution Safety</dt><dd id="mode" style="color: #f6c66d; font-weight: 700;">PAPER PIPELINE · RULE-CHECKED</dd></div>
-            <div><dt>Live Scanner (<span id="activePairCount">15</span>)</dt><dd id="pairs">JAPAN225 · NAS100 · EURUSD · XAUUSD · NETHERLANDS25 · V75 · V100 · V50 · V25 · V10 · V75_1S · V100_1S · V50_1S · V25_1S · V10_1S</dd></div>
-            <div><dt>Other institutional pairs — not scanned now (9)</dt><dd>GBPUSD · USDJPY · AUDJPY · GBPJPY · US30 · GER40 · USDCAD · NZDUSD · EURJPY</dd></div>
-            <div><dt>Market Universe</dt><dd style="color: #c084fc; font-weight: 600;">24 tracked: 14 institutional · 10 Deriv</dd></div>
-            <div><dt>Institutional status</dt><dd style="color: #c084fc; font-weight: 600;">4 evidence-selected; Netherlands 25 alert-only</dd></div>
-            <div><dt>Last Checked</dt><dd id="lastResponse">—</dd></div>
-          </dl>
-        </article>
-      </div>
-
-      <!-- Engine Pulse: read-only 24h aggregate of recorded scan diagnostics -->
-      <article class="panel engine-pulse" id="enginePulse">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow">LIVE ENGINE ACTIVITY · LAST 24H</p>
-            <h2>Engine Pulse</h2>
-          </div>
-          <span class="pill green">Read-only</span>
+          </div></details>
         </div>
-        <p class="muted-copy" id="enginePulseSummary">Loading 24-hour engine activity…</p>
-        <div class="engine-pulse-grid" id="enginePulseGrid">
-          <div class="engine-pulse-stat"><span>MAP event rows</span><strong id="epEvaluated">—</strong></div>
-          <div class="engine-pulse-stat"><span>TOUCH event rows</span><strong id="epTouch">—</strong></div>
-          <div class="engine-pulse-stat"><span>SWEEP event rows</span><strong id="epSweep">—</strong></div>
-          <div class="engine-pulse-stat"><span>SHIFT event rows</span><strong id="epShift">—</strong></div>
-          <div class="engine-pulse-stat"><span>RETEST event rows</span><strong id="epRetest">—</strong></div>
-          <div class="engine-pulse-stat"><span>Alert rows inserted</span><strong id="epConfirmed">—</strong></div>
-          <div class="engine-pulse-stat"><span>Scans run</span><strong id="epScans">—</strong></div>
-          <div class="engine-pulse-stat"><span>Pairs covered</span><strong id="epPairs">—</strong></div>
+      </section>
+
+
+
+      <section class="provenance section-grid" aria-labelledby="provenance-heading">
+        <div class="provenance-copy"><p class="eyebrow">03 / Data provenance</p><h2 id="provenance-heading">Know what the<br><em>engine knows.</em></h2><p>Recorded events are timestamped at bar close. Confirmed entry details are frozen for review; no retrospective repainting and no live execution. The research record is not a prediction or a guarantee.</p><a class="text-link" href="#alerts">Inspect the signal ledger <span aria-hidden="true">↗</span></a></div>
+        <div class="provenance-panel">
+          <div class="panel-head"><span>SCANNER UNIVERSE</span><span id="healthPill" class="panel-status"><i></i> CHECKING</span></div>
+          <div class="universe-row"><div><strong>24</strong><span>tracked markets</span></div><div><strong>Live Scanner (<span id="activePairCount">15</span>)</strong><span>pairs covered now</span></div><div><strong>09</strong><span>not scanned now</span></div></div>
+          <div class="scanner-list" id="pairs">JAPAN225 · NAS100 · EURUSD · XAUUSD · NETHERLANDS25 · V75 · V100 · V50 · V25 · V10 · V75_1S · V100_1S · V50_1S · V25_1S · V10_1S</div>
+          <div class="universe-row additional-universe"><div><strong>Other institutional pairs — not scanned now (9)</strong><span>GBPUSD · USDJPY · AUDJPY · GBPJPY · US30 · GER40 · USDCAD · NZDUSD · EURJPY</span></div></div>
+          <div class="panel-foot"><span>Cloud engine · <strong id="workerName">Checking…</strong> · <span id="mode">PAPER SIMULATION · NO LIVE ORDERS</span></span><span>Last checked <time id="lastResponse">—</time></span></div>
+          <p class="research-caveat">Institutional pairs are the research universe. The current scanner watchlist shown above is separate; Deriv alerts are paper/research only.</p>
         </div>
-        <p class="muted-copy" id="enginePulseRejections" style="margin:10px 0 0;"></p>
-        <p class="muted-copy" id="enginePulseFunnel" style="margin:10px 0 0;"></p>
-        <p class="muted-copy" id="enginePulseTiming" style="margin:10px 0 0;"></p>
-        <p class="chart-disclaimer">Read-only pipeline counts. Lifecycle rows are not unique setups; rejection totals are replay attempts and may repeat. Alert rows are stored before delivery gates and do not prove a Telegram message was sent. WATCH/Bias notices are informational pre-entry context, not entries. Paper simulation — research only.</p>
-      </article>
+      </section>
 
-      <!-- Institutional Cohort Waitlist Card -->
-      <article class="panel waitlist-card marketing-only" id="waitlistCard">
-        <div class="waitlist-header">
-          <div>
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
-              <span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #f6c66d; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">🔒 COHORT WAITLIST · STRICT DESK CAPACITY</span>
-              <span class="pill" style="background: rgba(140, 240, 198, 0.15); color: var(--accent); border: 1px solid rgba(140, 240, 198, 0.3);">Next Cohort: Batch 2</span>
-            </div>
-            <h2>Reserve Priority Access for Cohort Drop</h2>
-            <p style="color: var(--muted); font-size: 13.5px; max-width: 680px; margin: 0; line-height: 1.5;">
-              To protect market liquidity execution, eliminate slippage, and maintain direct trader onboarding, VIP desk seats are released in strictly capped cohorts of 25 desks. Lock your priority position 2 hours before the public drop.
-            </p>
-          </div>
-          <div style="text-align: right; min-width: 160px;">
-            <span style="font-size: 11px; color: var(--muted); display: block; text-transform: uppercase; letter-spacing: 0.06em;">Cohort 1 Status</span>
-            <strong style="color: #f6c66d; font-size: 15px; display: block; margin: 2px 0;">90% Filled (18/20)</strong>
-            <small style="color: #8793a7; font-size: 11px;">Queue position assigned on signup</small>
-          </div>
-        </div>
-
-        <div class="waitlist-perks">
-          <div class="waitlist-perk">
-            <div class="waitlist-perk-head">
-              <span style="font-size: 16px;">⚡</span>
-              <strong style="font-size: 13px; color: var(--text);">2-Hour Early Access</strong>
-            </div>
-            <p style="font-size: 12px; color: var(--muted); margin: 0;">Direct checkout link dispatched to your inbox 2 hours before the next public drop.</p>
-          </div>
-          <div class="waitlist-perk">
-            <div class="waitlist-perk-head">
-              <span style="font-size: 16px;">🏷️</span>
-              <strong style="font-size: 13px; color: #f6c66d;">$49/mo Lifetime Lock</strong>
-            </div>
-            <p style="font-size: 12px; color: var(--muted); margin: 0;">Lock in founding pricing (code FOUNDING20) permanently before the $100/mo jump.</p>
-          </div>
-          <div class="waitlist-perk">
-            <div class="waitlist-perk-head">
-              <span style="font-size: 16px;">📊</span>
-              <strong style="font-size: 13px; color: var(--accent);">Live Market Briefs</strong>
-            </div>
-            <p style="font-size: 12px; color: var(--muted); margin: 0;">Instant invite to the Free Telegram Hub for weekly HTF liquidity levels and win teasers.</p>
-          </div>
-        </div>
-
-        <form id="waitlistForm" style="display: flex; flex-direction: column; gap: 14px;">
-          <div class="waitlist-form-grid">
-            <input type="email" id="waitlistEmail" placeholder="Enter your email address *" required style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
-            <input type="text" id="waitlistTelegram" placeholder="Telegram @handle (optional)" style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
-            <select id="waitlistInterest" style="padding: 11px 12px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
-              <option value="all">🌐 All Markets (Full Suite)</option>
-              <option value="institutional">🏛️ Institutional FX & Indices</option>
-              <option value="synthetics">⚡ Deriv Synthetic Watchlist</option>
-            </select>
-            <button type="submit" id="waitlistSubmitBtn" class="waitlist-submit-btn">
-              Reserve Priority Spot →
-            </button>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
-            <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
-            <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
-              ⚡ Can't wait? 2 Founding Member spots currently open on Whop ($49/mo) →
-            </a>
-          </div>
-          <div id="waitlistFeedback" style="display: none; font-size: 13px; padding: 10px 14px; border-radius: 8px;"></div>
-        </form>
-
-        <div id="waitlistSuccess" style="display: none; padding: 22px; border-radius: 12px; background: rgba(140, 240, 198, 0.08); border: 1px solid rgba(140, 240, 198, 0.35); text-align: center;">
-          <div style="font-size: 30px; margin-bottom: 8px;">🎉</div>
-          <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
-          <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
-          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-            <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
-              Join DEO EDGE (FREE)
-            </a>
-            <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
-              Join DEO EDGE | FREE SYNTHETICS
-            </a>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section id="performance" class="tab-panel" role="tabpanel" aria-labelledby="tabPerformance" tabindex="0" hidden>
+      <section id="performance" class="performance section-grid tab-panel" role="tabpanel" aria-labelledby="tabPerformance" tabindex="0" hidden data-panel="performance">
       <!-- Market Segment Selector -->
       <div class="market-segment-bar">
         <button type="button" class="segment-btn active" data-segment="all" aria-pressed="true">
@@ -806,8 +583,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <p>All statistics are derived from automated Cloudflare D1 database trade records executing DEO Edge confirmation rules (Structure, Liquidity, Key Levels) on live broker market data. Not financial advice. See <a href="terms.html" style="color:var(--accent); text-decoration: underline;">Terms & Risk Disclaimer</a>.</p>
       </article>
     </section>
-
-    <section id="alerts" class="tab-panel" role="tabpanel" aria-labelledby="tabAlerts" tabindex="0" hidden>
+      <section id="alerts" class="ledger section-grid tab-panel" role="tabpanel" aria-labelledby="tabAlerts" tabindex="0" hidden data-panel="alerts">
       <div class="panel-head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div>
           <p class="eyebrow">SIGNAL LEDGER</p>
@@ -849,8 +625,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <button id="nextAlerts" class="secondary">Next</button>
       </div>
     </section>
-
-    <section id="health" class="tab-panel" role="tabpanel" aria-labelledby="tabHealth" tabindex="0" hidden>
+      <section id="health" class="health section-grid tab-panel" role="tabpanel" aria-labelledby="tabHealth" tabindex="0" hidden data-panel="health">
       <article class="panel">
         <div class="panel-head">
           <div>
@@ -863,9 +638,19 @@ body:not(.operator-mode) .operator-only{display:none!important}
           <div class="empty">Loading feed health…</div>
         </div>
       </article>
+      <article class="panel operator-only" style="margin-top:18px;">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">PRIVATE · OWNER KEY REQUIRED</p>
+            <h2>21-Day Scan & Delivery Audit</h2>
+            <p class="muted-copy">Run a read-only report of daily scan counts, stored alert statuses, replay filters, freshness/deduplication skips, and delivery API results. Your admin key stays in this browser.</p>
+          </div>
+          <button id="runScanAuditBtn" class="secondary">Run 21-Day Audit</button>
+        </div>
+        <pre id="scanAuditResults" class="muted-copy" aria-live="polite" style="white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0 0;">The report is private and loads only after the owner key is entered.</pre>
+      </article>
     </section>
-
-    <section id="preferences" class="tab-panel" role="tabpanel" aria-labelledby="tabPreferences" tabindex="0" hidden>
+      <section id="preferences" class="channel section-grid tab-panel" role="tabpanel" aria-labelledby="tabPreferences" tabindex="0" hidden data-panel="preferences">
       <article class="panel">
         <div class="panel-head">
           <div>
@@ -888,7 +673,7 @@ body:not(.operator-mode) .operator-only{display:none!important}
             <div>
               <span class="eyebrow">TELEGRAM</span>
               <h3>WATCH Heads-up Notifications</h3>
-              <p>Optional pre-entry context only: one SHIFT-stage card per setup. Not an entry; also requires the server-level watch switch.
+              <p>Optional setup forming heads-up (TOUCH/SWEEP/SHIFT).</p>
             </div>
             <input id="telegramWatch" type="checkbox" aria-label="Enable Telegram WATCH notifications">
           </label>
@@ -904,19 +689,91 @@ body:not(.operator-mode) .operator-only{display:none!important}
 
     </section>
 
-    <section class="panel live-desk" id="liveDesk">
-      <div class="panel-head">
-        <div>
-          <p class="eyebrow">LIVE DESK MODE</p>
-          <h2>📡 Real-Time Event Tape</h2>
-          <p class="muted-copy">Cursor-polled every 15s — structure events (TOUCH / SWEEP / SHIFT / RETEST) appear the moment a scan records them. Zero spam, ~1ms per poll.</p>
+      <section class="vip section-grid" id="vip" aria-labelledby="vip-heading">
+        <div class="section-heading"><div><p class="eyebrow">04 / VIP access</p><h2 id="vip-heading">A cleaner feed<br>for <em>the close.</em></h2></div><div class="section-note">Optional channel · no execution</div></div>
+        <p class="vip-intro">Priority access to confirmed-entry alerts, market briefs, and the research channel. Review current terms on the official VIP page.</p>
+        <article class="panel waitlist-card marketing-only" id="waitlistCard">
+        <div class="waitlist-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+              <span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #f6c66d; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">🔒 COHORT WAITLIST · STRICT DESK CAPACITY</span>
+              <span class="pill" style="background: rgba(140, 240, 198, 0.15); color: var(--accent); border: 1px solid rgba(140, 240, 198, 0.3);">Priority access</span>
+            </div>
+            <h2>Reserve Priority Access for Cohort Drop</h2>
+            <p style="color: var(--muted); font-size: 13.5px; max-width: 680px; margin: 0; line-height: 1.5;">
+              To protect market liquidity execution, eliminate slippage, and maintain direct trader onboarding, VIP desk seats are released in strictly capped cohorts of 25 desks. Lock your priority position 2 hours before the public drop.
+            </p>
+          </div>
+          <div style="text-align: right; min-width: 160px;">
+            <span style="font-size: 11px; color: var(--muted); display: block; text-transform: uppercase; letter-spacing: 0.06em;">Cohort status</span>
+            <strong style="color: var(--cyan); font-size: 13px; display: block; margin: 5px 0;">Priority list</strong>
+            <small style="color: #8793a7; font-size: 11px;">Current terms are shown on the official VIP page.</small>
+          </div>
         </div>
-        <button id="liveChimeToggle" class="secondary">🔕 Chime off</button>
-      </div>
-      <ul id="liveTape" class="live-tape"><li class="live-empty">Loading tape…</li></ul>
-    </section>
 
-    <section class="panel" id="quantLab">
+        <div class="waitlist-perks">
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">⚡</span>
+              <strong style="font-size: 13px; color: var(--text);">2-Hour Early Access</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Direct checkout link dispatched to your inbox 2 hours before the next public drop.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">🏷️</span>
+              <strong style="font-size: 13px; color: #f6c66d;">$49/mo Lifetime Lock</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Lock in founding pricing (code FOUNDING20) permanently before the $100/mo jump.</p>
+          </div>
+          <div class="waitlist-perk">
+            <div class="waitlist-perk-head">
+              <span style="font-size: 16px;">📊</span>
+              <strong style="font-size: 13px; color: var(--accent);">Live Market Briefs</strong>
+            </div>
+            <p style="font-size: 12px; color: var(--muted); margin: 0;">Instant invite to the Free Telegram Hub for weekly HTF liquidity levels and win teasers.</p>
+          </div>
+        </div>
+
+        <form id="waitlistForm" style="display: flex; flex-direction: column; gap: 14px;">
+          <div class="waitlist-form-grid">
+            <input type="email" id="waitlistEmail" placeholder="Enter your email address *" required style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <input type="text" id="waitlistTelegram" placeholder="Telegram @handle (optional)" style="padding: 11px 14px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+            <select id="waitlistInterest" style="padding: 11px 12px; font-size: 13px; background: #0c121b; border: 1px solid var(--line); border-radius: 10px; color: #fff;">
+              <option value="all">🌐 All Markets (Full Suite)</option>
+              <option value="institutional">🏛️ Institutional FX & Indices</option>
+              <option value="synthetics">⚡ Deriv Synthetic Watchlist</option>
+            </select>
+            <button type="submit" id="waitlistSubmitBtn" class="waitlist-submit-btn">
+              Reserve Priority Spot →
+            </button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 4px;">
+            <span style="color: var(--muted);">🔒 Zero spam. Only used for cohort access notifications and priority discount codes.</span>
+            <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; text-decoration: none; font-weight: 700;">
+              ⚡ View current VIP details on Whop →
+            </a>
+          </div>
+          <div id="waitlistFeedback" style="display: none; font-size: 13px; padding: 10px 14px; border-radius: 8px;"></div>
+        </form>
+
+        <div id="waitlistSuccess" style="display: none; padding: 22px; border-radius: 12px; background: rgba(140, 240, 198, 0.08); border: 1px solid rgba(140, 240, 198, 0.35); text-align: center;">
+          <div style="font-size: 30px; margin-bottom: 8px;">🎉</div>
+          <strong style="color: var(--accent); font-size: 17px; display: block; margin-bottom: 6px;">You're on the Cohort 2 Priority Waitlist!</strong>
+          <p style="color: var(--text); font-size: 13.5px; max-width: 580px; margin: 0 auto 16px; line-height: 1.5;">We've reserved your priority desk position. You will receive an email and Telegram notification 2 hours before the next cohort drop opens with founding pricing code <strong>FOUNDING20</strong>.</p>
+          <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" class="tg-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join DEO EDGE (FREE)
+            </a>
+            <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" class="synth-free-btn" style="padding: 9px 18px; font-size: 12.5px;">
+              Join DEO EDGE | FREE SYNTHETICS
+            </a>
+          </div>
+        </div>
+      </article>
+      </section>
+
+      <section class="quant section-grid" aria-labelledby="quant-heading"><div class="section-heading"><div><p class="eyebrow">05 / Quant lab</p><h2 id="quant-heading">Stress-test the <em>assumptions.</em></h2></div><div class="section-note">Research tool · not a forecast</div></div><article class="panel quant-card" id="quantLab">
       <div class="panel-head">
         <div>
           <p class="eyebrow">QUANT LAB</p>
@@ -972,9 +829,30 @@ body:not(.operator-mode) .operator-only{display:none!important}
         <p class="muted-copy">The target is the profit goal. Pass is the estimated chance a simulated account reaches it within 21 trading days before hitting a daily or overall loss limit—not a return you have already made. The 90% interval shows how that pass estimate varies when this small sample is resampled; it is not a return range or a guarantee. Assumes every alert is traded at the fixed risk shown.</p>
         <div id="pvWrap"><p class="muted-copy" id="pvStatus">Loading verdict…</p></div>
       </div>
-    </section>
+    </article></section>
 
-    <div id="chartModal" class="modal" hidden>
+      <section class="live-desk section-grid" id="liveDesk" aria-labelledby="liveDeskHeading">
+        <div class="section-heading"><div><p class="eyebrow">06 / Live desk</p><h2 id="liveDeskHeading">Recorded events, <em>as they arrive.</em></h2></div><div class="section-note">Cursor poll · every 15 seconds · no orders</div></div>
+        <div class="live-desk-grid">
+          <article class="event-tape">
+            <div class="tape-head"><span>REAL-TIME EVENT TAPE</span><div><span id="liveDeskStatus" class="sim-tag">READ-ONLY</span><button id="tapePause" class="tape-control" type="button" aria-pressed="false" title="Pause or resume this display only">Pause display</button><button id="liveChimeToggle" class="tape-control" type="button" aria-pressed="false">Chime off</button></div></div>
+            <ul id="liveTape" class="live-tape event-list" role="log" aria-live="polite" aria-relevant="additions text"><li class="live-empty">Loading recorded events…</li></ul>
+            <div class="tape-foot"><span id="liveEventCount">— events in view</span><span>History is timestamped UTC; new items are cursor-polled.</span></div>
+          </article>
+          <article class="micro-chart-card">
+            <div class="tape-head"><span>RECORDED EVENT VOLUME · 12H</span><span id="liveChartStatus" class="sim-tag">WAITING FOR DATA</span></div>
+            <div class="micro-chart" role="img" aria-label="Recorded event counts by hour for the past twelve hours">
+              <div class="micro-grid" aria-hidden="true"></div>
+              <svg viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true"><path id="liveBand" class="chart-band"></path><path id="liveLine" class="chart-path"></path></svg>
+              <span id="chartEndLabel" class="chart-end-label">—</span>
+            </div>
+            <div class="freshness-row"><span><b id="liveEventCount12h">—</b> recorded events</span><span><b id="liveUpdatedAt">—</b> latest event</span><span><b id="livePollMs">—</b> response time</span></div>
+            <div class="tape-foot"><span>−12h</span><span>Loaded browser rows only · not total scans</span><span>now UTC</span></div>
+          </article>
+        </div>
+      </section>
+
+      <div id="chartModal" class="modal" hidden>
       <div class="modal-backdrop" data-close-chart></div>
       <section class="chart-dialog panel" role="dialog" aria-modal="true" aria-labelledby="chartTitle">
         <div class="panel-head">
@@ -1010,38 +888,16 @@ body:not(.operator-mode) .operator-only{display:none!important}
         </div>
         <p class="chart-disclaimer">Real historical candles with entry, stop loss, invalidation, and target levels visualized.</p>
       </section>
-    </div>
-  </main>
+      </div>
+    </main>
 
-  <!-- Public Marketing Footer -->
-  <footer class="marketing-only">
-    <div class="footer-content">
-      <span>DEO Edge · Institutional Paper Simulation & Clean Automated Monitoring</span>
-      <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
-        <a href="terms.html" style="color: var(--muted); font-size: 13px;">Terms & Conditions</a>
-        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #c084fc; font-size: 13px; font-weight: 600;">⚡ Deriv Synthetics VIP</a>
-        <a href="https://t.me/DEO_EDGE_synthetics_free" target="_blank" rel="noopener noreferrer" style="color: #d8b4fe; font-size: 13px; font-weight: 600;">⚡ DEO EDGE | FREE SYNTHETICS</a>
-        <a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer" style="color: #29b6f6; font-size: 13px; font-weight: 600;">💬 DEO EDGE (FREE)</a>
-        <a href="https://whop.com/deoedge/deo-edge-vip-signals/" target="_blank" rel="noopener noreferrer" style="color: #f6c66d; font-weight: 700;">⭐ Join VIP Signals ($100/mo · $49 with code FOUNDING20)</a>
-      </div>
-    </div>
-  </footer>
-
-  <!-- Operator Console Quiet Footer -->
-  <footer class="operator-only" style="border-top: 1px solid var(--line); background: #070b12; padding: 18px 24px; color: var(--muted); font-size: 11.5px;">
-    <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-      <div>
-        <strong style="color: var(--text);">DEO Edge Operational Console</strong> · Engine Build v2.5.3 · Runtime: Cloudflare Workers Edge
-      </div>
-      <div style="display: flex; gap: 16px; align-items: center;">
-        <span>Primary Feed: Swiss Bank Dukascopy (Forex) · Deriv WebSocket Relay (Synthetics)</span>
-        <span>•</span>
-        <span>Simulated Tick Pipeline (Zero Live MT5 Connection)</span>
-      </div>
-    </div>
-  </footer>
-  <script>
-const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
+    <footer class="footer">
+      <div class="footer-brand"><img class="brand-mark small" src="${DEO_EDGE_LOGO_DATA_URI}" alt="" aria-hidden="true" width="17" height="17"><strong>DEO Edge</strong><span>·</span><span>Confirmation Engine &amp; Research Ledger</span></div>
+      <div class="footer-meta"><span>Paper pipeline</span><span>Engine v2.5.3</span><a href="terms.html">Terms &amp; Risk</a><a href="terms.html#data-policy">Data policy</a><a href="https://t.me/DEOEDGE" target="_blank" rel="noopener noreferrer">DEO EDGE (FREE)</a></div>
+      <p>Research and education only · Paper simulation · No live orders · Not financial advice</p>
+    </footer>
+  </div>
+  <script>const DEFAULT_URL = (typeof window !== 'undefined' && window.location && window.location.hostname && window.location.hostname.includes('workers.dev'))
   ? window.location.origin
   : 'https://slk-alert-worker.abidogundamilola.workers.dev';
 
@@ -1066,12 +922,14 @@ function activateDashboardTab(btn, moveFocus = false) {
   dashboardTabs.forEach(item => {
     const selected = item === btn;
     item.classList.toggle('active', selected);
+    item.classList.toggle('is-active', selected);
     item.setAttribute('aria-selected', String(selected));
     item.tabIndex = selected ? 0 : -1;
   });
   document.querySelectorAll('.tab-panel').forEach(panel => {
     const selected = panel.id === selectedPanelId;
     panel.classList.toggle('active', selected);
+    panel.classList.toggle('is-visible', selected);
     panel.hidden = !selected;
   });
   if (moveFocus) btn.focus();
@@ -1096,14 +954,17 @@ function setViewMode(mode) {
   document.body.classList.toggle('operator-mode', state.viewMode === 'operator');
   if ($('modePublicBtn')) {
     $('modePublicBtn').classList.toggle('active', state.viewMode === 'public');
+    $('modePublicBtn').classList.toggle('is-active', state.viewMode === 'public');
     $('modePublicBtn').setAttribute('aria-pressed', String(state.viewMode === 'public'));
   }
   if ($('modeOperatorBtn')) {
     $('modeOperatorBtn').classList.toggle('active', state.viewMode === 'operator');
+    $('modeOperatorBtn').classList.toggle('is-active', state.viewMode === 'operator');
     $('modeOperatorBtn').setAttribute('aria-pressed', String(state.viewMode === 'operator'));
   }
   if ($('activeModeLabel')) {
     $('activeModeLabel').textContent = state.viewMode === 'operator' ? 'Viewing: Operator Terminal' : 'Viewing: Public Overview';
+    $('activeModeLabel').className = state.viewMode === 'operator' ? 'pill green' : 'pill gray';
   }
   try { localStorage.setItem('tayoViewMode', state.viewMode); } catch (_) {}
 }
@@ -1122,12 +983,14 @@ function setMarketSegment(seg) {
   document.querySelectorAll('.segment-btn').forEach(b => {
     const selected = (b.dataset.segment || 'all') === state.marketSegment;
     b.classList.toggle('active', selected);
+    b.classList.toggle('is-active', selected);
     b.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.segment-card').forEach(card => {
     const target = card.dataset.targetSegment;
     const selected = target === state.marketSegment;
     card.classList.toggle('active', selected);
+    card.classList.toggle('is-active', selected);
     card.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.syntheticsNotice').forEach(el => {
@@ -1160,6 +1023,42 @@ document.querySelectorAll('.segment-card').forEach(card => {
     }
   });
 });
+
+const methodStages = [
+  { code: 'MAP', title: 'HTF Directional Vantage Point', copy: 'Weekly and daily opposing liquidity draw is established. A 4H structural A/V-level is armed before the lower-timeframe radar begins.', rule: '4H structural direction and 1H execution context must align directionally.' },
+  { code: 'TOUCH', title: 'Origin Zone Mitigation', copy: 'Price reaches and mitigates the origin key level, activating the lower-timeframe radar.', rule: 'The origin-level interaction is checked before later confirmation stages.' },
+  { code: 'SWEEP', title: 'Liquidity Pool Run', copy: 'A false breakout purges an internal liquidity pool beyond a swing high or low extreme.', rule: 'A recorded sweep must be followed by the specified structure confirmation.' },
+  { code: 'SHIFT', title: 'Market Structure Break', copy: 'Displacement breaks pullback structure on a candle close and forms a Fair Value Gap.', rule: 'The structure break is evaluated on a finalized candle; no intrabar confirmation.' },
+  { code: 'RETEST', title: 'Inefficiency Rebalance', copy: 'Price makes a controlled retracement into the Fair Value Gap and an entry candidate prepares.', rule: 'The retest must satisfy the engine’s risk and target checks before entry.' },
+  { code: 'ENTRY', title: 'Confirmed Entry Close', copy: 'A finalized candle close locks the entry price and stop-loss floor. The recorded entry is not retrospectively repainted.', rule: 'Setups below the minimum 2.5R target floor are rejected automatically.' },
+  { code: 'OUTCOME', title: 'Deterministic Resolution', copy: 'A recorded setup resolves at its configured target, stop loss, or stale-expiration rule.', rule: 'Current method disclosure: Target 1 (+3.0R), Stop Loss (−1.0R), or 120-bar stale expiration.' }
+];
+document.querySelectorAll('[data-stage-index]').forEach(button => {
+  button.addEventListener('click', () => {
+    const index = Number(button.dataset.stageIndex);
+    const stage = methodStages[index];
+    if (!stage) return;
+    document.querySelectorAll('[data-stage-index]').forEach(item => {
+      const selected = item === button;
+      item.classList.toggle('is-active', selected);
+      item.setAttribute('aria-pressed', String(selected));
+    });
+    if ($('lifecycleStageLabel')) $('lifecycleStageLabel').textContent = \`Selected stage / \${stage.code}\`;
+    if ($('lifecycleStageTitle')) $('lifecycleStageTitle').textContent = stage.title;
+    if ($('lifecycleStageCopy')) $('lifecycleStageCopy').textContent = stage.copy;
+    if ($('lifecycleStageRule')) $('lifecycleStageRule').textContent = stage.rule;
+  });
+});
+if ($('showRulesBtn') && $('ruleReference')) {
+  $('showRulesBtn').addEventListener('click', () => {
+    const rules = $('ruleReference');
+    rules.open = !rules.open;
+    $('showRulesBtn').setAttribute('aria-expanded', String(rules.open));
+  });
+  $('ruleReference').addEventListener('toggle', () => {
+    $('showRulesBtn').setAttribute('aria-expanded', String($('ruleReference').open));
+  });
+}
 
 document.querySelectorAll('.period-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1204,6 +1103,82 @@ if ($('resetPerfDates')) {
 
 if ($('refreshBtn')) $('refreshBtn').addEventListener('click', loadAll);
 
+function formatScanAuditReport(report) {
+  const scan = report?.scan || {};
+  const delivery = report?.delivery || {};
+  const errors = scan.errorCategories || {};
+  const dailyRows = Array.isArray(scan.byDay) ? scan.byDay : [];
+  const storedAlertRows = Array.isArray(scan.storedAlertsByDay) ? scan.storedAlertsByDay : [];
+  const gateMetricsRows = dailyRows.reduce((total, day) => total + Number(day.gateMetricsRows || 0), 0);
+  const storedAlertCount = storedAlertRows.reduce((total, row) => total + Number(row.count || 0), 0);
+  const lines = [
+    \`Window (UTC): \${report?.window?.fromUtc || '—'} to \${report?.window?.toUtc || '—'}\`,
+    \`Scan records: \${scan.scanRows ?? 0} total; \${scan.activeScanRows ?? 0} covered at least one market.\`,
+    \`First/last scan: \${scan.firstScanUtc || 'none'} / \${scan.lastScanUtc || 'none'}.\`,
+    \`Scan records with errors: \${scan.scanErrorRows ?? 0}.\`,
+    \`Error rows by keyword match (not unique incidents): stale-feed \${errors.staleFeed ?? 0}; rate-limit/credits \${errors.rateLimitOrCredits ?? 0}; network/timeout \${errors.networkOrTimeout ?? 0}; other \${errors.other ?? 0}.\`,
+    \`Scan-log alert insert counts: \${scan.alertRowsWritten ?? 0}; event insert counts: \${scan.eventRowsWritten ?? 0}.\`,
+    \`Grouped rows in stored-alert table: \${scan.storedAlertsAvailable ? storedAlertCount : 'unavailable'}; these database rows do not prove message delivery.\`,
+    \`Diagnostic rows: \${scan.diagnosticRows ?? 0} valid; \${scan.invalidDiagnosticRows ?? 0} invalid; available: \${scan.diagnosticsAvailable ? 'yes' : 'no'}.\`,
+    \`Recorded confirmed-alert inserts: \${scan.recordedConfirmedAlerts ?? 0}.\`,
+    \`Freshness/deduplication skip counts: \${gateMetricsRows} scan logs have these counters; stale \${dailyRows.reduce((n, d) => n + Number(d.staleConfirmationSkips || 0), 0)}, duplicate \${dailyRows.reduce((n, d) => n + Number(d.duplicateConfirmationSkips || 0), 0)}.\`,
+    'A day with zero counter-coverage means the old logs did not record these skips; it does not mean there were no skips.',
+    '',
+    'Daily scan and replay breakdown (UTC; replay numbers include repeat scans):',
+  ];
+  if (!dailyRows.length) lines.push('  Daily breakdown unavailable.');
+  for (const day of dailyRows) {
+    const c = day.errorCategories || {};
+    lines.push(\`  \${day.utcDay}: scans \${day.scanRows ?? 0} (\${day.activeScanRows ?? 0} active), errors \${day.scanErrorRows ?? 0} [stale \${c.staleFeed ?? 0}, rate/credits \${c.rateLimitOrCredits ?? 0}, network \${c.networkOrTimeout ?? 0}, other \${c.other ?? 0}], diagnostics \${day.diagnosticRows ?? 0}, scan-log alert inserts \${day.alertRowsWritten ?? 0}, confirmed inserts \${day.recordedConfirmedAlerts ?? 0}, replay RETEST \${day.replayRetestTransitions ?? 0}, candidates \${day.retestCandidates ?? 0}, target/risk rejects \${day.targetRejects ?? 0}/\${day.riskRejects ?? 0}, stale/duplicate skips \${day.staleConfirmationSkips ?? 0}/\${day.duplicateConfirmationSkips ?? 0} (\${day.gateMetricsRows ?? 0} covered).\`);
+  }
+  lines.push('', 'Stored alert rows by UTC day / market / timeframe / alert status / trade status / suppress reason:');
+  if (!scan.storedAlertsAvailable) lines.push('  Stored-alert table unavailable.');
+  else if (!storedAlertRows.length) lines.push('  No stored alert rows in this window.');
+  for (const row of storedAlertRows) {
+    const reason = row.suppressReason ? \` — \${row.suppressReason}\` : '';
+    lines.push(\`  \${row.utcDay} \${row.pair} \${row.timeframe} \${row.direction} / alert \${row.alertStatus}, trade \${row.tradeStatus}: \${row.count}\${reason}\`);
+  }
+  lines.push(
+    '',
+    \`First tracked delivery result: \${delivery.firstTrackedUtc || 'none recorded'}.\`,
+    'Delivery audit writes are best-effort; missing rows do not prove that a message was not sent.',
+    'Delivery counts below are channel API results, not proof the recipient saw the message:',
+  );
+  const deliveryRows = Array.isArray(delivery.byChannel) ? delivery.byChannel : [];
+  if (!deliveryRows.length) lines.push('  No tracked delivery results in this window.');
+  for (const row of deliveryRows) {
+    lines.push(\`  \${row.kind} / \${row.channel}: \${row.delivered} delivered, \${row.partial} partial, \${row.failed} failed, \${row.notConfigured} not configured.\`);
+  }
+  lines.push('', 'Pair/timeframe funnel totals (replay counts; repeats are not unique setups):');
+  const funnelRows = Array.isArray(scan.byPairTimeframe) ? scan.byPairTimeframe : [];
+  if (!funnelRows.length) lines.push('  No per-pair/timeframe diagnostics available.');
+  for (const row of funnelRows) {
+    const f = row.replay || {};
+    lines.push(\`  \${row.pair} \${row.timeframe}: MAP \${f.MAP ?? 0} → TOUCH \${f.TOUCH ?? 0} → SWEEP \${f.SWEEP ?? 0} → SHIFT \${f.SHIFT ?? 0} → RETEST \${f.RETEST ?? 0}; target rejects \${f.targetRejects ?? 0}; risk rejects \${f.riskRejects ?? 0}.\`);
+  }
+  for (const caveat of Array.isArray(report?.caveats) ? report.caveats : []) lines.push(\`Note: \${caveat}\`);
+  return lines.join('\\n');
+}
+
+if ($('runScanAuditBtn')) {
+  $('runScanAuditBtn').addEventListener('click', async () => {
+    const button = $('runScanAuditBtn');
+    const output = $('scanAuditResults');
+    button.disabled = true;
+    button.textContent = 'Running…';
+    if (output) output.textContent = 'Running the read-only 21-day audit…';
+    try {
+      const report = await api('/api/scan-audit?days=21', { admin: true });
+      if (output) output.textContent = formatScanAuditReport(report);
+    } catch (err) {
+      if (output) output.textContent = \`Audit unavailable: \${err.message || String(err)}\`;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Run 21-Day Audit';
+    }
+  });
+}
+
 ['alertPair', 'alertTimeframe', 'alertDirection', 'alertLifecycle', 'alertSort', 'alertFrom', 'alertTo'].forEach(id => {
   const el = $(id);
   if (el) el.addEventListener('change', () => { state.alertPage = 1; loadAlerts(); });
@@ -1244,8 +1219,7 @@ if ($('testTelegram')) $('testTelegram').addEventListener('click', () => testNot
       try {
         const res = await api('/admin/expire-open');
         alert(res.message || 'Open trades marked as EXPIRED.');
-        await loadStats();
-        await loadAlerts();
+        await loadAll();
       } catch (err) {
         alert('Failed to close open trades: ' + (err.message || String(err)));
       } finally {
@@ -1266,8 +1240,7 @@ if ($('clearSyntheticsBtn')) {
     try {
       const res = await api('/admin/clear-synthetics', { method: 'POST' });
       alert(res.message || 'Synthetic trade records cleared successfully!');
-      await loadStats();
-      await loadAlerts();
+      await loadAll();
     } catch (err) {
       alert('Failed to clear synthetic records: ' + (err.message || String(err)));
     } finally {
@@ -1307,7 +1280,10 @@ async function api(path, options = {}) {
     ...(isAdmin && state.adminKey ? { 'x-admin-key': state.adminKey, Authorization: \`Bearer \${state.adminKey}\` } : {}),
     ...(options.body ? { 'Content-Type': 'application/json' } : {})
   };
-  const r = await fetch(state.url.replace(/\\/$/, '') + path, { ...options, headers });
+  const requestOptions = { ...options };
+  delete requestOptions.admin;
+  delete requestOptions._retried;
+  const r = await fetch(state.url.replace(/\\/$/, '') + path, { ...requestOptions, headers });
   if (r.status === 401 && isAdmin) {
     clearAdminKey();
     if (!options._retried) {
@@ -1332,10 +1308,14 @@ async function loadAll() {
       api('/api/engine-pulse').catch(() => null)
     ]);
     if (health) renderHealth(health);
+    else {
+      setStatus('Health response unavailable', 'bad');
+      if ($('headerWorkerState')) $('headerWorkerState').textContent = 'Health response unavailable';
+      if ($('headerLastChecked')) $('headerLastChecked').textContent = 'Not available';
+    }
     if (prefs) renderPreferences(prefs);
     renderEnginePulse(pulse);
     await loadAlerts();
-    setStatus('Worker Online · Paper Pipeline', 'ok');
   } catch (e) {
     setStatus('Feed offline', 'bad');
   }
@@ -1439,51 +1419,65 @@ async function loadStats() {
 
 function setStatus(text, kind) {
   if ($('statusText')) $('statusText').textContent = text;
-  if ($('statusDot')) $('statusDot').className = \`dot \${kind}\`;
+  if ($('statusDot')) $('statusDot').className = \`status-dot \${kind === 'ok' ? 'online' : kind === 'muted' ? 'checking' : 'bad'}\`;
 }
 
 function renderHealth(h) {
   if (!h) return;
-  const isPaper = String(h.mode || 'PAPER').toUpperCase().includes('PAPER');
-  if ($('mode')) $('mode').textContent = isPaper ? 'PAPER PIPELINE · RULE-CHECKED' : String(h.mode).toUpperCase();
-  if ($('workerName')) $('workerName').textContent = 'slk-alert-worker';
-  if ($('lastResponse')) $('lastResponse').textContent = new Date().toLocaleTimeString();
-  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${esc(h.version || 'v2.5.3')} · Healthy (\${isPaper ? 'PAPER PIPELINE' : esc(String(h.mode || 'PAPER').toUpperCase())})\`;
-  if ($('opLastScan') && h.time) $('opLastScan').textContent = fmtDate(h.time);
-  if ($('opFeeds')) {
-    $('opFeeds').textContent = h.oandaConfigured
-      ? 'OANDA v3 (Indices + Metals) · Twelve Data (FX/Metals) · Dukascopy failover · Deriv 24/7 (Synth)'
-      : 'Twelve Data (FX/Metals) · Dukascopy (Indices failover) · Deriv 24/7 (Synth)';
-  }
-  if (h.pairs && h.pairs.length) {
+  const healthy = Boolean(h.ok);
+  const version = String(h.version || 'version unavailable');
+  const checked = h.time ? fmtDate(h.time) : 'Time not reported';
+  const pairs = Array.isArray(h.pairs) ? h.pairs : [];
+  const feeds = h.oandaConfigured
+    ? 'OANDA v3 · Twelve Data · Dukascopy · Deriv'
+    : 'Twelve Data · Dukascopy · Deriv';
+
+  if ($('mode')) $('mode').textContent = 'PAPER SIMULATION · NO LIVE ORDERS';
+  if ($('workerName')) $('workerName').textContent = \`slk-alert-worker \${version}\`;
+  if ($('lastResponse')) $('lastResponse').textContent = checked;
+  if ($('headerLastChecked')) $('headerLastChecked').textContent = checked;
+  if ($('workerVersionLabel')) $('workerVersionLabel').textContent = \`Engine \${version}\`;
+  if ($('headerWorkerState')) $('headerWorkerState').textContent = healthy ? 'Health response received' : 'Health response reports degraded status';
+  if ($('overviewStatusDot')) $('overviewStatusDot').className = \`status-dot \${healthy ? 'online' : 'bad'}\`;
+  if ($('statusText')) $('statusText').textContent = healthy ? 'Worker Online · Health checked' : 'Worker responded · Review health';
+  if ($('statusDot')) $('statusDot').className = \`status-dot \${healthy ? 'online' : 'bad'}\`;
+  if ($('opWorkerHealth')) $('opWorkerHealth').textContent = \`\${version} · \${healthy ? 'Healthy' : 'Degraded'} (\${String(h.mode || 'PAPER').toUpperCase()})\`;
+  if ($('opLastScan')) $('opLastScan').textContent = h.time ? fmtDate(h.time) : 'Time not reported by health endpoint';
+  if ($('opFeeds')) $('opFeeds').textContent = feeds;
+  if ($('opFeedSummary')) $('opFeedSummary').textContent = feeds;
+
+  if (Array.isArray(h.pairs)) {
     if ($('activePairCount')) $('activePairCount').textContent = String(h.pairs.length);
-    if ($('pairs')) $('pairs').textContent = h.pairs.join(' · ');
+    if ($('pairs')) $('pairs').textContent = pairs.length ? pairs.join(' · ') : 'No scanner pairs reported by the health endpoint';
     const pairSelect = $('alertPair');
     if (pairSelect) {
       const curVal = pairSelect.value;
-      pairSelect.innerHTML = '<option value="">All pairs</option>' + h.pairs.map(p => '<option value="' + esc(p) + '">' + esc(p) + '</option>').join('');
+      pairSelect.innerHTML = '<option value="">All pairs</option>' + pairs.map(pair => \`<option value="\${esc(pair)}">\${esc(pair)}</option>\`).join('');
       pairSelect.value = curVal;
     }
   }
   if ($('healthPill')) {
-    $('healthPill').textContent = h.ok ? 'Worker Online' : 'Degraded';
-    $('healthPill').className = 'pill ' + (h.ok ? 'green' : 'gray');
+    $('healthPill').textContent = healthy ? 'WORKER ONLINE' : 'DEGRADED';
+    $('healthPill').className = \`panel-status \${healthy ? 'online' : 'bad'}\`;
   }
   if ($('healthDetails')) {
-    $('healthDetails').innerHTML =
-      '<div class="health-item"><span>Cloud Service</span><strong>slk-alert-worker</strong></div>' +
-      '<div class="health-item"><span>Engine Version</span><strong style="color: #2ecc71; font-family: monospace;">' + esc(h.version || 'v2.5.3') + ' (Production)</strong></div>' +
-      '<div class="health-item"><span>System Status</span><strong style="color: #2ecc71;">Operational · 24/7 Continuous</strong></div>' +
-      '<div class="health-item"><span>VIP Notification Policy</span><strong style="color: #2ecc71;">' + esc(h.feedStatus || 'Confirmed Entries Only (Zero Spam)') + '</strong></div>' +
-      '<div class="health-item"><span>Active Timeframes</span><strong>' + esc((h.entryTfs || []).join(' · ') || '15m · 30m · 1h') + '</strong></div>' +
-      '<div class="health-item"><span>Deriv Synthetics Relay</span><strong>' + esc(h.relayUrl || 'https://slk-bot.vercel.app') + ' · Connected</strong></div>' +
-      '<div class="health-item"><span>Server Time (UTC)</span><strong>' + esc(h.time || '—') + '</strong></div>' +
-      '<div class="health-item"><span>Coverage</span><strong>' + (h.pairs || []).length + ' Markets Active</strong></div>' +
-      '<div class="health-item"><span>Execution Mode</span><strong>Paper / Verified Quantitative</strong></div>' +
-      '<div class="health-item"><span>Signals Destination</span><strong>Trade journal Channel</strong></div>';
+    const entryTfs = Array.isArray(h.entryTfs) && h.entryTfs.length ? h.entryTfs.join(' · ') : 'Not reported by health endpoint';
+    const relay = h.relayUrl ? esc(h.relayUrl) : 'Not reported by health endpoint';
+    const feedStatus = h.feedStatus ? esc(h.feedStatus) : 'Not reported by health endpoint';
+    $('healthDetails').innerHTML = \`
+      <div class="health-item"><span>Cloud service</span><strong>slk-alert-worker</strong></div>
+      <div class="health-item"><span>Engine version</span><strong>\${esc(version)}</strong></div>
+      <div class="health-item"><span>System status</span><strong>\${healthy ? 'Healthy' : 'Degraded'}</strong></div>
+      <div class="health-item"><span>Notification policy</span><strong>\${feedStatus}</strong></div>
+      <div class="health-item"><span>Active timeframes</span><strong>\${esc(entryTfs)}</strong></div>
+      <div class="health-item"><span>Deriv relay URL</span><strong>\${relay}</strong></div>
+      <div class="health-item"><span>Server time (UTC)</span><strong>\${esc(h.time || 'Not reported')}</strong></div>
+      <div class="health-item"><span>Scanner coverage</span><strong>\${pairs.length} markets reported by health endpoint</strong></div>
+      <div class="health-item"><span>Execution mode</span><strong>Paper simulation · no live orders</strong></div>
+      <div class="health-item"><span>Data source configuration</span><strong>\${esc(feeds)}</strong></div>
+    \`;
   }
 }
-
 function fmtDateOnly(x) {
   if (!x) return '';
   const d = new Date(x);
@@ -1495,6 +1489,7 @@ function renderStats(s) {
   const netRNum = Number(s.netR || 0);
   const netRText = s.netR == null ? (s.total === 0 ? '0.00R' : 'Syncing…') : \`\${netRNum > 0 ? '+' : ''}\${netRNum.toFixed(2)}R\`;
   if ($('total')) $('total').textContent = s.total != null ? String(s.total) : '0';
+  if ($('alertTabCount')) $('alertTabCount').textContent = s.total != null ? String(s.total) : '—';
   if ($('open')) $('open').textContent = s.open != null ? String(s.open) : '0';
   if ($('tp')) $('tp').textContent = s.tp != null ? String(s.tp) : '0';
   if ($('sl')) $('sl').textContent = s.sl != null ? String(s.sl) : '0';
@@ -1575,7 +1570,7 @@ function renderStats(s) {
   ['overviewNetRSegmentBadge', 'overviewWinRateSegmentBadge', 'overviewOpenSegmentBadge', 'overviewTotalSegmentBadge'].forEach(id => {
     if ($(id)) $(id).textContent = segBadgeText;
   });
-  
+
   if ($('perfPeriodBadge')) $('perfPeriodBadge').textContent = s.periodLabel || 'All Time';
   if ($('perfPeriodLabel')) $('perfPeriodLabel').textContent = s.periodLabel || 'All Time';
   if ($('perfDateSpan')) {
@@ -1787,12 +1782,12 @@ function renderAlerts() {
     const marketTag = isSynth
       ? '<span class="market-tag synth-tag">⚡ 24/7 SYNTHETICS</span>'
       : '<span class="market-tag inst-tag">INSTITUTIONAL</span>';
-    let timeLogHtml = 'Opened ' + fmtDate(a.candleCloseTime);
+    let timeLogHtml = \`Opened \${fmtDate(a.candleCloseTime)}\`;
     if (a.exitTime && (a.status === 'TP_HIT' || a.status === 'SL_HIT' || a.status === 'BE_HIT' || a.status === 'EXPIRED')) {
       const diffMs = Math.max(0, new Date(a.exitTime).getTime() - new Date(a.candleCloseTime).getTime());
       const diffMins = Math.round(diffMs / 60000);
-      const durationStr = diffMins >= 60 ? (Math.floor(diffMins / 60) + 'h ' + (diffMins % 60) + 'm') : (diffMins + 'm');
-      timeLogHtml += ' · Closed ' + fmtDate(a.exitTime) + ' (' + durationStr + ')';
+      const durationStr = diffMins >= 60 ? \`\${Math.floor(diffMins / 60)}h \${diffMins % 60}m\` : \`\${diffMins}m\`;
+      timeLogHtml += \` · Closed \${fmtDate(a.exitTime)} (\${durationStr})\`;
     }
     return \`
       <button class="alert-row" data-setup="\${esc(a.setupId)}" data-tf="\${esc(a.tf)}">
@@ -2222,7 +2217,6 @@ if (document.readyState === 'loading') {
   loadAll();
 }
 
-
 // ── Functionality #10: Monte Carlo Quant Lab ─────────────────────────────
 async function runMonteCarloUI() {
   const status = $('mcStatus'), cards = $('mcCards'), svg = $('mcFan'), runButton = $('mcRun');
@@ -2335,35 +2329,39 @@ async function loadPropVerdict() {
 }
 loadPropVerdict();
 
-// ── Functionality #11: Live Desk Mode (smart-polling event tape) ─────────
-// Live-edge bootstrap + forward-only streaming (see dashboard/app.js).
-// The tape starts at the LIVE EDGE: the first poll asks for the newest rows
-// (tail=1) and adopts their max id as the cursor, so /api/recent-events never
-// replays stored history as if it were live. Every later poll streams strictly
-// forward with since=cursor.
-const liveDesk = { cursor: 0, timer: null, chime: false, audio: null, primed: false };
+// ── Live Desk: cursor-polled, real API event rows; never seeded with demo data ──
+// The bootstrap request loads the newest rows and adopts the API cursor. Later
+// requests fetch only newer rows, so stored history is never framed as new.
+const liveDesk = {
+  cursor: 0, timer: null, chime: false, audio: null, primed: false,
+  paused: false, history: [], lastPollMs: null
+};
 function liveDeskBeep(freq) {
   if (!liveDesk.chime) return;
   try {
     if (!liveDesk.audio) liveDesk.audio = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = liveDesk.audio, o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = freq || 880;
-    g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + 0.4);
-  } catch (e) { /* audio unavailable */ }
+    const ctx = liveDesk.audio, oscillator = ctx.createOscillator(), gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = freq || 880;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.4);
+  } catch (_) { /* Audio may be blocked or unavailable. */ }
 }
-// Stored events are UTC; the tape shows "HH:MM UTC" for today and
-// "MM-DD HH:MM UTC" for anything older so history can never look live.
-function liveDeskTime(ev) {
+function liveDeskEventTime(ev) {
   const raw = String(ev.createdUtc || ev.candleTime || '');
   const ms = Date.parse(raw);
-  if (!Number.isFinite(ms)) return '';
+  return Number.isFinite(ms) ? ms : null;
+}
+// Stored event timestamps are UTC. Older rows include the date so history is
+// not accidentally presented as a current signal.
+function liveDeskTime(ev) {
+  const ms = liveDeskEventTime(ev);
+  if (ms == null) return 'Time unavailable';
   const d = new Date(ms), now = new Date();
   const p2 = n => String(n).padStart(2, '0');
   const hhmm = p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes());
@@ -2372,57 +2370,126 @@ function liveDeskTime(ev) {
     && d.getUTCDate() === now.getUTCDate();
   return today ? hhmm + ' UTC' : p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) + ' ' + hhmm + ' UTC';
 }
-function liveDeskRow(ev) {
+function liveDeskRow(ev, animate = false) {
   const li = document.createElement('li');
-  li.className = 'live-row live-' + String(ev.state).toLowerCase();
-  li.innerHTML = '<span class="live-time">' + esc(liveDeskTime(ev)) + '</span>'
-    + '<span class="live-state">' + esc(ev.state) + '</span>'
-    + '<span class="live-pair">' + esc(ev.pair) + '</span>'
-    + '<span class="live-reason">' + esc(ev.reason || '') + '</span>';
+  const stateName = String(ev.state || 'EVENT').toLowerCase();
+  const tone = stateName === 'retest' || stateName === 'confirmed' ? 'violet'
+    : stateName === 'sweep' || stateName === 'shift' ? 'amber' : '';
+  li.className = \`event-row live-row live-\${stateName}\${animate ? ' live-event-enter' : ''}\`;
+  li.innerHTML = '<time class="live-time">' + esc(liveDeskTime(ev)) + '</time>'
+    + '<span class="event-tone ' + tone + '" aria-hidden="true"></span>'
+    + '<span><strong>' + esc(ev.pair || 'Unknown pair') + ' <b>' + esc(ev.state || 'EVENT') + '</b></strong>'
+    + '<small>' + esc(ev.reason || 'Recorded engine event') + '</small></span>'
+    + '<span class="event-arrow" aria-hidden="true">↗</span>';
   return li;
 }
+function updateLiveDeskChart() {
+  const now = Date.now();
+  const rangeMs = 12 * 60 * 60 * 1000;
+  const start = now - rangeMs;
+  const timed = liveDesk.history
+    .map(event => ({ event, time: liveDeskEventTime(event) }))
+    .filter(row => row.time != null);
+  const within = timed.filter(row => row.time >= start && row.time <= now);
+  const counts = Array.from({ length: 12 }, () => 0);
+  within.forEach(row => {
+    const bin = Math.min(11, Math.max(0, Math.floor((row.time - start) / (60 * 60 * 1000))));
+    counts[bin] += 1;
+  });
+  const line = $('liveLine'), band = $('liveBand');
+  const status = $('liveChartStatus'), endLabel = $('chartEndLabel');
+  const count12h = $('liveEventCount12h'), latest = $('liveUpdatedAt'), response = $('livePollMs');
+  const max = Math.max(0, ...counts);
+  if (line && band) {
+    if (max === 0) {
+      line.removeAttribute('d');
+      band.removeAttribute('d');
+    } else {
+      const points = counts.map((count, index) => {
+        const x = 8 + index * (584 / (counts.length - 1));
+        const y = 194 - (count / max) * 148;
+        return [x, y];
+      });
+      const d = points.map((point, index) => \`\${index ? 'L' : 'M'} \${point[0].toFixed(1)} \${point[1].toFixed(1)}\`).join(' ');
+      line.setAttribute('d', d);
+      band.setAttribute('d', \`\${d} L 592 210 L 8 210 Z\`);
+    }
+  }
+  if (status) status.textContent = max ? 'LOADED ROWS' : (timed.length ? 'NO ROWS IN 12H' : 'NO TIMESTAMPED ROWS');
+  if (endLabel) endLabel.textContent = max ? \`\${counts[11]} latest hour\` : 'No data';
+  if (count12h) count12h.textContent = String(within.length);
+  if (latest) {
+    const newest = timed.sort((a, b) => b.time - a.time)[0];
+    latest.textContent = newest ? liveDeskTime(newest.event) : '—';
+  }
+  if (response) response.textContent = liveDesk.lastPollMs == null ? '—' : \`\${liveDesk.lastPollMs} ms\`;
+  if ($('liveEventCount')) $('liveEventCount').textContent = \`\${liveDesk.history.length} event rows in view\`;
+}
 async function liveDeskPoll(initial) {
+  if (liveDesk.paused && !initial) return;
+  const started = performance.now();
   try {
-    // Bootstrap: newest 12 rows + cursor at the max event id. Afterwards: strictly
-    // forward from the cursor, so nothing already on the tape is re-rendered.
-    const d = await api(initial
+    const data = await api(initial
       ? '/api/recent-events?tail=1&limit=12'
       : '/api/recent-events?since=' + liveDesk.cursor + '&limit=50');
-    const items = (d.items || []).slice();
-    const cursor = Number(d.cursor);
+    const items = Array.isArray(data.items) ? data.items.slice() : [];
+    const cursor = Number(data.cursor);
     if (Number.isFinite(cursor)) liveDesk.cursor = Math.max(liveDesk.cursor, cursor);
     const tape = $('liveTape');
     if (!tape) return;
+    liveDesk.lastPollMs = Math.max(0, Math.round(performance.now() - started));
     if (initial) {
-      tape.innerHTML = '';
-      items.slice().reverse().forEach(ev => tape.appendChild(liveDeskRow(ev)));
-      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded yet — the tape fills as scans run.</li>';
+      liveDesk.history = items.slice(-500);
+      tape.replaceChildren();
+      items.slice().reverse().forEach(event => tape.appendChild(liveDeskRow(event)));
+      if (!tape.children.length) tape.innerHTML = '<li class="live-empty">No structure events recorded in the returned history. The tape fills as scans record events.</li>';
       liveDesk.primed = true;
-      return; // history is rendered, never chimed
+    } else if (items.length) {
+      liveDesk.history.push(...items);
+      if (liveDesk.history.length > 500) liveDesk.history.splice(0, liveDesk.history.length - 500);
+      if (tape.querySelector('.live-empty')) tape.replaceChildren();
+      items.slice().reverse().forEach(event => tape.insertBefore(liveDeskRow(event, true), tape.firstChild));
+      while (tape.children.length > 30) tape.removeChild(tape.lastChild);
+      // Only newly cursor-returned events can trigger a sound or brief visual cue.
+      if (liveDesk.primed) {
+        liveDeskBeep(items.some(event => event.state === 'RETEST' || event.state === 'SHIFT') ? 1046 : 784);
+        const desk = $('liveDesk');
+        if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
+      }
     }
-    if (!items.length) return;
-    if (tape.querySelector('.live-empty')) tape.innerHTML = '';
-    items.slice().reverse().forEach(ev => tape.insertBefore(liveDeskRow(ev), tape.firstChild));
-    while (tape.children.length > 30) tape.removeChild(tape.lastChild);
-    // Chime/flash only for genuinely new events arriving after the initial render.
-    if (!liveDesk.primed) { liveDesk.primed = true; return; }
-    liveDeskBeep(items.some(ev => ev.state === 'RETEST' || ev.state === 'SHIFT') ? 1046 : 784);
-    const desk = $('liveDesk');
-    if (desk) { desk.classList.remove('live-flash'); void desk.offsetWidth; desk.classList.add('live-flash'); }
-  } catch (e) { /* silent retry on next tick */ }
+    if (!liveDesk.primed) liveDesk.primed = true;
+    if ($('liveDeskStatus')) $('liveDeskStatus').textContent = liveDesk.paused ? 'DISPLAY PAUSED' : 'READ-ONLY';
+    updateLiveDeskChart();
+  } catch (_) {
+    if ($('liveDeskStatus')) $('liveDeskStatus').textContent = 'DATA UNAVAILABLE';
+    if ($('liveChartStatus')) $('liveChartStatus').textContent = 'API UNAVAILABLE';
+    if ($('liveTape') && !$('liveTape').children.length) {
+      $('liveTape').innerHTML = '<li class="live-empty">Event feed unavailable; retrying automatically.</li>';
+    }
+  }
 }
 function liveDeskStart() {
   if (liveDesk.timer || !$('liveTape')) return;
   liveDeskPoll(true);
-  liveDesk.timer = setInterval(() => { if (!document.hidden) liveDeskPoll(false); }, 15000);
+  liveDesk.timer = setInterval(() => {
+    if (!document.hidden && !liveDesk.paused) liveDeskPoll(false);
+  }, 15000);
 }
+if ($('tapePause')) $('tapePause').addEventListener('click', () => {
+  liveDesk.paused = !liveDesk.paused;
+  $('tapePause').setAttribute('aria-pressed', String(liveDesk.paused));
+  $('tapePause').textContent = liveDesk.paused ? 'Resume display' : 'Pause display';
+  $('tapePause').title = liveDesk.paused ? 'Resume display updates; the scanner continues.' : 'Pause this display only; the scanner continues.';
+  if ($('liveDeskStatus')) $('liveDeskStatus').textContent = liveDesk.paused ? 'DISPLAY PAUSED' : 'READ-ONLY';
+  if (!liveDesk.paused) liveDeskPoll(false);
+});
 if ($('liveChimeToggle')) $('liveChimeToggle').addEventListener('click', () => {
   liveDesk.chime = !liveDesk.chime;
-  $('liveChimeToggle').textContent = liveDesk.chime ? '🔔 Chime on' : '🔕 Chime off';
-  if (liveDesk.chime) liveDeskBeep(880); // user gesture unlocks browser audio
+  $('liveChimeToggle').textContent = liveDesk.chime ? 'Chime on' : 'Chime off';
+  $('liveChimeToggle').setAttribute('aria-pressed', String(liveDesk.chime));
+  if (liveDesk.chime) liveDeskBeep(880); // User gesture unlocks browser audio.
 });
-liveDeskStart();
-</script>
+liveDeskStart();</script>
 </body>
 </html>
 `;
