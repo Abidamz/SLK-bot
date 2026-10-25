@@ -9,7 +9,7 @@ import { loadConfig } from "../src/config";
 import type { Alert } from "../src/types";
 import { notifyAlert, notifyWatch } from "../src/notify";
 import { MemStore } from "../src/store";
-import { T0, makeFakeFetch, type RecordedCalls } from "./fixtures";
+import { T0, baseFeed, dailyFeed, dukaJson, makeFakeFetch, type RecordedCalls } from "./fixtures";
 
 const NOW = T0 + 8 * 3600_000; // 08:00 — just after the retest candle closed
 
@@ -52,6 +52,35 @@ describe("scheduled scan cycle", () => {
     expect(stale.every((e) => e.state === "MAP")).toBe(true);
     expect(store.scanLog).toHaveLength(1);
     expect(store.scanLog[0].note).toBe("ok");
+  });
+
+  it("stores the actual fallback provider for alerts when Twelve Data returns no candles", async () => {
+    const calls: RecordedCalls = { telegram: [], discord: [], dataCalls: [] };
+    const store = new MemStore();
+    const fallbackFetch = makeFakeFetch(calls);
+    const fetchFn: typeof fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("api.twelvedata.com")) {
+        calls.dataCalls?.push(url);
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      if (url.includes("jetta.dukascopy.com")) {
+        calls.dataCalls?.push(url);
+        const daily = url.includes("/candles/day/");
+        const candles = daily ? dailyFeed() : baseFeed();
+        return new Response(JSON.stringify(dukaJson(candles, daily ? 86_400_000 : 1_800_000)), { status: 200 });
+      }
+      return fallbackFetch(input, init);
+    };
+
+    const summary = await scanAll(makeEnv(), {
+      now: NOW, fetchFn, storeOverride: store,
+    });
+
+    expect(summary.alerts).toBe(1);
+    expect([...store.alerts.values()][0].provider).toBe("dukascopy");
+    expect(calls.dataCalls?.some((url) => url.includes("api.twelvedata.com"))).toBe(true);
+    expect(calls.dataCalls?.some((url) => url.includes("jetta.dukascopy.com"))).toBe(true);
   });
 
   it("forced scan delivers exactly one Telegram + one Discord message", async () => {

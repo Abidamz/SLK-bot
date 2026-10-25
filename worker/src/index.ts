@@ -532,7 +532,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     try {
       // Provider routing uses the configured map and supported feeds; a
       // per-pair outage never blocks the other pairs (see catch below).
-      const providerName = providerForPair(pair, cfg.providerMap, oandaTokenPresent);
+      let providerName = providerForPair(pair, cfg.providerMap, oandaTokenPresent);
       const apiKey = env.TWELVEDATA_API_KEY ?? "";
       const derivAppId = env.DERIV_APP_ID ?? cfg.derivAppId;
       const derivProxyUrl = env.DERIV_PROXY_URL || (await store.getKv("deriv_proxy_url")) || undefined;
@@ -556,6 +556,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // the rate-limit design: ~1 provider credit per pair per boundary
       // instead of ~2 with separate 1h/30m fetches.
       const baseRes = await fetchMarketData({ pair, tf: cfg.baseTimeframe, limit: cfg.baseCandlesLimit, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+      // Alert provenance follows the provider that actually supplied the entry
+      // feed, rather than the configured first choice (which may have failed).
+      providerName = baseRes.provider;
+      const feedProviders: Record<string, string> = { [cfg.baseTimeframe]: baseRes.provider };
       const base = validateAndClose(
         baseRes.candles,
         TF_SECONDS[cfg.baseTimeframe], now, cfg.minCandles,
@@ -566,10 +570,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         const entrySec = TF_SECONDS[entryTf];
         if (entrySec && entrySec > TF_SECONDS[cfg.baseTimeframe]) {
           feeds[entryTf] = dropIncomplete(resampleCandles(base, entrySec), entrySec, now);
+          feedProviders[entryTf] = baseRes.provider;
         }
       }
       if (!feeds["1h"]) {
         feeds["1h"] = dropIncomplete(resampleCandles(base, TF_SECONDS["1h"]), TF_SECONDS["1h"], now);
+        feedProviders["1h"] = baseRes.provider;
       }
       let h4 = dropIncomplete(
         resampleCandles(base, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now,
@@ -581,6 +587,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           const h1Res = await fetchMarketData({ pair, tf: "1h", limit: 200, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
           const h1Candles = validateAndClose(h1Res.candles, TF_SECONDS["1h"], now, 30);
           feeds["1h"] = h1Candles;
+          feedProviders["1h"] = h1Res.provider;
           const directH4 = dropIncomplete(resampleCandles(h1Candles, TF_SECONDS[cfg.mapTimeframe]), TF_SECONDS[cfg.mapTimeframe], now);
           if (directH4.length >= 30) {
             h4 = directH4;
@@ -664,17 +671,19 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           continue;
         }
         let candles: Candle[];
+        let entryProvider = feedProviders[tf] ?? providerName;
         const derivedFeed = feeds[tf];
         if (derivedFeed) {
           candles = derivedFeed;
         } else {
           const res = await fetchMarketData({ pair, tf, limit: cfg.candlesLimit, tdKey: apiKey, oandaToken, oandaEnv, derivAppId, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv });
+          entryProvider = res.provider;
           candles = validateAndClose(res.candles, secs, now, cfg.minCandles);
         }
 
         const scanResult = scanEntry({
           pair, entryTf: tf, tfSeconds: secs, candles, snaps,
-          cfg: pairStrategy, mode: cfg.mode, provider: providerName,
+          cfg: pairStrategy, mode: cfg.mode, provider: entryProvider,
           d1Candles: d1 ?? undefined,
           h1Candles: feeds["1h"],
           h4Candles: h4,
@@ -689,7 +698,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         if (cfg.mode === "paper" && tf === "30m" && (pairStrategy.retestDepthPct ?? 100) === 100 && candles.length) {
           const retest50 = scanEntry({
             pair, entryTf: tf, tfSeconds: secs, candles, snaps,
-            cfg: { ...pairStrategy, retestDepthPct: 50 }, mode: "paper", provider: providerName,
+            cfg: { ...pairStrategy, retestDepthPct: 50 }, mode: "paper", provider: entryProvider,
             d1Candles: d1 ?? undefined,
             h1Candles: feeds["1h"],
             h4Candles: h4,
@@ -785,7 +794,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             console.info(JSON.stringify({ level: "info", msg: "stale confirmation skipped — not a live trade", setupId: alert.setupId, ageSec: discoveryAgeSec }));
             continue;
           }
-          const inserted = await store.insertAlert(alert, providerName);
+          const inserted = await store.insertAlert(alert, entryProvider);
           if (!inserted) {
             diagnostics.recorded.duplicateConfirmationSkips++;
             noteConfirmationAttempt(diagnostics.recorded, tf, discoveryAgeSec, "duplicate", tfWindowSec);

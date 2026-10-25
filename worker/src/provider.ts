@@ -1068,120 +1068,72 @@ export async function fetchMarketData(req: MarketDataRequest): Promise<{ provide
     );
     return { provider: "deriv", candles };
   }
+
+  // Preserve the existing fallback order for each primary route. A successful
+  // HTTP response with no usable candles is still a provider failure: passing
+  // an empty feed downstream would otherwise silently bypass these fallbacks.
+  const route: ProviderName[] = [];
   if (provider === "twelvedata") {
-    let lastErr: Error | null = null;
-    if (!tdCreditsExhausted) {
-      try {
-        const candles = await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-        return { provider, candles };
-      } catch (err) {
-        lastErr = err instanceof Error ? err : new Error(String(err));
-        const msg = lastErr.message;
-        const isRateOrCredit = msg.includes("run out of API credits")
-          || msg.includes("API credits were used")
-          || msg.includes("limit being 800")
-          || msg.includes("429");
-        if (isRateOrCredit) {
-          tdCreditsExhausted = true;
-        }
-        console.warn(JSON.stringify({
-          level: "warn",
-          msg: "tayo.provider.fallback",
-          pair: req.pair,
-          tf: req.tf,
-          from: "twelvedata",
-          to: req.oandaToken ? "oanda" : "dukascopy",
-          reason: msg,
-        }));
-      }
-    }
-
-    if (req.oandaToken) {
-      try {
-        const candles = await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
-        if (candles.length > 0) return { provider: "oanda", candles };
-      } catch (oandaErr) {
-        lastErr = oandaErr instanceof Error ? oandaErr : new Error(String(oandaErr));
-      }
-    }
-
-    // Institutional fallback: Dukascopy Swiss Bank (keyless, tick-level precision)
-    try {
-      const candles = await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
-      if (candles.length > 0) {
-        return { provider: "dukascopy", candles };
-      }
-    } catch (dukaErr) {
-      lastErr = dukaErr instanceof Error ? dukaErr : new Error(String(dukaErr));
-      console.warn(JSON.stringify({
-        level: "warn",
-        msg: "tayo.provider.fallback",
-        pair: req.pair,
-        tf: req.tf,
-        from: "twelvedata",
-        to: "failed",
-        reason: lastErr.message,
-      }));
-    }
-
-    throw lastErr ?? new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
+    route.push("twelvedata");
+    if (req.oandaToken) route.push("oanda");
+    route.push("dukascopy");
+  } else if (provider === "oanda") {
+    route.push("oanda", "dukascopy");
+    if (req.tdKey) route.push("twelvedata");
+  } else {
+    route.push("dukascopy");
+    if (req.oandaToken) route.push("oanda");
+    if (req.tdKey) route.push("twelvedata");
   }
 
-  const candles = provider === "oanda"
-    ? await (async () => {
-        try {
-          return await fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
-        } catch (oandaErr) {
-          console.warn(JSON.stringify({
-            level: "warn",
-            msg: "tayo.provider.fallback",
-            pair: req.pair,
-            tf: req.tf,
-            from: "oanda",
-            to: "dukascopy",
-            reason: oandaErr instanceof Error ? oandaErr.message : String(oandaErr),
-          }));
-          try {
-            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
-          } catch (dukaErr) {
-            if (req.tdKey && !tdCreditsExhausted) {
-              try {
-                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-              } catch {}
-            }
-            throw oandaErr;
-          }
-        }
-      })()
-    : provider === "dukascopy"
-      ? await (async () => {
-          try {
-            return await fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
-          } catch (dukaErr) {
-            if (req.oandaToken) {
-              try {
-                console.warn(JSON.stringify({
-                  level: "warn",
-                  msg: "tayo.provider.fallback",
-                  pair: req.pair,
-                  tf: req.tf,
-                  from: "dukascopy",
-                  to: "oanda",
-                  reason: dukaErr instanceof Error ? dukaErr.message : String(dukaErr),
-                }));
-                return await fetchOanda(req.oandaToken, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
-              } catch {}
-            }
-            if (req.tdKey && !tdCreditsExhausted) {
-              try {
-                return await fetchTwelveData(req.tdKey, req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-              } catch {}
-            }
-            throw dukaErr;
-          }
-        })()
-      : await fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
-  return { provider, candles };
+  const fetchFrom = async (source: ProviderName): Promise<Candle[]> => {
+    if (source === "twelvedata") {
+      return fetchTwelveData(req.tdKey ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn);
+    }
+    if (source === "oanda") {
+      return fetchOanda(req.oandaToken ?? "", req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.oandaEnv ?? "auto");
+    }
+    return fetchDukascopy(req.pair, req.tf, req.limit, req.symbolMap ?? {}, req.fetchFn, req.kv, dukaBudget);
+  };
+
+  let lastErr: Error | null = null;
+  for (let i = 0; i < route.length; i++) {
+    const source = route[i];
+    // Keep the existing process-wide Twelve Data credit circuit breaker.
+    if (source === "twelvedata" && tdCreditsExhausted) continue;
+
+    try {
+      const candles = await fetchFrom(source);
+      if (Array.isArray(candles) && candles.length > 0) {
+        return { provider: source, candles };
+      }
+      lastErr = new Error(`${source} returned no candles for ${req.pair} ${req.tf}`);
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+
+    if (source === "twelvedata") {
+      const msg = lastErr.message;
+      if (msg.includes("run out of API credits")
+        || msg.includes("API credits were used")
+        || msg.includes("limit being 800")
+        || msg.includes("429")) {
+        tdCreditsExhausted = true;
+      }
+    }
+
+    console.warn(JSON.stringify({
+      level: "warn",
+      msg: "tayo.provider.fallback",
+      pair: req.pair,
+      tf: req.tf,
+      from: source,
+      to: route[i + 1] ?? "failed",
+      reason: lastErr.message,
+    }));
+  }
+
+  throw lastErr ?? new Error(`All providers exhausted for ${req.pair} ${req.tf}`);
 }
 
 export class DataQualityError extends Error {}

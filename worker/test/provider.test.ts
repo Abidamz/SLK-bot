@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { decodeJetta, fetchDeriv, fetchDukascopy, fetchMarketData, fetchOanda, providerForPair, resetProviderCircuitBreakers, secondaryProviderFor, symbolFor, DataQualityError } from "../src/provider";
 import { INDEX_POINT_PAIRS, identityTick, isForexPair, pipSize } from "../src/config";
-import { dukaJson, flatIndexFeed } from "./fixtures";
+import { dukaJson, flatIndexFeed, tdJson } from "./fixtures";
 import type { Candle } from "../src/types";
 
 describe("provider routing", () => {
@@ -460,6 +460,91 @@ describe("fetchMarketData rate-limit fallback", () => {
     expect(res.provider).toBe("oanda");
     expect(res.candles.length).toBe(2);
     expect(urlsSeen.some((u) => u.includes("oanda.com"))).toBe(true);
+  });
+
+  it("falls back from Twelve Data when an empty success response has no candles", async () => {
+    const urlsSeen: string[] = [];
+    const fetchFn: typeof fetch = async (u) => {
+      const url = String(u);
+      urlsSeen.push(url);
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+
+    const result = await fetchMarketData({
+      pair: "EURUSD", tf: "30m", limit: 10, tdKey: "TEST_KEY", fetchFn, budget: 1,
+    });
+
+    expect(result.provider).toBe("dukascopy");
+    expect(result.candles.length).toBeGreaterThan(0);
+    expect(urlsSeen.some((url) => url.includes("jetta.dukascopy.com"))).toBe(true);
+  });
+
+  it("reports Dukascopy as the actual source when OANDA returns no candles", async () => {
+    const fetchFn: typeof fetch = async (u) => {
+      const url = String(u);
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({ instrument: "US30_USD", candles: [] }), { status: 200 });
+      }
+      if (url.includes("jetta.dukascopy.com")) {
+        return new Response(JSON.stringify(dukaJson(flatIndexFeed())), { status: 200 });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+
+    const result = await fetchMarketData({
+      pair: "US30", tf: "30m", limit: 10, oandaToken: "TOK",
+      providerMap: { US30: "oanda" }, fetchFn, budget: 1,
+    });
+
+    expect(result.provider).toBe("dukascopy");
+    expect(result.candles.length).toBeGreaterThan(0);
+  });
+
+  it("reports OANDA as the actual source when Dukascopy is empty", async () => {
+    const fetchFn: typeof fetch = async (u) => {
+      const url = String(u);
+      if (url.includes("jetta.dukascopy.com")) return new Response("not found", { status: 404 });
+      if (url.includes("oanda.com")) {
+        return new Response(JSON.stringify({
+          instrument: "US30_USD", granularity: "M30",
+          candles: [{ complete: true, time: "2026-09-04T20:00:00.000000000Z", mid: { o: "38000", h: "38150", l: "37950", c: "38100" } }],
+        }), { status: 200 });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+
+    const result = await fetchMarketData({
+      pair: "US30", tf: "30m", limit: 10, oandaToken: "TOK",
+      providerMap: { US30: "dukascopy" }, fetchFn, budget: 1,
+    });
+
+    expect(result.provider).toBe("oanda");
+    expect(result.candles).toHaveLength(1);
+  });
+
+  it("uses Twelve Data when Dukascopy is empty and it is the configured supported fallback", async () => {
+    const fetchFn: typeof fetch = async (u) => {
+      const url = String(u);
+      if (url.includes("jetta.dukascopy.com")) return new Response("not found", { status: 404 });
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify(tdJson(flatIndexFeed())), { status: 200 });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+
+    const result = await fetchMarketData({
+      pair: "US30", tf: "30m", limit: 10, tdKey: "TEST_KEY",
+      providerMap: { US30: "dukascopy" }, fetchFn, budget: 1,
+    });
+
+    expect(result.provider).toBe("twelvedata");
+    expect(result.candles.length).toBeGreaterThan(0);
   });
 
   it("fails safe when Dukascopy and its supported fallback fail", async () => {
