@@ -38,17 +38,16 @@ export function formatContinuationShadowDm(capture: ShadowExperimentCapture): st
   ].join("\n");
 }
 
-/** Sends only to positive numeric IDs from the explicitly private-DM setting. */
-export async function sendContinuationShadowPrivateDm(
+/** Sends text only to positive numeric IDs from the private-DM setting. */
+export async function sendContinuationShadowPrivateDmText(
   env: NotifyEnv,
   rawDmChatIds: string | undefined,
-  capture: ShadowExperimentCapture,
+  text: string,
 ): Promise<ContinuationShadowDmResult> {
   if (!env.TELEGRAM_BOT_TOKEN) return { sent: 0, failed: 0, skipped: "missing_bot_token" };
   const chatIds = continuationShadowPrivateDmIds(rawDmChatIds);
   if (!chatIds.length) return { sent: 0, failed: 0, skipped: "missing_private_dm" };
 
-  const text = formatContinuationShadowDm(capture);
   let sent = 0;
   let failed = 0;
   for (const chatId of chatIds) {
@@ -61,11 +60,25 @@ export async function sendContinuationShadowPrivateDm(
       console.warn(JSON.stringify({
         level: "warn",
         msg: "continuation shadow private Telegram DM failed",
-        pair: capture.pair,
-        experimentId: capture.experimentId,
         error: String(err),
       }));
     }
   }
   return { sent, failed };
+}
+
+export async function sendContinuationShadowPrivateDm(
+  env: NotifyEnv,
+  rawDmChatIds: string | undefined,
+  capture: ShadowExperimentCapture,
+): Promise<ContinuationShadowDmResult> {
+  return sendContinuationShadowPrivateDmText(env, rawDmChatIds, formatContinuationShadowDm(capture));
+}
+
+export function formatContinuationShadowDmTest(): string {
+  return [
+    "✅ DEO EDGE — PRIVATE TELEGRAM DELIVERY TEST",
+    "This confirms the continuation paper-test route reaches this private DM.",
+    "No market setup, alert row, or order was created.",
+  ].join("\n");
 }

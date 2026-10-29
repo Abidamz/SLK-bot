@@ -32,7 +32,11 @@ import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./featur
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
 import { runContinuationShadowForwardTest, CONTINUATION_SETUP_TIMEFRAME } from "./continuation_shadow";
-import { sendContinuationShadowPrivateDm } from "./continuation_shadow_notifications";
+import {
+  formatContinuationShadowDmTest,
+  sendContinuationShadowPrivateDm,
+  sendContinuationShadowPrivateDmText,
+} from "./continuation_shadow_notifications";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
 import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
@@ -2753,7 +2757,9 @@ export default {
       if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
       let body: Record<string, unknown> = {};
       try { if (request.method === "POST") body = await request.json() as Record<string, unknown>; } catch { return json({ error: "invalid JSON" }, 400); }
-      const channel = body.channel === "telegram" || body.channel === "discord" ? body.channel : "all";
+      const channel = body.channel === "telegram" || body.channel === "discord" || body.channel === "telegram_dm"
+        ? body.channel
+        : "all";
       const text = "DEO EDGE TEST — NOT A SIGNAL\n\nThis is an isolated delivery test. It cannot create alerts, outcomes, or orders.\nWATCH remains informational and is not confirmed.";
       const { sendTelegram, sendDiscord } = await import("./notify");
       const results: Record<string, string> = {};
@@ -2761,9 +2767,36 @@ export default {
       const attempts = channel === "all" ? ["telegram", "discord"] : [channel];
       for (const target of attempts) {
         try {
-          if (target === "telegram") { if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) { results.telegram = "not_configured"; } else { await sendTelegram(env, text); results.telegram = "ok"; } }
-          else { if (!env.DISCORD_WEBHOOK_URL) { results.discord = "not_configured"; } else { await sendDiscord(env, text, 0x3498db); results.discord = "ok"; } }
-        } catch (err) { results[target] = `error: ${err instanceof Error ? err.message : String(err)}`; }
+          if (target === "telegram") {
+            if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+              results.telegram = "not_configured";
+            } else {
+              await sendTelegram(env, text);
+              results.telegram = "ok";
+            }
+          } else if (target === "telegram_dm") {
+            const dmEnabled = (env.CONTINUATION_SHADOW_ENABLED ?? "").toLowerCase() === "true"
+              && (env.CONTINUATION_SHADOW_DM_NOTIFY ?? "").toLowerCase() === "true"
+              && (env.MODE ?? "").toLowerCase() === "paper";
+            if (!dmEnabled) {
+              results.telegram_dm = "disabled";
+            } else {
+              const dmChatIds = env.TELEGRAM_DM_CHAT_ID || await store.getKv("telegram_dm_chat_id") || undefined;
+              const delivery = await sendContinuationShadowPrivateDmText(env, dmChatIds, formatContinuationShadowDmTest());
+              results.telegram_dm = delivery.skipped
+                ?? (delivery.sent === 0 ? "failed" : delivery.failed ? "partial" : "ok");
+            }
+          } else {
+            if (!env.DISCORD_WEBHOOK_URL) {
+              results.discord = "not_configured";
+            } else {
+              await sendDiscord(env, text, 0x3498db);
+              results.discord = "ok";
+            }
+          }
+        } catch (err) {
+          results[target] = `error: ${err instanceof Error ? err.message : String(err)}`;
+        }
         await store.insertNotificationDeliveryAudit({ channel: target, kind: "test", status: results[target], detail: results[target] });
       }
       return json({ ok: Object.values(results).some(v => v === "ok"), isolated: true, results });
