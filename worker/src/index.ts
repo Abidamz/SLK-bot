@@ -32,6 +32,7 @@ import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./featur
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
 import { runContinuationShadowForwardTest, CONTINUATION_SETUP_TIMEFRAME } from "./continuation_shadow";
+import { sendContinuationShadowPrivateDm } from "./continuation_shadow_notifications";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
 import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
@@ -65,6 +66,8 @@ export interface Env {
   RETEST_DEPTH_PCT?: string;
   /** Explicit opt-in for the isolated continuation forward test. Defaults off. */
   CONTINUATION_SHADOW_ENABLED?: string;
+  /** Sends only newly persisted continuation candidates to TELEGRAM_DM_CHAT_ID. */
+  CONTINUATION_SHADOW_DM_NOTIFY?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   ENGINE_DIGEST?: string;
@@ -354,6 +357,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const diagnostics = emptyScanDiagnostics();
   const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
+  const continuationDmCaptures: ShadowExperimentCapture[] = [];
   const eventReplayMaxAgeMs = opts.eventReplayMaxAgeMs ?? EVENT_REPLAY_MAX_AGE_MS;
 
   // which entry TFs closed a candle since the previous successful scan?
@@ -626,6 +630,9 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             enabled: true,
             mode: cfg.mode,
           });
+          if ((env.CONTINUATION_SHADOW_DM_NOTIFY ?? "").toLowerCase() === "true") {
+            continuationDmCaptures.push(...continuationRun.insertedCaptures);
+          }
           if (continuationRun.state === "baseline"
               || continuationRun.state === "ledger_unavailable"
               || continuationRun.state === "persistence_failed"
@@ -933,6 +940,45 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   });
 
   await recordScanTiming(store, diagnostics);
+
+  // Best-effort private shadow notices run only after every established
+  // live/paper scan and delivery path has completed. They never use broadcast.
+  if (continuationDmCaptures.length) {
+    let rawDmChatIds = env.TELEGRAM_DM_CHAT_ID;
+    if (!rawDmChatIds) {
+      try {
+        rawDmChatIds = await store.getKv("telegram_dm_chat_id") ?? undefined;
+      } catch (err) {
+        console.warn(JSON.stringify({
+          level: "warn", msg: "continuation shadow private-DM lookup failed",
+          error: String(err),
+        }));
+      }
+    }
+    await Promise.all(continuationDmCaptures.map(async (capture) => {
+      try {
+        const delivery = await sendContinuationShadowPrivateDm(env, rawDmChatIds, capture);
+        if (delivery.skipped) {
+          console.warn(JSON.stringify({
+            level: "warn", msg: "continuation shadow private-DM skipped",
+            pair: capture.pair, experimentId: capture.experimentId, reason: delivery.skipped,
+          }));
+        } else {
+          console.info(JSON.stringify({
+            level: delivery.failed ? "warn" : "info",
+            msg: "continuation shadow private-DM result",
+            pair: capture.pair, experimentId: capture.experimentId,
+            sent: delivery.sent, failed: delivery.failed,
+          }));
+        }
+      } catch (err) {
+        console.warn(JSON.stringify({
+          level: "warn", msg: "continuation shadow private-DM failed",
+          pair: capture.pair, experimentId: capture.experimentId, error: String(err),
+        }));
+      }
+    }));
+  }
 
   console.info(JSON.stringify({ level: "info", msg: "tayo.scan.diagnostics", diagnostics }));
 

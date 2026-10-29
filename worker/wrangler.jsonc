@@ -72,6 +72,7 @@
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
     "MODE": "paper",
     "CONTINUATION_SHADOW_ENABLED": "true",
+    "CONTINUATION_SHADOW_DM_NOTIFY": "true",
     "PAPER_NOTIFY": "true",
     "ENGINE_DIGEST": "true",
     // Free pre-entry posts are paused; if re-enabled, only one SHIFT card per setup is sent.

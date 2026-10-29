@@ -54,6 +54,8 @@ export interface ContinuationShadowRunResult {
   latestCloseTime: number | null;
   captures: ShadowExperimentCapture[];
   inserted: number;
+  /** Captures newly inserted in this call; used for deduplicated private notices. */
+  insertedCaptures: ShadowExperimentCapture[];
 }
 
 function result(
@@ -68,6 +70,7 @@ function result(
     latestCloseTime: null,
     captures: [],
     inserted: 0,
+    insertedCaptures: [],
     ...extras,
   };
 }
@@ -199,10 +202,14 @@ export async function runContinuationShadowForwardTest(args: {
     }
 
     let inserted = 0;
+    const insertedCaptures: ShadowExperimentCapture[] = [];
     let failed = false;
     for (const capture of captures) {
       try {
-        if (await store.insertShadowExperiment(capture)) inserted++;
+        if (await store.insertShadowExperiment(capture)) {
+          inserted++;
+          insertedCaptures.push(capture);
+        }
       } catch (err) {
         failed = true;
         console.warn(JSON.stringify({
@@ -211,9 +218,9 @@ export async function runContinuationShadowForwardTest(args: {
         }));
       }
     }
-    if (failed) return result("persistence_failed", pair, { bias, latestCloseTime, captures, inserted });
+    if (failed) return result("persistence_failed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures });
     await store.setKv(cursorKey, String(latestCloseTime));
-    return result("processed", pair, { bias, latestCloseTime, captures, inserted });
+    return result("processed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures });
   }
 
   await store.setKv(cursorKey, String(latestCloseTime));

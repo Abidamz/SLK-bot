@@ -91,6 +91,7 @@ describe("continuation forward shadow capture", () => {
     });
     expect(baseline.state).toBe("baseline");
     expect(baseline.captures).toEqual([]);
+    expect(baseline.insertedCaptures).toEqual([]);
     expect(await store.getKv(`continuation-shadow:v1:last-h4-close:EURUSD`)).toBe(String(lastClose));
 
     expect((await runContinuationShadowForwardTest({
