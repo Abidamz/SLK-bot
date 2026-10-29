@@ -3,7 +3,7 @@
  *  tests. Dedupe semantics live in the schema: slk_alerts has a UNIQUE
  *  setup_id, slk_events a UNIQUE (setup_id, state, candle_time) — so Worker
  *  retries and rescans can never double-deliver. */
-import type { Alert, EngineEvent, Outcome, ShadowExperimentCapture, ShadowExperimentVariant, ShadowTradeCapture, ShadowTradeOutcome, ShadowTradeStatus, ShadowRejectReason } from "./types";
+import { CONTINUATION_SETUP_V1_SOURCE_PREFIX, type Alert, type EngineEvent, type Outcome, type ShadowExperimentCapture, type ShadowExperimentVariant, type ShadowTradeCapture, type ShadowTradeOutcome, type ShadowTradeStatus, type ShadowRejectReason } from "./types";
 import {
   addReplayCounts, buildNotificationDeliveryAuditSummary, buildScanAuditSummary,
   buildStoredAlertAuditGroups, emptyReplayDiagnostics, mapScanAuditDayAggregateRows,
@@ -491,12 +491,43 @@ function aggregateShadowRows(rows: ShadowTradeRow[]): ShadowLedger["aggregate"] 
   return aggregate;
 }
 
+function logicalShadowExperimentVariant(row: Pick<ShadowExperimentRow, "source_setup_id" | "variant">): ShadowExperimentVariant {
+  // 0007's CHECK constraint is intentionally left untouched. The new model
+  // uses an existing physical slot plus a stable source-id discriminator, so
+  // it remains logically separate without a D1 migration.
+  if (row.variant === "BREAKOUT_CONTINUATION"
+      && row.source_setup_id.startsWith(CONTINUATION_SETUP_V1_SOURCE_PREFIX)) {
+    return "CONTINUATION_SETUP_V1";
+  }
+  return row.variant;
+}
+
+function logicalShadowExperimentRow(row: ShadowExperimentRow): ShadowExperimentRow {
+  const variant = logicalShadowExperimentVariant(row);
+  return variant === row.variant ? row : { ...row, variant };
+}
+
+function persistedShadowExperimentVariant(variant: ShadowExperimentVariant): Exclude<ShadowExperimentVariant, "CONTINUATION_SETUP_V1"> {
+  // The stored CHECK constraint only allows these two legacy values.
+  return variant === "CONTINUATION_SETUP_V1" ? "BREAKOUT_CONTINUATION" : variant;
+}
+
+function assertShadowExperimentVariantIdentity(
+  row: Pick<ShadowExperimentCapture, "variant" | "sourceSetupId">,
+): void {
+  if (row.variant === "CONTINUATION_SETUP_V1"
+      && !row.sourceSetupId.startsWith(CONTINUATION_SETUP_V1_SOURCE_PREFIX)) {
+    throw new Error("CONTINUATION_SETUP_V1 rows require the CONTINUATION_SETUP_V1 source-id prefix");
+  }
+}
+
 function emptyShadowExperimentLedger(available: boolean): ShadowExperimentLedger {
   return {
     available, rows: [],
     aggregate: {
       BREAKOUT_CONTINUATION: emptyShadowAggregate(),
       FVG_RETEST_50: emptyShadowAggregate(),
+      CONTINUATION_SETUP_V1: emptyShadowAggregate(),
     },
   };
 }
@@ -505,6 +536,7 @@ function aggregateShadowExperiments(rows: ShadowExperimentRow[]): ShadowExperime
   const aggregate = {
     BREAKOUT_CONTINUATION: emptyShadowAggregate(),
     FVG_RETEST_50: emptyShadowAggregate(),
+    CONTINUATION_SETUP_V1: emptyShadowAggregate(),
   };
   for (const row of rows) {
     const stats = aggregate[row.variant];
@@ -941,10 +973,11 @@ export class D1Store implements Store {
   }
 
   async insertShadowExperiment(row: ShadowExperimentCapture): Promise<boolean> {
+    assertShadowExperimentVariantIdentity(row);
     if (!await hasShadowExperimentTable(this.db)) return false;
     const withTags = await hasShadowExperimentTagColumns(this.db);
     const values: unknown[] = [
-      row.experimentId, row.sourceSetupId, row.variant, row.pair, row.entryTf,
+      row.experimentId, row.sourceSetupId, persistedShadowExperimentVariant(row.variant), row.pair, row.entryTf,
       row.direction, row.entry, row.stopLoss, row.target, row.rr,
       new Date().toISOString(), iso(row.candleCloseTime),
     ];
@@ -979,7 +1012,7 @@ export class D1Store implements Store {
     const result = await this.db.prepare(
       `SELECT * FROM slk_shadow_experiments WHERE ${where.join(" AND ")} ORDER BY candle_close_time ASC`,
     ).bind(...binds).all();
-    return (result.results ?? []) as ShadowExperimentRow[];
+    return ((result.results ?? []) as ShadowExperimentRow[]).map(logicalShadowExperimentRow);
   }
 
   async recordShadowExperimentOutcome(experimentId: string, outcome: ShadowTradeOutcome): Promise<void> {
@@ -993,16 +1026,19 @@ export class D1Store implements Store {
   async getShadowExperimentLedger(limit = 500): Promise<ShadowExperimentLedger> {
     if (!await hasShadowExperimentTable(this.db)) return emptyShadowExperimentLedger(false);
     const maxRows = Math.max(1, Math.min(5000, Math.floor(limit)));
+    const logicalVariantSql = `CASE WHEN variant='BREAKOUT_CONTINUATION'
+      AND substr(source_setup_id, 1, ${CONTINUATION_SETUP_V1_SOURCE_PREFIX.length})='${CONTINUATION_SETUP_V1_SOURCE_PREFIX}'
+      THEN 'CONTINUATION_SETUP_V1' ELSE variant END`;
     const [rowResult, aggregateResult] = await Promise.all([
       this.db.prepare("SELECT * FROM slk_shadow_experiments ORDER BY created_utc DESC, experiment_id ASC LIMIT ?").bind(maxRows).all(),
       this.db.prepare(`
-        SELECT variant,
+        SELECT ${logicalVariantSql} AS variant,
           COUNT(*) AS count,
           SUM(CASE WHEN status <> 'OPEN' THEN 1 ELSE 0 END) AS resolved,
           SUM(CASE WHEN status <> 'OPEN' AND r_multiple > 0 THEN 1 ELSE 0 END) AS wins,
           SUM(CASE WHEN status <> 'OPEN' AND r_multiple < 0 THEN 1 ELSE 0 END) AS losses,
           SUM(CASE WHEN status <> 'OPEN' THEN COALESCE(r_multiple, 0) ELSE 0 END) AS net_r
-        FROM slk_shadow_experiments GROUP BY variant
+        FROM slk_shadow_experiments GROUP BY ${logicalVariantSql}
       `).bind().all(),
     ]);
     const aggregate = emptyShadowExperimentLedger(true).aggregate;
@@ -1017,7 +1053,11 @@ export class D1Store implements Store {
         winRate: resolved ? Math.round((wins / resolved) * 10000) / 100 : null,
       };
     }
-    return { available: true, rows: (rowResult.results ?? []) as ShadowExperimentRow[], aggregate };
+    return {
+      available: true,
+      rows: ((rowResult.results ?? []) as ShadowExperimentRow[]).map(logicalShadowExperimentRow),
+      aggregate,
+    };
   }
 
   async getNotificationPreferences(): Promise<NotificationPreferences> {
@@ -1705,6 +1745,7 @@ export class MemStore implements Store {
   }
 
   async insertShadowExperiment(capture: ShadowExperimentCapture): Promise<boolean> {
+    assertShadowExperimentVariantIdentity(capture);
     if (this.shadowExperiments.has(capture.experimentId)) return false;
     this.shadowExperiments.set(capture.experimentId, {
       experiment_id: capture.experimentId,

@@ -71,6 +71,7 @@
     // the shadow classifier flags HTF_CONFLICT (behavior-neutral on entries)
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
     "MODE": "paper",
+    "CONTINUATION_SHADOW_ENABLED": "true",
     "PAPER_NOTIFY": "true",
     "ENGINE_DIGEST": "true",
     // Free pre-entry posts are paused; if re-enabled, only one SHIFT card per setup is sent.

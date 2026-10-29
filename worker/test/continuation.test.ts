@@ -407,6 +407,26 @@ describe("findContinuationSetups", () => {
       params({ maxRetraceDepth: 10 }))).toEqual([]);
   });
 
+  it("records the first post-extreme entry touch, not the current replay tick", () => {
+    const all = continuationPattern();
+    const found = findContinuationSetups(all, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    expect(found.length).toBeGreaterThan(0);
+    const firstTouch = all[all.length - 1].t;
+    expect(found.every((setup) => setup.entryTouchTime === firstTouch)).toBe(true);
+
+    const grown = [...all, {
+      t: all[all.length - 1].t + 3_600_000,
+      o: 1.1020, h: 1.1040, l: 1.1018, c: 1.1038,
+    }];
+    const afterGrowth = findContinuationSetups(grown, cfg, "LONG",
+      params({ maxRetraceDepth: 10, minTouches: 0 }));
+    const ids = new Set(found.map((setup) => setup.setupId));
+    for (const setup of afterGrowth.filter((item) => ids.has(item.setupId))) {
+      expect(setup.entryTouchTime).toBe(firstTouch);
+    }
+  });
+
   it("returns nothing without a bias, whatever the price does", () => {
     const cs = candles([
       [100, 100.4, 99.6, 100.1], [100.1, 102.0, 100.0, 101.8],

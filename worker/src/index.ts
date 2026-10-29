@@ -31,6 +31,7 @@ import { fetchMarketData, providerForPair, resetProviderCircuitBreakers, validat
 import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./features";
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
+import { runContinuationShadowForwardTest, CONTINUATION_SETUP_TIMEFRAME } from "./continuation_shadow";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
 import type { Alert, Candle, Direction, ShadowExperimentCapture, ShadowTradeCapture } from "./types";
 
@@ -62,6 +63,8 @@ export interface Env {
   ENTRY_TFS?: string;
   SYNTH_ENTRY_TFS?: string;
   RETEST_DEPTH_PCT?: string;
+  /** Explicit opt-in for the isolated continuation forward test. Defaults off. */
+  CONTINUATION_SHADOW_ENABLED?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   ENGINE_DIGEST?: string;
@@ -607,6 +610,53 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       // and experiment rows as confluence tags. It never gates anything.
       const pairStrategy = strategyForPair(pair, cfg.strategy);
       const h4Context = buildH4VantageConfluence(h4, pairStrategy, d1 ?? undefined);
+
+      // The continuation module is a separate paper-only research candidate.
+      // It has its own forward cursor/ledger identity and cannot add alerts,
+      // events, deliveries, or MT5 instructions. The flag is false by default.
+      if ((env.CONTINUATION_SHADOW_ENABLED ?? "").toLowerCase() === "true" && cfg.mode === "paper") {
+        try {
+          const continuationRun = await runContinuationShadowForwardTest({
+            store,
+            pair,
+            daily: d1 ?? [],
+            h4,
+            cfg: pairStrategy,
+            now,
+            enabled: true,
+            mode: cfg.mode,
+          });
+          if (continuationRun.state === "baseline"
+              || continuationRun.state === "ledger_unavailable"
+              || continuationRun.state === "persistence_failed"
+              || continuationRun.captures.length > 0) {
+            console.info(JSON.stringify({
+              level: continuationRun.state === "ledger_unavailable" || continuationRun.state === "persistence_failed" ? "warn" : "info",
+              msg: "continuation_shadow.forward_test",
+              pair: continuationRun.pair,
+              state: continuationRun.state,
+              bias: continuationRun.bias,
+              latestCloseTime: continuationRun.latestCloseTime,
+              candidateCount: continuationRun.captures.length,
+              inserted: continuationRun.inserted,
+              candidates: continuationRun.captures.map((capture) => ({
+                experimentId: capture.experimentId,
+                direction: capture.direction,
+                entry: capture.entry,
+                stopLoss: capture.stopLoss,
+                target: capture.target,
+                rr: capture.rr,
+              })),
+            }));
+          }
+        } catch (err) {
+          // A research-store failure must never abort the normal signal scan.
+          console.warn(JSON.stringify({
+            level: "warn", msg: "continuation shadow run failed; live/paper scan continues",
+            pair, error: String(err),
+          }));
+        }
+      }
 
       // Higher-timeframe context cards are separately opt-in. They are not
       // entry alerts and are disabled by default to avoid confusing context
@@ -2273,7 +2323,11 @@ export default {
             sourceSetupId: row.source_setup_id,
             variant: row.variant,
             pair: row.canonical_symbol,
+            // For the continuation row, `timeframe` is the M30 outcome feed;
+            // setupTimeframe keeps the originating H4 detection explicit.
             timeframe: row.entry_timeframe,
+            setupTimeframe: row.variant === "CONTINUATION_SETUP_V1" ? CONTINUATION_SETUP_TIMEFRAME : row.entry_timeframe,
+            outcomeTimeframe: row.entry_timeframe,
             direction: row.direction,
             hypotheticalEntry: row.hypothetical_entry,
             hypotheticalStopLoss: row.hypothetical_stop_loss,

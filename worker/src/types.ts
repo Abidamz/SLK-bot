@@ -7,7 +7,12 @@ export type SignalStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "BE_HIT" | "EXPIRED";
 
 export type ShadowRejectReason = "TARGET_FLOOR" | "NO_RETEST";
 export type ShadowTradeStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "EXPIRED";
-export type ShadowExperimentVariant = "BREAKOUT_CONTINUATION" | "FVG_RETEST_50";
+export type ShadowExperimentVariant = "BREAKOUT_CONTINUATION" | "FVG_RETEST_50" | "CONTINUATION_SETUP_V1";
+
+/** Stable source-id discriminator for the migration-free logical variant.
+ *  D1's existing CHECK constraint remains unchanged; store.ts maps this
+ *  variant to its allowed physical value and splits it back on reads. */
+export const CONTINUATION_SETUP_V1_SOURCE_PREFIX = "CONTINUATION_SETUP_V1:";
 
 // ---------------------------------------------------- diagnostics-only tagging
 //

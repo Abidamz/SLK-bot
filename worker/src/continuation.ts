@@ -162,6 +162,8 @@ export interface LevelHistory {
   breakPrice: number;
   /** Furthest price reached in the break direction after the break. */
   extreme: number;
+  /** Candle index of `extreme`, when computed from a candle series. */
+  extremeIndex?: number;
   /** Furthest price travelled back against the break after `extreme`. */
   pullback: number;
 }
@@ -218,7 +220,7 @@ export function levelHistory(
   if (!breaks.length) {
     return {
       touchesBefore: run, breakIndex: -1, breakDir: null, breaks: 0,
-      breakPrice: NaN, extreme: NaN, pullback: NaN,
+      breakPrice: NaN, extreme: NaN, extremeIndex: -1, pullback: NaN,
     };
   }
 
@@ -250,7 +252,7 @@ export function levelHistory(
 
   return {
     touchesBefore, breakIndex, breakDir, breaks: breaks.length,
-    breakPrice: candles[breakIndex].c, extreme, pullback,
+    breakPrice: candles[breakIndex].c, extreme, extremeIndex, pullback,
   };
 }
 
@@ -373,6 +375,10 @@ export interface ContinuationSetup {
   /** Reward-to-risk actually achieved after stop placement. */
   rr: number;
   time: number;
+  /** Open time of the first closed candle that rebalance-touched `entry`,
+   *  after the directional extreme. Used by the forward shadow runner to avoid
+   *  backfilling an entry first touched before the latest closed candle. */
+  entryTouchTime: number;
   /** Stable identity so a replay can dedupe across ticks, as production does. */
   setupId: string;
 }
@@ -453,9 +459,22 @@ export function findContinuationSetups(
     // Rule 6: the rebalance has to have actually happened, at the price we
     // would enter. Not merely somewhere in the zone — the entry is a pending
     // limit at this price, so if price never traded through it there is no
-    // fill and no trade. This also guarantees the risk is positive by
-    // construction: a limit below the entry cannot have its stop above it.
-    if (bias === "LONG" ? h.pullback > entry : h.pullback < entry) { bump("rebalance"); continue; }
+    // fill and no trade. Track the first candle that touched the limit after
+    // the directional extreme; the forward runner uses it to reject stale
+    // touches instead of treating a historical retest as a new live entry.
+    const extremeIndex = h.extremeIndex;
+    let entryTouchIndex = -1;
+    if (extremeIndex !== undefined && extremeIndex >= 0) {
+      for (let j = extremeIndex + 1; j < candles.length; j++) {
+        const touched = bias === "LONG" ? candles[j].l <= entry : candles[j].h >= entry;
+        if (touched) { entryTouchIndex = j; break; }
+      }
+    }
+    if (entryTouchIndex < 0 || (bias === "LONG" ? h.pullback > entry : h.pullback < entry)) {
+      bump("rebalance");
+      continue;
+    }
+    const entryTouchTime = candles[entryTouchIndex].t;
 
     // Stop beyond the swing the pullback made, so re-testing it does not stop
     // the trade out before the move resumes. The risk is kept signed on
@@ -490,6 +509,7 @@ export function findContinuationSetups(
       bodyAtr: strength.bodyAtr,
       rr,
       time: candles[candles.length - 1].t,
+      entryTouchTime,
       // Identity of the SETUP, not of the tick that found it. candles.length
       // used to be in here, which was harmless while the detector scanned a
       // fixed series and catastrophic once it scanned the series truncated to

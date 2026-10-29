@@ -109,19 +109,89 @@ describe("isolated SLK shadow experiments", () => {
     const store = new MemStore();
     const first = experiment("fvg-midpoint");
     const second = experiment("aligned-breakout", "BREAKOUT_CONTINUATION");
+    const continuationV1: ShadowExperimentCapture = {
+      ...experiment("continuation-v1", "CONTINUATION_SETUP_V1"),
+      sourceSetupId: "CONTINUATION_SETUP_V1:EURUSD:4h:M30_OUTCOME:CONT|A|LONG|origin|42",
+      entryTf: "30m",
+    };
     expect(await store.insertShadowExperiment(first)).toBe(true);
     expect(await store.insertShadowExperiment(first)).toBe(false);
     expect(await store.insertShadowExperiment(second)).toBe(true);
+    expect(await store.insertShadowExperiment(continuationV1)).toBe(true);
 
-    const resolved = await resolveShadowExperimentOutcomes(store, loadConfig({}), "EURUSD", "30m", [
-      { t: BASE, o: 100, h: 100.5, l: 97.9, c: 99 },
-    ]);
-    expect(resolved).toBe(2);
+    const candles = [{ t: BASE, o: 100, h: 100.5, l: 97.9, c: 99 }];
+    const resolved30m = await resolveShadowExperimentOutcomes(store, loadConfig({}), "EURUSD", "30m", candles);
+    expect(resolved30m).toBe(3);
     const ledger = await store.getShadowExperimentLedger();
     expect(ledger.aggregate.FVG_RETEST_50).toMatchObject({ count: 1, resolved: 1, wins: 1, netR: 2 });
     expect(ledger.aggregate.BREAKOUT_CONTINUATION).toMatchObject({ count: 1, resolved: 1, wins: 1, netR: 2 });
+    expect(ledger.aggregate.CONTINUATION_SETUP_V1).toMatchObject({ count: 1, resolved: 1, wins: 1, netR: 2 });
     expect(await store.recentAlerts(10)).toEqual([]);
     expect(await store.recentEvents(10)).toEqual([]);
+  });
+
+  it("stores the new logical continuation variant in the existing D1 slot and separates it on reads", async () => {
+    const capture: ShadowExperimentCapture = {
+      ...experiment("continuation-d1", "CONTINUATION_SETUP_V1"),
+      sourceSetupId: "CONTINUATION_SETUP_V1:EURUSD:4h:M30_OUTCOME:CONT|A|LONG|origin|42",
+      entryTf: "30m",
+    };
+    const rawRow = {
+      experiment_id: capture.experimentId,
+      source_setup_id: capture.sourceSetupId,
+      variant: "BREAKOUT_CONTINUATION",
+      canonical_symbol: capture.pair,
+      entry_timeframe: capture.entryTf,
+      direction: capture.direction,
+      hypothetical_entry: capture.entry,
+      hypothetical_stop_loss: capture.stopLoss,
+      hypothetical_target: capture.target,
+      hypothetical_rr: capture.rr,
+      created_utc: new Date(BASE).toISOString(),
+      candle_close_time: new Date(capture.candleCloseTime).toISOString(),
+      status: "OPEN",
+      exit_time: null,
+      exit_price: null,
+      r_multiple: null,
+    };
+    const statements: string[] = [];
+    const bindings = new Map<string, unknown[]>();
+    const db = {
+      prepare(sql: string) {
+        statements.push(sql);
+        return {
+          bind(...values: unknown[]) {
+            bindings.set(sql, values);
+            return {
+              all: async () => {
+                if (sql.includes("GROUP BY")) return { results: [{
+                  variant: "CONTINUATION_SETUP_V1", count: 1, resolved: 0,
+                  wins: 0, losses: 0, net_r: 0,
+                }] };
+                if (sql.includes("SELECT * FROM slk_shadow_experiments")) return { results: [rawRow] };
+                if (sql.includes("SELECT 1 FROM slk_shadow_experiments LIMIT 0")
+                    || sql.includes("SELECT h4_confluence_grade")) return { results: [] };
+                return { results: [] };
+              },
+              run: async () => ({ meta: { changes: 1 } }),
+              first: async () => null,
+            };
+          },
+        };
+      },
+    };
+    const store = new D1Store(db as unknown as D1Like);
+
+    expect(await store.insertShadowExperiment(capture)).toBe(true);
+    const insertSql = statements.find((sql) => sql.includes("INSERT OR IGNORE INTO slk_shadow_experiments"))!;
+    expect(bindings.get(insertSql)?.[2]).toBe("BREAKOUT_CONTINUATION");
+
+    const open = await store.openShadowExperiments("EURUSD", "30m");
+    expect(open[0].variant).toBe("CONTINUATION_SETUP_V1");
+    const ledger = await store.getShadowExperimentLedger();
+    expect(ledger.rows[0].variant).toBe("CONTINUATION_SETUP_V1");
+    expect(ledger.aggregate.CONTINUATION_SETUP_V1).toMatchObject({ count: 1, resolved: 0 });
+    expect(ledger.aggregate.BREAKOUT_CONTINUATION.count).toBe(0);
   });
 
   it("no-ops when the additive D1 experiment table has not been applied", async () => {
@@ -145,6 +215,11 @@ describe("isolated SLK shadow experiments", () => {
   it("keeps the owner-only experiment endpoint separate from normal public trade surfaces", async () => {
     const store = makeStore(undefined);
     await store.insertShadowExperiment(experiment("private-experiment"));
+    await store.insertShadowExperiment({
+      ...experiment("private-continuation", "CONTINUATION_SETUP_V1"),
+      sourceSetupId: "CONTINUATION_SETUP_V1:EURUSD:4h:M30_OUTCOME:CONT|A|LONG|origin|42",
+      entryTf: "30m",
+    });
     const env = { ADMIN_KEY: "owner-test" } as Env;
     const unauthorized = await worker.fetch(request("/api/shadow-experiments"), env, {} as any);
     expect(unauthorized.status).toBe(401);
@@ -154,9 +229,14 @@ describe("isolated SLK shadow experiments", () => {
     );
     expect(authorized.status).toBe(200);
     const data = await authorized.json() as any;
-    expect(data.rows[0]).toMatchObject({
+    expect(data.rows.find((row: any) => row.experimentId === "private-experiment")).toMatchObject({
       experimentId: "private-experiment", variant: "FVG_RETEST_50", status: "OPEN",
     });
+    expect(data.rows.find((row: any) => row.experimentId === "private-continuation")).toMatchObject({
+      experimentId: "private-continuation", variant: "CONTINUATION_SETUP_V1", status: "OPEN",
+      timeframe: "30m", setupTimeframe: "4h", outcomeTimeframe: "30m",
+    });
+    expect(data.aggregate.CONTINUATION_SETUP_V1.count).toBe(1);
 
     const [stats, alerts, mc] = await Promise.all([
       worker.fetch(request("/stats", "Bearer owner-test"), env, {} as any),
