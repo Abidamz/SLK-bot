@@ -6,6 +6,10 @@ import {
   runContinuationShadowForwardTest,
 } from "../src/continuation_shadow";
 import { MemStore } from "../src/store";
+import {
+  continuationDemoPendingKey,
+  createPendingContinuationDemoGroup,
+} from "../src/continuation_demo_entries";
 import type { Candle } from "../src/types";
 import type { ContinuationSetup } from "../src/continuation";
 
@@ -110,6 +114,73 @@ describe("continuation forward shadow capture", () => {
     expect(await store.getKv(`continuation-shadow:v1:last-h4-close:EURUSD`)).toBe(String(nextNow));
     expect(await store.recentAlerts(10)).toEqual([]);
     expect(await store.recentEvents(10)).toEqual([]);
+  });
+
+  it("resolves a pending M30 trigger before H4 data checks and clears it without creating an order", async () => {
+    const store = new MemStore();
+    const setupClose = Date.UTC(2026, 9, 30, 8);
+    const entryTime = setupClose + 30 * 60 * 1000;
+    const capture = continuationSetupToShadowExperiment("EURUSD", {
+      direction: "LONG", entry: 100, stop: 98, tp: 106, setupId: "demo-pending-test",
+    } as ContinuationSetup, setupClose)!;
+    const key = continuationDemoPendingKey("EURUSD");
+    await store.setKv(key, JSON.stringify(createPendingContinuationDemoGroup("EURUSD", setupClose, [capture])));
+
+    const result = await runContinuationShadowForwardTest({
+      store,
+      pair: "EURUSD",
+      daily: [],
+      h4: [],
+      m30Candles: [{ t: setupClose, o: 101, h: 102, l: 99, c: 100.5 }],
+      nextOpenCandles: [{ t: entryTime, o: 101, h: 101.5, l: 100.5, c: 101.2 }],
+      cfg,
+      now: entryTime + 30_000,
+      enabled: true,
+      mode: "paper",
+      demoEntriesEnabled: true,
+    });
+
+    expect(result.state).toBe("insufficient_data");
+    expect(result.demoEntries).toHaveLength(1);
+    expect(result.demoEntries[0]).toMatchObject({
+      entryTime,
+      entryPrice: 101,
+      stopLoss: 98,
+      target: 106,
+    });
+    expect(result.demoEntries[0].rr).toBeCloseTo(5 / 3, 8);
+    expect(await store.getKv(key)).toBe("");
+    expect(await store.recentAlerts(10)).toEqual([]);
+    expect(await store.recentEvents(10)).toEqual([]);
+  });
+
+  it("persists a late trigger as missed and keeps watching only for a later retest", async () => {
+    const store = new MemStore();
+    const setupClose = Date.UTC(2026, 9, 30, 8);
+    const entryTime = setupClose + 30 * 60 * 1000;
+    const capture = continuationSetupToShadowExperiment("EURUSD", {
+      direction: "LONG", entry: 100, stop: 98, tp: 106, setupId: "demo-stale-test",
+    } as ContinuationSetup, setupClose)!;
+    const key = continuationDemoPendingKey("EURUSD");
+    await store.setKv(key, JSON.stringify(createPendingContinuationDemoGroup("EURUSD", setupClose, [capture])));
+
+    const result = await runContinuationShadowForwardTest({
+      store,
+      pair: "EURUSD",
+      daily: [],
+      h4: [],
+      m30Candles: [{ t: setupClose, o: 101, h: 102, l: 99, c: 100.5 }],
+      nextOpenCandles: [{ t: entryTime, o: 101, h: 101.5, l: 100.5, c: 101.2 }],
+      cfg,
+      now: entryTime + 60_001,
+      enabled: true,
+      mode: "paper",
+      demoEntriesEnabled: true,
+    });
+
+    expect(result.demoEntries).toEqual([]);
+    const persisted = JSON.parse((await store.getKv(key)) ?? "{}") as { candidates?: Array<{ ignoreTriggerCloseTime?: number }> };
+    expect(persisted.candidates?.[0].ignoreTriggerCloseTime).toBe(entryTime);
   });
 
   it("does not run for a pair outside the approved universe", async () => {

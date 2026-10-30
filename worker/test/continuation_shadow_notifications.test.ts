@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   continuationShadowPrivateDmIds,
+  formatContinuationDemoEntryDm,
   formatContinuationShadowDm,
+  formatContinuationShadowDmGroup,
+  groupContinuationShadowCaptures,
   sendContinuationShadowPrivateDm,
 } from "../src/continuation_shadow_notifications";
+import type { ContinuationDemoEntry } from "../src/continuation_demo_entries";
 import type { ShadowExperimentCapture } from "../src/types";
 import worker, { type Env } from "../src/index";
 
@@ -28,13 +32,46 @@ describe("continuation private shadow notifications", () => {
     expect(text).toContain("latest completed H4 candle");
     expect(text).toContain("primary gate is unchanged");
     expect(text).toContain("not an entry fill or order");
-    expect(text).toContain("EURUSD · LONG · H4 continuation setup");
+    expect(text).toContain("EURUSD · H4 continuation setups");
+    expect(text).toContain("Candidate 1 · LONG:");
     expect(text).toContain("Reference entry: 1.12345");
     expect(text).toContain("Reference stop: 1.12045");
     expect(text).toContain("Reference target: 1.13245");
     expect(text).toContain("Reference reward/risk: 3.00R");
     expect(text).toContain("120 M30 candles");
     expect(text).not.toContain("Hypothetical");
+  });
+
+  it("groups same H4-close candidates into a manual-choice setup watch", () => {
+    const second = { ...capture, experimentId: `${capture.experimentId}:second`, entry: 1.123, stopLoss: 1.120, target: 1.132 };
+    const otherClose = { ...capture, experimentId: `${capture.experimentId}:other`, candleCloseTime: capture.candleCloseTime + 4 * 60 * 60 * 1000 };
+    const groups = groupContinuationShadowCaptures([capture, second, otherClose]);
+    expect(groups.map((group) => group.length).sort()).toEqual([1, 2]);
+    const text = formatContinuationShadowDmGroup(groups.find((group) => group.length === 2)!);
+    expect(text).toContain("Candidate 1 · LONG:");
+    expect(text).toContain("Candidate 2 · LONG:");
+    expect(text.match(/Reference entry:/g)).toHaveLength(2);
+    expect(text).toContain("fresh post-close M30 touch");
+  });
+
+  it("formats the next-open manual demo signal with fixed H4 levels and actual R:R", () => {
+    const entry: ContinuationDemoEntry = {
+      capture,
+      triggerCandleCloseTime: capture.candleCloseTime + 30 * 60 * 1000,
+      entryTime: capture.candleCloseTime + 30 * 60 * 1000,
+      entryPrice: 1.124,
+      stopLoss: capture.stopLoss,
+      target: capture.target,
+      rr: 0.00845 / 0.00355,
+    };
+    const text = formatContinuationDemoEntryDm([entry]);
+    expect(text).toContain("PRIVATE MANUAL DEMO ENTRY");
+    expect(text).toContain("next M30 open");
+    expect(text).toContain("Demo entry reference: 1.124");
+    expect(text).toContain("Fixed H4 stop: 1.12045");
+    expect(text).toContain("Fixed H4 target: 1.13245");
+    expect(text).toContain("Actual R:R from next-open entry:");
+    expect(text).toContain("No automatic selection or order is placed");
   });
 
   it("accepts only positive numeric private chat IDs", () => {

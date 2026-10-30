@@ -15,6 +15,14 @@ import {
   multiTfGate,
   type ContinuationSetup,
 } from "./continuation";
+import {
+  continuationDemoPendingKey,
+  createPendingContinuationDemoGroup,
+  evaluateContinuationDemoEntry,
+  parsePendingContinuationDemoGroup,
+  type ContinuationDemoEntry,
+  type PendingContinuationDemoCandidate,
+} from "./continuation_demo_entries";
 import type { Store } from "./store";
 import { CONTINUATION_SETUP_V1_SOURCE_PREFIX, type Candle, type Direction, type ShadowExperimentCapture } from "./types";
 
@@ -56,6 +64,8 @@ export interface ContinuationShadowRunResult {
   inserted: number;
   /** Captures newly inserted in this call; used for deduplicated private notices. */
   insertedCaptures: ShadowExperimentCapture[];
+  /** Fresh, manually actionable demo references. They are never order instructions. */
+  demoEntries: ContinuationDemoEntry[];
 }
 
 function result(
@@ -71,6 +81,7 @@ function result(
     captures: [],
     inserted: 0,
     insertedCaptures: [],
+    demoEntries: [],
     ...extras,
   };
 }
@@ -149,29 +160,125 @@ export function continuationSetupToShadowExperiment(
   };
 }
 
-/** Process one new H4 close. The first call only establishes the forward-test
- *  baseline. Candidate rows are retried at the same close if the isolated
- *  ledger is missing or a write fails; the cursor advances only after writes
- *  succeed. */
+async function processPendingDemoEntries(args: {
+  store: Pick<Store, "getKv" | "setKv">;
+  pair: string;
+  m30Candles: Candle[];
+  nextOpenCandles: Candle[];
+  now: number;
+}): Promise<ContinuationDemoEntry[]> {
+  const { store, pair, m30Candles, nextOpenCandles, now } = args;
+  const key = continuationDemoPendingKey(pair);
+  const pending = parsePendingContinuationDemoGroup(await store.getKv(key));
+  if (!pending || pending.pair !== pair) return [];
+  if (now >= pending.expiresAt) {
+    await store.setKv(key, "");
+    console.info(JSON.stringify({
+      level: "info", msg: "continuation_demo.pending_expired", pair, expiresAt: pending.expiresAt,
+    }));
+    return [];
+  }
+
+  const demoEntries: ContinuationDemoEntry[] = [];
+  const remaining: PendingContinuationDemoCandidate[] = [];
+  for (const candidate of pending.candidates) {
+    const evaluation = evaluateContinuationDemoEntry({
+      capture: candidate.capture,
+      m30Candles,
+      nextOpenCandles,
+      now,
+      expiresAt: pending.expiresAt,
+      ignoreTriggerCloseTime: candidate.ignoreTriggerCloseTime,
+    });
+    if (evaluation.state === "ready") {
+      demoEntries.push(evaluation.entry);
+      console.info(JSON.stringify({
+        level: "info", msg: "continuation_demo.trigger_ready", pair,
+        experimentId: candidate.capture.experimentId,
+        triggerCandleCloseTime: evaluation.entry.triggerCandleCloseTime,
+        entryTime: evaluation.entry.entryTime,
+        entryPrice: evaluation.entry.entryPrice,
+        rr: evaluation.entry.rr,
+      }));
+      continue;
+    }
+
+    if (evaluation.state === "stale_trigger" || evaluation.state === "invalid_levels") {
+      remaining.push({
+        ...candidate,
+        ignoreTriggerCloseTime: Math.max(candidate.ignoreTriggerCloseTime ?? 0, evaluation.triggerCandleCloseTime),
+      });
+      if (evaluation.state === "stale_trigger") {
+        console.info(JSON.stringify({
+          level: "info", msg: "continuation_demo.trigger_missed", pair,
+          experimentId: candidate.capture.experimentId,
+          triggerCandleCloseTime: evaluation.triggerCandleCloseTime,
+          reason: "next_open_outside_one_minute_window",
+        }));
+      } else {
+        console.info(JSON.stringify({
+          level: "info", msg: "continuation_demo.trigger_skipped", pair,
+          experimentId: candidate.capture.experimentId,
+          triggerCandleCloseTime: evaluation.triggerCandleCloseTime,
+          reason: "next_open_invalidates_fixed_h4_levels",
+        }));
+      }
+      continue;
+    }
+
+    remaining.push(candidate);
+  }
+
+  if (!remaining.length) {
+    await store.setKv(key, "");
+  } else {
+    await store.setKv(key, JSON.stringify({ ...pending, candidates: remaining }));
+  }
+  return demoEntries;
+}
+
+/** Process a new H4 close and any active post-H4 M30 setup watches. The first
+ *  call only establishes the forward-test baseline. Candidate rows are retried
+ *  at the same close if the isolated ledger is missing or a write fails; the
+ *  cursor advances only after writes succeed. */
 export async function runContinuationShadowForwardTest(args: {
   store: Pick<Store, "getKv" | "setKv" | "getShadowExperimentLedger" | "insertShadowExperiment">;
   pair: string;
   daily: Candle[];
   h4: Candle[];
+  /** Completed M30 trigger candles only. */
+  m30Candles?: Candle[];
+  /** Base-provider candles; may contain the newly opened M30 interval. */
+  nextOpenCandles?: Candle[];
   cfg: StrategyConfig;
   now: number;
   enabled: boolean;
   mode: string;
+  /** Only process/store manual-entry watches while the private DM route is enabled. */
+  demoEntriesEnabled?: boolean;
 }): Promise<ContinuationShadowRunResult> {
   const { store, pair, daily, h4, cfg, now } = args;
   if (!args.enabled || args.mode.toLowerCase() !== "paper") return result("disabled", pair);
   if (!CONTINUATION_SHADOW_PAIRS.has(pair)) return result("out_of_universe", pair);
-  if (h4.length < 40 || !daily.length) return result("insufficient_data", pair);
+
+  // Resolve existing H4 watches before checking whether a new H4 candle is
+  // available. A transient H4/history gap must not block a fresh M30 trigger.
+  let demoEntries = args.demoEntriesEnabled
+    ? await processPendingDemoEntries({
+      store,
+      pair,
+      m30Candles: args.m30Candles ?? [],
+      nextOpenCandles: args.nextOpenCandles ?? [],
+      now,
+    })
+    : [];
+
+  if (h4.length < 40 || !daily.length) return result("insufficient_data", pair, { demoEntries });
 
   const last = h4[h4.length - 1];
   const latestCloseTime = last.t + CONTINUATION_SHADOW_TF_MS;
   if (!Number.isFinite(latestCloseTime) || latestCloseTime > now) {
-    return result("awaiting_close", pair, { latestCloseTime });
+    return result("awaiting_close", pair, { latestCloseTime, demoEntries });
   }
 
   const cursorKey = `${CONTINUATION_SHADOW_CURSOR_PREFIX}${pair}`;
@@ -179,10 +286,10 @@ export async function runContinuationShadowForwardTest(args: {
   const previousCloseTime = previousRaw === null ? NaN : Number(previousRaw);
   if (!Number.isFinite(previousCloseTime) || previousCloseTime <= 0) {
     await store.setKv(cursorKey, String(latestCloseTime));
-    return result("baseline", pair, { latestCloseTime });
+    return result("baseline", pair, { latestCloseTime, demoEntries });
   }
   if (latestCloseTime <= previousCloseTime) {
-    return result("unchanged", pair, { latestCloseTime });
+    return result("unchanged", pair, { latestCloseTime, demoEntries });
   }
 
   const bias = continuationShadowBias(daily, h4, now);
@@ -198,7 +305,7 @@ export async function runContinuationShadowForwardTest(args: {
       }));
     }
     if (!available) {
-      return result("ledger_unavailable", pair, { bias, latestCloseTime, captures });
+      return result("ledger_unavailable", pair, { bias, latestCloseTime, captures, demoEntries });
     }
 
     let inserted = 0;
@@ -218,11 +325,33 @@ export async function runContinuationShadowForwardTest(args: {
         }));
       }
     }
-    if (failed) return result("persistence_failed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures });
+    if (failed) return result("persistence_failed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures, demoEntries });
+
+    // Pending M30 watches use the existing KV store; no D1 schema migration or
+    // order path is needed. Persist these before advancing the H4 cursor. The
+    // actionable queue exists only while its private manual-DM route is on.
+    if (args.demoEntriesEnabled) {
+      await store.setKv(
+        continuationDemoPendingKey(pair),
+        JSON.stringify(createPendingContinuationDemoGroup(pair, latestCloseTime, captures)),
+      );
+    }
     await store.setKv(cursorKey, String(latestCloseTime));
-    return result("processed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures });
+    if (args.demoEntriesEnabled) {
+      // A delayed H4 scan may already contain a fresh post-close M30 trigger.
+      // Evaluate the just-persisted group now; the index still enforces the
+      // one-minute DM cutoff before any private message is sent.
+      demoEntries = demoEntries.concat(await processPendingDemoEntries({
+        store,
+        pair,
+        m30Candles: args.m30Candles ?? [],
+        nextOpenCandles: args.nextOpenCandles ?? [],
+        now,
+      }));
+    }
+    return result("processed", pair, { bias, latestCloseTime, captures, inserted, insertedCaptures, demoEntries });
   }
 
   await store.setKv(cursorKey, String(latestCloseTime));
-  return result("processed", pair, { bias, latestCloseTime });
+  return result("processed", pair, { bias, latestCloseTime, demoEntries });
 }

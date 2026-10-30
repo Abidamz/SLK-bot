@@ -33,8 +33,19 @@ import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
 import { runContinuationShadowForwardTest, CONTINUATION_SETUP_TIMEFRAME } from "./continuation_shadow";
 import {
+  CONTINUATION_DEMO_ENTRY_TF_MS,
+  CONTINUATION_DEMO_MAX_ENTRY_DELAY_MS,
+  CONTINUATION_DEMO_SETUP_TTL_MS,
+  CONTINUATION_DEMO_PENDING_PREFIX,
+  continuationDemoPendingPairs,
+  groupContinuationDemoEntries,
+  type ContinuationDemoEntry,
+} from "./continuation_demo_entries";
+import {
+  formatContinuationDemoEntryDm,
+  formatContinuationShadowDmGroup,
   formatContinuationShadowDmTest,
-  sendContinuationShadowPrivateDm,
+  groupContinuationShadowCaptures,
   sendContinuationShadowPrivateDmText,
 } from "./continuation_shadow_notifications";
 import { makeStore, type D1Like, type Store, type NotificationPreferences, type AlertQuery, type ShadowExperimentRow, type ShadowTradeRow } from "./store";
@@ -70,7 +81,7 @@ export interface Env {
   RETEST_DEPTH_PCT?: string;
   /** Explicit opt-in for the isolated continuation forward test. Defaults off. */
   CONTINUATION_SHADOW_ENABLED?: string;
-  /** Sends only newly persisted continuation candidates to TELEGRAM_DM_CHAT_ID. */
+  /** Sends private H4 setup watches and manual demo-entry references to TELEGRAM_DM_CHAT_ID. */
   CONTINUATION_SHADOW_DM_NOTIFY?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
@@ -362,6 +373,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   const notificationPrefs = await store.getNotificationPreferences();
   const pairsScanned: string[] = [];
   const continuationDmCaptures: ShadowExperimentCapture[] = [];
+  const continuationDemoEntries: ContinuationDemoEntry[] = [];
   const eventReplayMaxAgeMs = opts.eventReplayMaxAgeMs ?? EVENT_REPLAY_MAX_AGE_MS;
 
   // which entry TFs closed a candle since the previous successful scan?
@@ -385,6 +397,29 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
   let scheduleMs = 0; // set once the due/pending computation finishes
 
   const due: { tf: string; secs: number; boundary: number }[] = [];
+  const continuationDemoDmEnabled = (env.CONTINUATION_SHADOW_ENABLED ?? "").toLowerCase() === "true"
+    && (env.CONTINUATION_SHADOW_DM_NOTIFY ?? "").toLowerCase() === "true"
+    && cfg.mode === "paper";
+  const continuationM30Secs = TF_SECONDS["30m"];
+  const continuationM30Boundary = Math.floor((now - cfg.scanDelayMs) / (continuationM30Secs * 1000))
+    * continuationM30Secs * 1000;
+  const continuationM30AgeMs = now - continuationM30Boundary;
+  const continuationFreshWindow = continuationM30AgeMs >= 0
+    && continuationM30AgeMs <= CONTINUATION_DEMO_MAX_ENTRY_DELAY_MS;
+  let activeContinuationPairs = new Set<string>();
+  if (continuationDemoDmEnabled) {
+    try {
+      const pendingKv = await store.getKvByPrefix(CONTINUATION_DEMO_PENDING_PREFIX);
+      activeContinuationPairs = new Set(
+        continuationDemoPendingPairs(pendingKv, now).filter((pair) => cfg.pairs.includes(pair)),
+      );
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn", msg: "continuation demo pending-pair lookup failed", error: String(err),
+      }));
+    }
+  }
+
   for (const [tf, secs] of Object.entries(cfg.entryTfs)) {
     const boundary = Math.floor((now - cfg.scanDelayMs) / 1000 / secs) * secs * 1000;
     if (opts.force) {
@@ -394,6 +429,17 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
     const lastRaw = await readKv(`last_boundary:${tf}`);
     const last = lastRaw ? Number(lastRaw) : 0;
     if (boundary > last) due.push({ tf, secs, boundary });
+  }
+
+  // A prior boundary may already be marked complete even though the provider
+  // did not expose the next M30 open on the first scan. Retry active private
+  // demo watches during the remaining one-minute freshness window only. This
+  // synthetic retry is continuation-only and never reruns the established gate.
+  let continuationRetryOnly = false;
+  if (!opts.force && !due.length && continuationDemoDmEnabled && continuationFreshWindow
+      && activeContinuationPairs.size > 0) {
+    due.push({ tf: "30m", secs: continuationM30Secs, boundary: continuationM30Boundary });
+    continuationRetryOnly = true;
   }
 
   if (!due.length) {
@@ -427,8 +473,11 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       if (isWeekend && !isDerivPair(pair)) {
         continue; // Closed institutional pairs skipped on weekends to prioritize 24/7 continuous synthetics
       }
-      let isDue = false;
+      // Active continuation DM watches get a fast pair slot in the one-minute
+      // next-open window, even if this pair already consumed its candle boundary.
+      let isDue = continuationDemoDmEnabled && continuationFreshWindow && activeContinuationPairs.has(pair);
       for (const { tf, boundary } of due) {
+        if (isDue) break;
         // Synthetics 1H Primary: Deriv pairs are never due on non-primary TFs
         if (!entryTfAppliesToPair(pair, tf, cfg)) continue;
         const lastScanRaw = await readKv(`last_scan:${pair}:${tf}`);
@@ -502,9 +551,12 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       return cfg.pairs.indexOf(a) - cfg.pairs.indexOf(b);
     };
 
-    const pendingInst = pending.filter((p) => !isDerivPair(p)).sort(sortOldest);
-    const pendingDeriv = pending.filter((p) => isDerivPair(p)).sort(sortOldest);
-    const selected: string[] = [];
+    const urgentContinuation = pending
+      .filter((p) => continuationDemoDmEnabled && continuationFreshWindow && activeContinuationPairs.has(p))
+      .sort(sortOldest);
+    const selected: string[] = urgentContinuation.slice(0, cfg.pairBatchSize);
+    const pendingInst = pending.filter((p) => !isDerivPair(p) && !selected.includes(p)).sort(sortOldest);
+    const pendingDeriv = pending.filter((p) => isDerivPair(p) && !selected.includes(p)).sort(sortOldest);
     let instIdx = 0;
     let derivIdx = 0;
 
@@ -530,6 +582,10 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
       const lastPicked = selected[selected.length - 1];
       await store.setKv("last_scanned_group", isDerivPair(lastPicked) ? "deriv" : "inst");
     }
+  }
+  if (continuationRetryOnly) {
+    // A continuation-only retry scans active watch pairs, not the full universe.
+    pairsToScan = [...activeContinuationPairs].slice(0, cfg.pairBatchSize);
   }
   scheduleMs = Date.now() - scheduleStartedAt;
 
@@ -608,20 +664,42 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
       }
       feeds[cfg.mapTimeframe] = h4;
-      if (h4.length < 30) throw new DataQualityError(`insufficient H4 data (${h4.length})`);
-
-      const snaps = storylineSeries(d1, h4, cfg.strategy);
-      pairsScanned.push(pair);
-
-      // Diagnostics-only H4 vantage context. Computed once per pair/scan (not
-      // per entry timeframe) and attached to setup rows, shadow-ledger rows
-      // and experiment rows as confluence tags. It never gates anything.
       const pairStrategy = strategyForPair(pair, cfg.strategy);
-      const h4Context = buildH4VantageConfluence(h4, pairStrategy, d1 ?? undefined);
+      const baseSupportsM30 = TF_SECONDS[cfg.baseTimeframe] <= CONTINUATION_DEMO_ENTRY_TF_MS / 1000;
+      let m30Candles = baseSupportsM30
+        ? (feeds["30m"] ?? dropIncomplete(
+          resampleCandles(base, CONTINUATION_DEMO_ENTRY_TF_MS / 1000),
+          CONTINUATION_DEMO_ENTRY_TF_MS / 1000,
+          now,
+        ))
+        : [];
+      let continuationNextOpenCandles = baseSupportsM30 ? baseRes.candles : [];
+      if (continuationDemoDmEnabled && continuationFreshWindow && activeContinuationPairs.has(pair)
+          && TF_SECONDS[cfg.baseTimeframe] > CONTINUATION_DEMO_ENTRY_TF_MS / 1000) {
+        // The normal live-gate base feed can be coarser than M30. Fetch a true
+        // M30 feed for active watches rather than manufacturing sub-bars.
+        try {
+          const m30Limit = Math.min(2000, Math.max(300,
+            Math.ceil((120 * TF_SECONDS["4h"]) / (CONTINUATION_DEMO_ENTRY_TF_MS / 1000)) + 50,
+          ));
+          const m30Res = await fetchMarketData({
+            pair, tf: "30m", limit: m30Limit, tdKey: apiKey, oandaToken, oandaEnv,
+            derivAppId, derivProxyUrl, symbolMap: cfg.symbolMap, providerMap: cfg.providerMap, fetchFn, kv,
+          });
+          m30Candles = validateAndClose(m30Res.candles, CONTINUATION_DEMO_ENTRY_TF_MS / 1000, now, 3);
+          continuationNextOpenCandles = m30Res.candles;
+        } catch (err) {
+          m30Candles = [];
+          continuationNextOpenCandles = [];
+          console.warn(JSON.stringify({
+            level: "warn", msg: "continuation demo M30 refresh failed; no entry reference emitted",
+            pair, error: String(err),
+          }));
+        }
+      }
 
-      // The continuation module is a separate paper-only research candidate.
-      // It has its own forward cursor/ledger identity and cannot add alerts,
-      // events, deliveries, or MT5 instructions. The flag is false by default.
+      // Existing pending M30 watches are evaluated from the same fresh base
+      // feed before an H4 history-quality guard can stop the broader scan.
       if ((env.CONTINUATION_SHADOW_ENABLED ?? "").toLowerCase() === "true" && cfg.mode === "paper") {
         try {
           const continuationRun = await runContinuationShadowForwardTest({
@@ -629,18 +707,23 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
             pair,
             daily: d1 ?? [],
             h4,
+            m30Candles,
+            nextOpenCandles: continuationNextOpenCandles,
             cfg: pairStrategy,
             now,
             enabled: true,
             mode: cfg.mode,
+            demoEntriesEnabled: continuationDemoDmEnabled,
           });
-          if ((env.CONTINUATION_SHADOW_DM_NOTIFY ?? "").toLowerCase() === "true") {
+          if (continuationDemoDmEnabled) {
             continuationDmCaptures.push(...continuationRun.insertedCaptures);
+            continuationDemoEntries.push(...continuationRun.demoEntries);
           }
           if (continuationRun.state === "baseline"
               || continuationRun.state === "ledger_unavailable"
               || continuationRun.state === "persistence_failed"
-              || continuationRun.captures.length > 0) {
+              || continuationRun.captures.length > 0
+              || continuationRun.demoEntries.length > 0) {
             console.info(JSON.stringify({
               level: continuationRun.state === "ledger_unavailable" || continuationRun.state === "persistence_failed" ? "warn" : "info",
               msg: "continuation_shadow.forward_test",
@@ -650,6 +733,7 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
               latestCloseTime: continuationRun.latestCloseTime,
               candidateCount: continuationRun.captures.length,
               inserted: continuationRun.inserted,
+              demoEntryCount: continuationRun.demoEntries.length,
               candidates: continuationRun.captures.map((capture) => ({
                 experimentId: capture.experimentId,
                 direction: capture.direction,
@@ -668,6 +752,21 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
           }));
         }
       }
+
+      if (continuationRetryOnly) {
+        pairsScanned.push(pair);
+        continue;
+      }
+
+      if (h4.length < 30) throw new DataQualityError(`insufficient H4 data (${h4.length})`);
+
+      const snaps = storylineSeries(d1, h4, cfg.strategy);
+      pairsScanned.push(pair);
+
+      // Diagnostics-only H4 vantage context. Computed once per pair/scan (not
+      // per entry timeframe) and attached to setup rows, shadow-ledger rows
+      // and experiment rows as confluence tags. It never gates anything.
+      const h4Context = buildH4VantageConfluence(h4, pairStrategy, d1 ?? undefined);
 
       // Higher-timeframe context cards are separately opt-in. They are not
       // entry alerts and are disabled by default to avoid confusing context
@@ -945,43 +1044,128 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
 
   await recordScanTiming(store, diagnostics);
 
-  // Best-effort private shadow notices run only after every established
-  // live/paper scan and delivery path has completed. They never use broadcast.
-  if (continuationDmCaptures.length) {
+  // Best-effort private setup watches and demo-entry references run only after
+  // every established live/paper path has completed. They never use broadcast.
+  const setupGroups = groupContinuationShadowCaptures(continuationDmCaptures);
+  const triggerGroups = groupContinuationDemoEntries(continuationDemoEntries);
+  const deliveryNow = opts.now ?? Date.now();
+  const auditContinuationDemoGroup = async (
+    entries: ContinuationDemoEntry[],
+    status: string,
+    reason?: string,
+  ): Promise<void> => {
+    if (!entries.length) return;
+    try {
+      await store.insertNotificationDeliveryAudit({
+        channel: "telegram_dm",
+        kind: "continuation_demo_entry",
+        status,
+        detail: JSON.stringify({
+          pair: entries[0].capture.pair,
+          experimentIds: entries.map((entry) => entry.capture.experimentId),
+          triggerCandleCloseTime: entries[0].triggerCandleCloseTime,
+          entryTime: entries[0].entryTime,
+          reason,
+        }),
+      });
+    } catch (err) {
+      console.warn(JSON.stringify({
+        level: "warn", msg: "continuation demo delivery audit failed",
+        pair: entries[0].capture.pair, status, error: String(err),
+      }));
+    }
+  };
+  const freshTriggerGroups: ContinuationDemoEntry[][] = [];
+  for (const group of triggerGroups) {
+    const entryTime = group[0].entryTime;
+    if (deliveryNow >= entryTime && deliveryNow - entryTime <= CONTINUATION_DEMO_MAX_ENTRY_DELAY_MS) {
+      freshTriggerGroups.push(group);
+      continue;
+    }
+    for (const entry of group) {
+      console.info(JSON.stringify({
+        level: "info", msg: "continuation_demo.trigger_missed", pair: entry.capture.pair,
+        experimentId: entry.capture.experimentId, triggerCandleCloseTime: entry.triggerCandleCloseTime,
+        entryTime, reason: "dm_delivery_outside_one_minute_window",
+      }));
+    }
+    await auditContinuationDemoGroup(group, "missed", "dm_delivery_outside_one_minute_window");
+  }
+  const continuationNotices = [
+    // Actionable references go first; reference-only setup watches must never
+    // consume the remaining portion of the one-minute delivery window.
+    ...freshTriggerGroups.map((group) => ({
+      kind: "demo_entry" as const,
+      pair: group[0].capture.pair,
+      count: group.length,
+      entries: group,
+      text: formatContinuationDemoEntryDm(group),
+    })),
+    ...setupGroups.filter((group) => deliveryNow < group[0].candleCloseTime + CONTINUATION_DEMO_SETUP_TTL_MS)
+      .map((group) => ({
+        kind: "setup_watch" as const,
+        pair: group[0].pair,
+        count: group.length,
+        text: formatContinuationShadowDmGroup(group),
+      })),
+  ];
+  if (continuationNotices.length) {
     let rawDmChatIds = env.TELEGRAM_DM_CHAT_ID;
     if (!rawDmChatIds) {
       try {
         rawDmChatIds = await store.getKv("telegram_dm_chat_id") ?? undefined;
       } catch (err) {
         console.warn(JSON.stringify({
-          level: "warn", msg: "continuation shadow private-DM lookup failed",
+          level: "warn", msg: "continuation private-DM lookup failed",
           error: String(err),
         }));
       }
     }
-    await Promise.all(continuationDmCaptures.map(async (capture) => {
+    for (const notice of continuationNotices) {
+      if (notice.kind === "demo_entry") {
+        const sendNow = opts.now ?? Date.now();
+        const entryTime = notice.entries[0].entryTime;
+        if (sendNow < entryTime || sendNow - entryTime > CONTINUATION_DEMO_MAX_ENTRY_DELAY_MS) {
+          for (const entry of notice.entries) {
+            console.info(JSON.stringify({
+              level: "info", msg: "continuation_demo.trigger_missed", pair: entry.capture.pair,
+              experimentId: entry.capture.experimentId, triggerCandleCloseTime: entry.triggerCandleCloseTime,
+              entryTime, reason: "dm_delivery_outside_one_minute_window",
+            }));
+          }
+          await auditContinuationDemoGroup(notice.entries, "missed", "dm_delivery_outside_one_minute_window");
+          continue;
+        }
+      }
       try {
-        const delivery = await sendContinuationShadowPrivateDm(env, rawDmChatIds, capture);
+        const delivery = await sendContinuationShadowPrivateDmText(env, rawDmChatIds, notice.text);
+        if (notice.kind === "demo_entry") {
+          const auditStatus = delivery.skipped
+            ? "not_configured"
+            : delivery.failed && delivery.sent ? "partial" : delivery.failed ? "failed" : "delivered";
+          await auditContinuationDemoGroup(notice.entries, auditStatus, delivery.skipped);
+        }
         if (delivery.skipped) {
           console.warn(JSON.stringify({
-            level: "warn", msg: "continuation shadow private-DM skipped",
-            pair: capture.pair, experimentId: capture.experimentId, reason: delivery.skipped,
+            level: "warn", msg: "continuation private-DM skipped",
+            pair: notice.pair, kind: notice.kind, count: notice.count, reason: delivery.skipped,
           }));
         } else {
           console.info(JSON.stringify({
             level: delivery.failed ? "warn" : "info",
-            msg: "continuation shadow private-DM result",
-            pair: capture.pair, experimentId: capture.experimentId,
+            msg: `continuation_${notice.kind}_private-DM_result`,
+            pair: notice.pair, count: notice.count,
             sent: delivery.sent, failed: delivery.failed,
           }));
         }
       } catch (err) {
+        if (notice.kind === "demo_entry") await auditContinuationDemoGroup(notice.entries, "failed", String(err));
         console.warn(JSON.stringify({
-          level: "warn", msg: "continuation shadow private-DM failed",
-          pair: capture.pair, experimentId: capture.experimentId, error: String(err),
+          level: "warn", msg: "continuation private-DM failed",
+          pair: notice.pair, kind: notice.kind, error: String(err),
         }));
       }
-    }));
+    }
   }
 
   console.info(JSON.stringify({ level: "info", msg: "tayo.scan.diagnostics", diagnostics }));
