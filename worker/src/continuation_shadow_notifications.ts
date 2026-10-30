@@ -10,7 +10,7 @@ import type { ShadowExperimentCapture } from "./types";
 export interface ContinuationShadowDmResult {
   sent: number;
   failed: number;
-  skipped?: "missing_bot_token" | "missing_private_dm";
+  skipped?: "missing_bot_token" | "missing_private_dm" | "multiple_private_dms";
 }
 
 /** Positive numeric Telegram chat IDs are user DMs; negative IDs are groups/channels. */
@@ -22,18 +22,19 @@ function formatPrice(value: number): string {
   return new Intl.NumberFormat("en-US", { useGrouping: false, maximumFractionDigits: 8 }).format(value);
 }
 
-/** Clearly marks the candidate as hypothetical and separates setup/outcome TFs. */
+/** Formats a private live-scan setup watch; levels are references, not fills. */
 export function formatContinuationShadowDm(capture: ShadowExperimentCapture): string {
   return [
-    "🧪 DEO EDGE — PAPER SHADOW CANDIDATE",
-    "Hypothetical research entry only — not a live alert or order.",
+    "🟡 DEO EDGE — PRIVATE CONTINUATION SETUP WATCH",
+    "Observed on the latest completed H4 candle during the scheduled market scan.",
+    "Non-blocking support watch; the primary gate is unchanged. Reference levels only—not an entry fill or order.",
     "",
     `${capture.pair} · ${capture.direction} · H4 continuation setup`,
-    `Hypothetical entry: ${formatPrice(capture.entry)}`,
-    `Hypothetical stop: ${formatPrice(capture.stopLoss)}`,
-    `Hypothetical target: ${formatPrice(capture.target)}`,
-    `Planned reward/risk: ${capture.rr.toFixed(2)}R`,
-    "Outcome check: up to 120 M30 candles; stop-first if both levels hit in one candle.",
+    `Reference entry: ${formatPrice(capture.entry)}`,
+    `Reference stop: ${formatPrice(capture.stopLoss)}`,
+    `Reference target: ${formatPrice(capture.target)}`,
+    `Reference reward/risk: ${capture.rr.toFixed(2)}R`,
+    "Research tracking: up to 120 M30 candles; stop-first if both reference levels are touched in one candle.",
     `H4 setup close: ${new Date(capture.candleCloseTime).toISOString()}`,
   ].join("\n");
 }
@@ -47,6 +48,9 @@ export async function sendContinuationShadowPrivateDmText(
   if (!env.TELEGRAM_BOT_TOKEN) return { sent: 0, failed: 0, skipped: "missing_bot_token" };
   const chatIds = continuationShadowPrivateDmIds(rawDmChatIds);
   if (!chatIds.length) return { sent: 0, failed: 0, skipped: "missing_private_dm" };
+  // Fail closed when the setting contains more than one personal ID. A private
+  // support notice must never fan out to an unverified Telegram recipient list.
+  if (chatIds.length !== 1) return { sent: 0, failed: 0, skipped: "multiple_private_dms" };
 
   let sent = 0;
   let failed = 0;
