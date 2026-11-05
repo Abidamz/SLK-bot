@@ -32,6 +32,7 @@ import { resampleCandles, dropIncomplete, findRetracementOrigin } from "./featur
 import { storylineSeries } from "./storyline";
 import { evaluateH4VantageContext, evaluateDirectionalBias, observationOnlyReason } from "./shadow";
 import { runContinuationShadowForwardTest, CONTINUATION_SETUP_TIMEFRAME } from "./continuation_shadow";
+import { runOff04ForwardTest } from "./off04_forward";
 import {
   CONTINUATION_DEMO_ENTRY_TF_MS,
   CONTINUATION_DEMO_MAX_ENTRY_DELAY_MS,
@@ -83,6 +84,10 @@ export interface Env {
   CONTINUATION_SHADOW_ENABLED?: string;
   /** Sends private H4 setup watches and manual demo-entry references to TELEGRAM_DM_CHAT_ID. */
   CONTINUATION_SHADOW_DM_NOTIFY?: string;
+  /** Explicit opt-in for the isolated OFF-04 alert-only forward test; defaults off. */
+  OFF04_FORWARD_ENABLED?: string;
+  /** Dedicated test-channel target only; no existing subscriber ID fallback. */
+  OFF04_FORWARD_TEST_CHAT_ID?: string;
   MODE?: string;
   PAPER_NOTIFY?: string;
   ENGINE_DIGEST?: string;
@@ -698,8 +703,8 @@ export async function scanAll(env: Env, opts: ScanOptions = {}): Promise<ScanSum
         }
       }
 
-      // Existing pending M30 watches are evaluated from the same fresh base
-      // feed before an H4 history-quality guard can stop the broader scan.
+      // Pending M30 watches use this fresh base feed before an H4 history
+      // quality guard can stop the broader scan for the pair.
       if ((env.CONTINUATION_SHADOW_ENABLED ?? "").toLowerCase() === "true" && cfg.mode === "paper") {
         try {
           const continuationRun = await runContinuationShadowForwardTest({
@@ -2582,6 +2587,49 @@ export default {
       } catch (err) {
         console.error(JSON.stringify({ level: "error", msg: "shadow experiments read failed", error: String(err) }));
         return json({ error: "shadow experiments unavailable" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/off04-forward-ledger" && request.method === "GET") {
+      if (!authed(request, env)) return json({ error: "unauthorized" }, 401);
+      const requestedLimit = Number(url.searchParams.get("limit") ?? 500);
+      if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 5000) {
+        return json({ error: "limit must be between 1 and 5000" }, 400);
+      }
+      try {
+        const rows = await makeStore(env.DB).getOff04ForwardLedger(requestedLimit);
+        return json({
+          label: "PAPER SIMULATION · NO LIVE ORDERS",
+          variant: "baseline_all_signals",
+          triggerPolicy: "post_formation_m15_zone_retest",
+          targetR: 3,
+          rows: rows.map((row) => ({
+            setupId: row.setup_id,
+            pair: row.canonical_symbol,
+            timeframe: row.entry_timeframe,
+            direction: row.direction,
+            entry: row.hypothetical_entry,
+            stop: row.hypothetical_stop_loss,
+            target: row.hypothetical_target,
+            initialRisk: row.initial_risk,
+            h4FvgAvailableAt: new Date(row.h4_fvg_available_at_ms).toISOString(),
+            h4FirstTouchAvailableAt: new Date(row.h4_first_touch_available_at_ms).toISOString(),
+            m15FvgAvailableAt: new Date(row.m15_fvg_available_at_ms).toISOString(),
+            triggerAvailableAt: new Date(row.trigger_available_at_ms).toISOString(),
+            entryTime: new Date(row.entry_time_ms).toISOString(),
+            createdUtc: row.created_utc,
+            status: row.status,
+            exitTime: row.exit_time_ms === null ? null : new Date(row.exit_time_ms).toISOString(),
+            exitPrice: row.exit_price,
+            rMultiple: row.r_multiple,
+            telegramStatus: row.telegram_status,
+            telegramSentUtc: row.telegram_sent_utc,
+            deliveryError: row.delivery_error,
+          })),
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ level: "error", msg: "OFF-04 forward ledger read failed", error: String(err) }));
+        return json({ error: "OFF-04 forward ledger unavailable" }, 500);
       }
     }
 
@@ -4601,6 +4649,31 @@ export default {
     ctx.waitUntil(
       scanAll(env).catch((err) => {
         console.error(JSON.stringify({ level: "error", msg: "scheduled scan crashed", error: String(err) }));
+      }),
+    );
+    // OFF-04 is a separate, default-off alert-only path. It is not passed
+    // through the production gate, public alert/event tables, or MT5 adapters.
+    ctx.waitUntil(
+      runOff04ForwardTest({ env }).then((summary) => {
+        if (summary.state === "missing_configuration") {
+          console.warn(JSON.stringify({ level: "warn", msg: "off04.forward_not_configured" }));
+        }
+        if (summary.state === "processed" && (summary.pairsScanned || summary.errors.length)) {
+          console.info(JSON.stringify({
+            level: summary.errors.length ? "warn" : "info",
+            msg: "off04.forward_tick",
+            seeded: summary.seeded,
+            pairsScanned: summary.pairsScanned,
+            signalsInserted: summary.signalsInserted,
+            telegramSent: summary.telegramSent,
+            telegramFailed: summary.telegramFailed,
+            outcomesResolved: summary.outcomesResolved,
+            outcomesCensored: summary.outcomesCensored,
+            errors: summary.errors,
+          }));
+        }
+      }).catch((err) => {
+        console.error(JSON.stringify({ level: "error", msg: "off04.forward_tick_crashed", error: String(err) }));
       }),
     );
   },

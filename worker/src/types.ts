@@ -88,6 +88,8 @@ export interface Candle {
   h: number;
   l: number;
   c: number;
+  /** Provider completion flag when the source exposes one (e.g. OANDA). */
+  complete?: boolean;
 }
 
 export interface Swing {

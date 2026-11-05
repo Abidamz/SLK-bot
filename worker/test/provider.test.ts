@@ -100,8 +100,8 @@ describe("fetchOanda", () => {
     expect(seen[0]).toContain("api-fxpractice.oanda.com/v3/instruments/US30_USD/candles");
     expect(seen[0]).toContain("granularity=M30");
     expect(candles).toHaveLength(2);
-    expect(candles[0]).toEqual({ t: Date.parse("2026-09-04T20:00:00Z"), o: 39100.2, h: 39120.4, l: 39090.1, c: 39110 });
-    expect(candles[1].c).toBe(39112.3);
+    expect(candles[0]).toEqual({ t: Date.parse("2026-09-04T20:00:00Z"), o: 39100.2, h: 39120.4, l: 39090.1, c: 39110, complete: true });
+    expect(candles[1]).toMatchObject({ c: 39112.3, complete: false });
   });
 
   it("maps generic canonical Forex names to OANDA instrument codes", async () => {

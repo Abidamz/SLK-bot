@@ -111,6 +111,12 @@ export interface Store {
   openShadowExperiments(pair?: string, tf?: string): Promise<ShadowExperimentRow[]>;
   recordShadowExperimentOutcome(experimentId: string, outcome: ShadowTradeOutcome): Promise<void>;
   getShadowExperimentLedger(limit?: number): Promise<ShadowExperimentLedger>;
+  insertOff04ForwardTrade(row: Off04ForwardTradeCapture): Promise<boolean>;
+  openOff04ForwardTrades(pair?: string): Promise<Off04ForwardTradeRow[]>;
+  recordOff04ForwardOutcome(setupId: string, outcome: Off04ForwardOutcome): Promise<void>;
+  recordOff04ForwardCensored(setupId: string): Promise<void>;
+  recordOff04ForwardDelivery(setupId: string, status: Exclude<Off04ForwardDeliveryStatus, "PENDING">, error?: string): Promise<void>;
+  getOff04ForwardLedger(limit?: number): Promise<Off04ForwardTradeRow[]>;
   recentAlerts(limit: number): Promise<AlertRow[]>;
   queryAlerts(query: AlertQuery): Promise<AlertQueryResult>;
   recentEvents(limit: number): Promise<Record<string, unknown>[]>;
@@ -254,6 +260,60 @@ export interface ShadowExperimentLedger {
   available: boolean;
   rows: ShadowExperimentRow[];
   aggregate: Record<ShadowExperimentVariant, ShadowAggregate>;
+}
+
+/** Isolated OFF-04 alert-only forward-test capture. This ledger is separate
+ *  from production alerts, the existing shadow experiments, and public stats. */
+export interface Off04ForwardTradeCapture {
+  setupId: string;
+  pair: string;
+  direction: "LONG" | "SHORT";
+  entry: number;
+  stopLoss: number;
+  target: number;
+  risk: number;
+  h4FvgAvailableAt: number;
+  h4FirstTouchAvailableAt: number;
+  m15FvgAvailableAt: number;
+  triggerAvailableAt: number;
+  entryTime: number;
+}
+
+export type Off04ForwardTradeStatus = "OPEN" | "TP_HIT" | "SL_HIT" | "DATA_GAP_CENSORED";
+export type Off04ForwardDeliveryStatus = "PENDING" | "SENT" | "FAILED";
+
+export interface Off04ForwardTradeRow extends Record<string, unknown> {
+  setup_id: string;
+  variant: "baseline_all_signals";
+  trigger_policy: "post_formation_m15_zone_retest";
+  canonical_symbol: string;
+  entry_timeframe: "15m";
+  direction: "LONG" | "SHORT";
+  hypothetical_entry: number;
+  hypothetical_stop_loss: number;
+  hypothetical_target: number;
+  initial_risk: number;
+  target_r: 3;
+  h4_fvg_available_at_ms: number;
+  h4_first_touch_available_at_ms: number;
+  m15_fvg_available_at_ms: number;
+  trigger_available_at_ms: number;
+  entry_time_ms: number;
+  created_utc: string;
+  status: Off04ForwardTradeStatus;
+  exit_time_ms: number | null;
+  exit_price: number | null;
+  r_multiple: number | null;
+  telegram_status: Off04ForwardDeliveryStatus;
+  telegram_sent_utc: string | null;
+  delivery_error: string | null;
+}
+
+export interface Off04ForwardOutcome {
+  status: Exclude<Off04ForwardTradeStatus, "OPEN" | "DATA_GAP_CENSORED">;
+  exitPrice: number;
+  exitTime: number;
+  rMultiple: number;
 }
 
 function iso(ms: number): string {
@@ -1060,6 +1120,65 @@ export class D1Store implements Store {
     };
   }
 
+  async insertOff04ForwardTrade(row: Off04ForwardTradeCapture): Promise<boolean> {
+    const result = await this.db.prepare(`
+      INSERT OR IGNORE INTO slk_off04_forward_trades (
+        setup_id, variant, trigger_policy, canonical_symbol, entry_timeframe, direction,
+        hypothetical_entry, hypothetical_stop_loss, hypothetical_target, initial_risk,
+        target_r, h4_fvg_available_at_ms, h4_first_touch_available_at_ms,
+        m15_fvg_available_at_ms, trigger_available_at_ms, entry_time_ms, created_utc
+      ) VALUES (?, 'baseline_all_signals', 'post_formation_m15_zone_retest', ?, '15m', ?, ?, ?, ?, ?, 3,
+        ?, ?, ?, ?, ?, ?)
+    `).bind(
+      row.setupId, row.pair, row.direction, row.entry, row.stopLoss, row.target, row.risk,
+      row.h4FvgAvailableAt, row.h4FirstTouchAvailableAt, row.m15FvgAvailableAt,
+      row.triggerAvailableAt, row.entryTime, new Date().toISOString(),
+    ).run();
+    return Number(result.meta?.changes ?? 0) > 0;
+  }
+
+  async openOff04ForwardTrades(pair?: string): Promise<Off04ForwardTradeRow[]> {
+    const where = pair ? "WHERE status='OPEN' AND canonical_symbol=?" : "WHERE status='OPEN'";
+    const result = pair
+      ? await this.db.prepare(`SELECT * FROM slk_off04_forward_trades ${where} ORDER BY entry_time_ms ASC`).bind(pair).all()
+      : await this.db.prepare(`SELECT * FROM slk_off04_forward_trades ${where} ORDER BY entry_time_ms ASC`).bind().all();
+    return (result.results ?? []) as Off04ForwardTradeRow[];
+  }
+
+  async recordOff04ForwardOutcome(setupId: string, outcome: Off04ForwardOutcome): Promise<void> {
+    await this.db.prepare(`
+      UPDATE slk_off04_forward_trades SET status=?, exit_price=?, exit_time_ms=?, r_multiple=?
+      WHERE setup_id=? AND status='OPEN'
+    `).bind(outcome.status, outcome.exitPrice, outcome.exitTime, outcome.rMultiple, setupId).run();
+  }
+
+  async recordOff04ForwardCensored(setupId: string): Promise<void> {
+    await this.db.prepare(`
+      UPDATE slk_off04_forward_trades SET status='DATA_GAP_CENSORED'
+      WHERE setup_id=? AND status='OPEN'
+    `).bind(setupId).run();
+  }
+
+  async recordOff04ForwardDelivery(
+    setupId: string,
+    status: Exclude<Off04ForwardDeliveryStatus, "PENDING">,
+    error?: string,
+  ): Promise<void> {
+    await this.db.prepare(`
+      UPDATE slk_off04_forward_trades
+      SET telegram_status=?, telegram_sent_utc=?, delivery_error=?
+      WHERE setup_id=?
+    `).bind(status, status === "SENT" ? new Date().toISOString() : null, error ?? null, setupId).run();
+  }
+
+  async getOff04ForwardLedger(limit = 500): Promise<Off04ForwardTradeRow[]> {
+    const maxRows = Math.max(1, Math.min(5000, Math.floor(limit)));
+    const result = await this.db.prepare(
+      "SELECT * FROM slk_off04_forward_trades ORDER BY created_utc DESC, setup_id ASC LIMIT ?",
+    ).bind(maxRows).all();
+    return (result.results ?? []) as Off04ForwardTradeRow[];
+  }
+
   async getNotificationPreferences(): Promise<NotificationPreferences> {
     try {
       const row = await this.db.prepare("SELECT * FROM notification_preferences WHERE preference_id=1").bind().first();
@@ -1537,6 +1656,7 @@ export class MemStore implements Store {
   scanLog: ScanLogRow[] = [];
   shadowTrades = new Map<string, ShadowTradeRow>();
   shadowExperiments = new Map<string, ShadowExperimentRow>();
+  off04ForwardTrades = new Map<string, Off04ForwardTradeRow>();
   private eventKeys = new Set<string>();
   private eventSeq = 0;
   preferences: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
@@ -1795,6 +1915,75 @@ export class MemStore implements Store {
       .sort((a, b) => Date.parse(b.created_utc) - Date.parse(a.created_utc))
       .slice(0, Math.max(1, Math.min(5000, Math.floor(limit))));
     return { available: true, rows, aggregate: aggregateShadowExperiments(allRows) };
+  }
+
+  async insertOff04ForwardTrade(capture: Off04ForwardTradeCapture): Promise<boolean> {
+    if (this.off04ForwardTrades.has(capture.setupId)) return false;
+    this.off04ForwardTrades.set(capture.setupId, {
+      setup_id: capture.setupId,
+      variant: "baseline_all_signals",
+      trigger_policy: "post_formation_m15_zone_retest",
+      canonical_symbol: capture.pair,
+      entry_timeframe: "15m",
+      direction: capture.direction,
+      hypothetical_entry: capture.entry,
+      hypothetical_stop_loss: capture.stopLoss,
+      hypothetical_target: capture.target,
+      initial_risk: capture.risk,
+      target_r: 3,
+      h4_fvg_available_at_ms: capture.h4FvgAvailableAt,
+      h4_first_touch_available_at_ms: capture.h4FirstTouchAvailableAt,
+      m15_fvg_available_at_ms: capture.m15FvgAvailableAt,
+      trigger_available_at_ms: capture.triggerAvailableAt,
+      entry_time_ms: capture.entryTime,
+      created_utc: new Date().toISOString(),
+      status: "OPEN",
+      exit_time_ms: null,
+      exit_price: null,
+      r_multiple: null,
+      telegram_status: "PENDING",
+      telegram_sent_utc: null,
+      delivery_error: null,
+    });
+    return true;
+  }
+
+  async openOff04ForwardTrades(pair?: string): Promise<Off04ForwardTradeRow[]> {
+    return [...this.off04ForwardTrades.values()].filter((row) =>
+      row.status === "OPEN" && (!pair || row.canonical_symbol === pair),
+    );
+  }
+
+  async recordOff04ForwardOutcome(setupId: string, outcome: Off04ForwardOutcome): Promise<void> {
+    const row = this.off04ForwardTrades.get(setupId);
+    if (!row || row.status !== "OPEN") return;
+    row.status = outcome.status;
+    row.exit_price = outcome.exitPrice;
+    row.exit_time_ms = outcome.exitTime;
+    row.r_multiple = outcome.rMultiple;
+  }
+
+  async recordOff04ForwardCensored(setupId: string): Promise<void> {
+    const row = this.off04ForwardTrades.get(setupId);
+    if (row?.status === "OPEN") row.status = "DATA_GAP_CENSORED";
+  }
+
+  async recordOff04ForwardDelivery(
+    setupId: string,
+    status: Exclude<Off04ForwardDeliveryStatus, "PENDING">,
+    error?: string,
+  ): Promise<void> {
+    const row = this.off04ForwardTrades.get(setupId);
+    if (!row) return;
+    row.telegram_status = status;
+    row.telegram_sent_utc = status === "SENT" ? new Date().toISOString() : null;
+    row.delivery_error = error ?? null;
+  }
+
+  async getOff04ForwardLedger(limit = 500): Promise<Off04ForwardTradeRow[]> {
+    return [...this.off04ForwardTrades.values()]
+      .sort((a, b) => Date.parse(b.created_utc) - Date.parse(a.created_utc))
+      .slice(0, Math.max(1, Math.min(5000, Math.floor(limit))));
   }
 
   async getNotificationPreferences(): Promise<NotificationPreferences> { return { ...this.preferences }; }

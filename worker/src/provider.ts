@@ -149,6 +149,7 @@ export async function fetchOanda(
       out.push({
         t: Date.parse(cd.time.slice(0, 23) + "Z"), // trim ns → ms
         o: Number(cd.mid.o), h: Number(cd.mid.h), l: Number(cd.mid.l), c: Number(cd.mid.c),
+        complete: cd.complete,
       });
     }
     return out;
