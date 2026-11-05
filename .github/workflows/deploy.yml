@@ -72,7 +72,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: 'worker'
-          command: deploy
+          command: deploy --keep-vars
 
       # Pages serves static assets with a 4-hour browser cache window. Stamping
       # the asset URLs with the commit SHA gives every deploy a fresh cache key
