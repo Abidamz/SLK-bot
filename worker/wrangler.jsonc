@@ -5,6 +5,14 @@
   // deploy ("compatibility date is in the future" error otherwise). The code
   // uses no compat-flag-gated behavior, so a stable older date is fine.
   "compatibility_date": "2024-10-01",
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "triggers": {
     // every minute — the engine only scans timeframes whose candle just closed
     "crons": ["*/1 * * * *"]
@@ -71,6 +79,7 @@
     // the shadow classifier flags HTF_CONFLICT (behavior-neutral on entries)
     "FILTER_HTF_CONFLICT_DERIV_ONLY": "true",
     "MODE": "paper",
+    "OFF04_FORWARD_ENABLED": "true",
     "CONTINUATION_SHADOW_ENABLED": "true",
     "CONTINUATION_SHADOW_DM_NOTIFY": "true",
     "PAPER_NOTIFY": "true",

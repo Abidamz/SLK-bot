@@ -24,7 +24,7 @@ The module is default-off. On the Cloudflare Worker environment, configure:
 
 1. `OFF04_FORWARD_ENABLED=true` as a Worker variable.
 2. `OFF04_FORWARD_TEST_CHAT_ID` as a Worker secret containing **only the dedicated test channel's numeric `-100...` Telegram chat ID**. Do not put the ID in source control or chat.
-3. Confirm the bot is a member/admin of that test channel. The code rejects a target that matches any existing numeric Telegram recipient from Worker variables or D1 settings; it also fails closed if an existing recipient is a nonnumeric alias that cannot be compared safely. It never falls back to a subscriber/private-chat setting.
+3. Confirm the bot is a member/admin of that test channel. Existing numeric Telegram destinations are compared directly. Existing `@username` destinations are resolved with Telegram `getChat`; if an alias cannot be resolved, the test fails closed. It also fails closed if any existing recipient resolves to the test channel. It never falls back to a subscriber/private-chat setting.
 4. Confirm the OANDA token and D1 binding are present. Before enabling the test, use the manual **Apply D1 Migrations** GitHub Actions workflow to inspect pending migrations. Apply only after confirming the full pending list is expected; that workflow applies all pending migrations, including `0011_off04_forward_test.sql`.
 
 Keep the feature disabled until the deployment snapshot and target channel have been verified. A Telegram delivery failure is recorded separately on the forward-test row as `FAILED`; no subscriber channel is used as a retry destination.

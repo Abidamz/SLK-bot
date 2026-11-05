@@ -98,8 +98,19 @@ export interface Off04ForwardEnv {
   OFF04_FORWARD_ENABLED?: string;
 }
 
+export type Off04ForwardConfigurationIssue =
+  | "missing_db_binding"
+  | "missing_telegram_bot_token"
+  | "missing_test_chat_id"
+  | "invalid_test_chat_id"
+  | "telegram_destinations_unavailable"
+  | "test_channel_matches_existing_destination"
+  | "existing_destination_alias_unresolved"
+  | "missing_oanda_token";
+
 export interface Off04ForwardRunSummary {
   state: "disabled" | "not_boundary" | "missing_configuration" | "processed";
+  configurationIssue?: Off04ForwardConfigurationIssue;
   seeded: number;
   pairsScanned: number;
   signalsInserted: number;
@@ -110,9 +121,14 @@ export interface Off04ForwardRunSummary {
   errors: string[];
 }
 
-function emptySummary(state: Off04ForwardRunSummary["state"]): Off04ForwardRunSummary {
+function emptySummary(
+  state: Off04ForwardRunSummary["state"],
+  configurationIssue?: Off04ForwardConfigurationIssue,
+): Off04ForwardRunSummary {
   return {
-    state, seeded: 0, pairsScanned: 0, signalsInserted: 0,
+    state,
+    ...(configurationIssue ? { configurationIssue } : {}),
+    seeded: 0, pairsScanned: 0, signalsInserted: 0,
     telegramSent: 0, telegramFailed: 0, outcomesResolved: 0, outcomesCensored: 0, errors: [],
   };
 }
@@ -506,27 +522,68 @@ function validDedicatedChatId(value: string): boolean {
   return /^-100\d+$/.test(value);
 }
 
-function isExistingTelegramDestination(
-  env: Off04ForwardEnv,
-  target: string,
-  kvDestinations: Array<string | null> = [],
-): boolean {
-  const normalizedTarget = target.toLowerCase();
+async function resolveTelegramChatAlias(
+  botToken: string,
+  alias: string,
+  fetchFn: typeof fetch,
+): Promise<string | null> {
+  if (!/^@[A-Za-z0-9_]{5,32}$/.test(alias)) return null;
+  try {
+    const response = await fetchFn(`https://api.telegram.org/bot${botToken}/getChat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: alias }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { ok?: boolean; result?: { id?: unknown } };
+    const chatId = payload.result?.id;
+    if (payload.ok !== true || typeof chatId !== "number" || !Number.isSafeInteger(chatId)) return null;
+    return String(chatId);
+  } catch {
+    return null;
+  }
+}
+
+async function findExistingTelegramDestinationIssue(args: {
+  env: Off04ForwardEnv;
+  target: string;
+  botToken: string;
+  kvDestinations: Array<string | null>;
+  fetchFn: typeof fetch;
+}): Promise<"test_channel_matches_existing_destination" | "existing_destination_alias_unresolved" | null> {
   const configured = [
-    env.TELEGRAM_CHAT_ID,
-    env.TELEGRAM_FREE_CHAT_ID,
-    env.TELEGRAM_DERIV_CHAT_ID,
-    env.TELEGRAM_DERIV_FREE_CHAT_ID,
-    env.TELEGRAM_DM_CHAT_ID,
-    ...kvDestinations,
+    args.env.TELEGRAM_CHAT_ID,
+    args.env.TELEGRAM_FREE_CHAT_ID,
+    args.env.TELEGRAM_DERIV_CHAT_ID,
+    args.env.TELEGRAM_DERIV_FREE_CHAT_ID,
+    args.env.TELEGRAM_DM_CHAT_ID,
+    ...args.kvDestinations,
   ];
-  const configuredIds = configured
+  const destinations = configured
     .flatMap((raw) => raw?.split(",") ?? [])
-    .map((id) => id.trim().toLowerCase())
+    .map((id) => id.trim())
     .filter(Boolean);
-  // Non-numeric usernames/aliases cannot be compared safely with a numeric
-  // channel ID; fail closed rather than risk aliasing a subscriber channel.
-  return configuredIds.some((id) => !/^-?\d+$/.test(id) || id === normalizedTarget);
+  const resolvedAliases = new Map<string, string | null>();
+
+  for (const destination of destinations) {
+    if (/^-?\d+$/.test(destination)) {
+      if (destination === args.target) return "test_channel_matches_existing_destination";
+      continue;
+    }
+
+    const cacheKey = destination.toLowerCase();
+    let resolved = resolvedAliases.get(cacheKey);
+    if (resolved === undefined) {
+      resolved = await resolveTelegramChatAlias(args.botToken, destination, args.fetchFn);
+      resolvedAliases.set(cacheKey, resolved);
+    }
+    // An alias that Telegram cannot resolve is still ambiguous, so retain the
+    // fail-closed behavior rather than risking a subscriber-channel delivery.
+    if (!resolved) return "existing_destination_alias_unresolved";
+    if (resolved === args.target) return "test_channel_matches_existing_destination";
+  }
+
+  return null;
 }
 
 async function sendOnlyToDedicatedTestChannel(args: {
@@ -636,9 +693,12 @@ export async function runOff04ForwardTest(args: {
   const now = args.now ?? Date.now();
   if (now % M15_MS > MAX_FRESH_SIGNAL_AGE_MS) return emptySummary("not_boundary");
   const chatId = env.OFF04_FORWARD_TEST_CHAT_ID?.trim() ?? "";
-  if (!env.DB || !env.TELEGRAM_BOT_TOKEN || !chatId || !validDedicatedChatId(chatId)) {
-    return emptySummary("missing_configuration");
-  }
+  const botToken = env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
+  if (!env.DB) return emptySummary("missing_configuration", "missing_db_binding");
+  if (!botToken) return emptySummary("missing_configuration", "missing_telegram_bot_token");
+  if (!chatId) return emptySummary("missing_configuration", "missing_test_chat_id");
+  if (!validDedicatedChatId(chatId)) return emptySummary("missing_configuration", "invalid_test_chat_id");
+
   const store = args.storeOverride ?? makeStore(env.DB);
   const fetchFn = args.fetchFn ?? fetch;
   let kvDestinations: Array<string | null>;
@@ -648,13 +708,19 @@ export async function runOff04ForwardTest(args: {
       "telegram_deriv_free_chat_id", "telegram_dm_chat_id",
     ].map((key) => store.getKv(key)));
   } catch {
-    return emptySummary("missing_configuration");
+    return emptySummary("missing_configuration", "telegram_destinations_unavailable");
   }
-  if (isExistingTelegramDestination(env, chatId, kvDestinations)) {
-    return emptySummary("missing_configuration");
-  }
-  const token = env.OANDA_API_KEY || env.OANDA_API_TOKEN || await store.getKv("oanda_api_token");
-  if (!token) return emptySummary("missing_configuration");
+  const destinationIssue = await findExistingTelegramDestinationIssue({
+    env,
+    target: chatId,
+    botToken,
+    kvDestinations,
+    fetchFn,
+  });
+  if (destinationIssue) return emptySummary("missing_configuration", destinationIssue);
+
+  const token = (env.OANDA_API_KEY || env.OANDA_API_TOKEN || await store.getKv("oanda_api_token"))?.trim();
+  if (!token) return emptySummary("missing_configuration", "missing_oanda_token");
   const oandaEnvironment = resolveOandaEnvironment(await store.getKv("oanda_environment"));
   const summary = emptySummary("processed");
   try {
@@ -775,7 +841,7 @@ export async function runOff04ForwardTest(args: {
         summary.signalsInserted++;
         try {
           await sendOnlyToDedicatedTestChannel({
-            botToken: env.TELEGRAM_BOT_TOKEN,
+            botToken,
             chatId,
             text: formatOff04ForwardTelegram(capture),
             fetchFn,

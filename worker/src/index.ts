@@ -4656,7 +4656,11 @@ export default {
     ctx.waitUntil(
       runOff04ForwardTest({ env }).then((summary) => {
         if (summary.state === "missing_configuration") {
-          console.warn(JSON.stringify({ level: "warn", msg: "off04.forward_not_configured" }));
+          console.warn(JSON.stringify({
+            level: "warn",
+            msg: "off04.forward_not_configured",
+            reason: summary.configurationIssue ?? "unknown",
+          }));
         }
         if (summary.state === "processed" && (summary.pairsScanned || summary.errors.length)) {
           console.info(JSON.stringify({

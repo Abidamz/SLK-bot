@@ -210,7 +210,7 @@ describe("OFF-04 alert-only forward path", () => {
       env: {
         DB: db,
         TELEGRAM_BOT_TOKEN: "test-token",
-        TELEGRAM_CHAT_ID: "@existing-subscriber-channel",
+        TELEGRAM_CHAT_ID: "@existing_subscriber_channel",
         OFF04_FORWARD_TEST_CHAT_ID: "-100999321",
         OFF04_FORWARD_ENABLED: "true",
       },
@@ -219,7 +219,79 @@ describe("OFF-04 alert-only forward path", () => {
       storeOverride: new MemStore(),
     });
     expect(unresolvedAlias.state).toBe("missing_configuration");
-    expect(requests).toBe(0);
+    expect(unresolvedAlias.configurationIssue).toBe("existing_destination_alias_unresolved");
+    expect(requests).toBe(1);
+  });
+
+  it("resolves existing Telegram username destinations before comparing them", async () => {
+    const store = new MemStore();
+    await store.setKv("telegram_free_chat_id", "@existing_free_channel");
+    await store.setKv("telegram_deriv_free_chat_id", "@existing_deriv_channel");
+    const telegramLookups: string[] = [];
+    let oandaRequests = 0;
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === "api.telegram.org") {
+        const payload = JSON.parse(String(init?.body)) as { chat_id?: string };
+        telegramLookups.push(payload.chat_id ?? "");
+        const id = payload.chat_id === "@existing_free_channel" ? -100100001 : -100100002;
+        return new Response(JSON.stringify({ ok: true, result: { id } }), { status: 200 });
+      }
+      if (url.hostname === "api-fxpractice.oanda.com" || url.hostname === "api-fxtrade.oanda.com") {
+        oandaRequests++;
+        return new Response(JSON.stringify({ candles: [] }), { status: 200 });
+      }
+      throw new Error(`unexpected request to ${url.hostname}`);
+    }) as typeof fetch;
+
+    const summary = await runOff04ForwardTest({
+      env: {
+        DB: {} as never,
+        TELEGRAM_BOT_TOKEN: "test-token",
+        OANDA_API_TOKEN: "test-oanda-token",
+        OFF04_FORWARD_TEST_CHAT_ID: "-100999321",
+        OFF04_FORWARD_ENABLED: "true",
+      },
+      now: utc(13, 15) + 30_000,
+      fetchFn,
+      storeOverride: store,
+    });
+
+    expect(summary.state).toBe("processed");
+    expect(summary.configurationIssue).toBeUndefined();
+    expect(telegramLookups.sort()).toEqual(["@existing_deriv_channel", "@existing_free_channel"]);
+    expect(oandaRequests).toBeGreaterThan(0);
+  });
+
+  it("blocks an alias that resolves to the dedicated test channel", async () => {
+    const store = new MemStore();
+    await store.setKv("telegram_free_chat_id", "@same_channel");
+    let oandaRequests = 0;
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === "api.telegram.org") {
+        return new Response(JSON.stringify({ ok: true, result: { id: -100999321 } }), { status: 200 });
+      }
+      oandaRequests++;
+      return new Response(JSON.stringify({ candles: [] }), { status: 200 });
+    }) as typeof fetch;
+
+    const summary = await runOff04ForwardTest({
+      env: {
+        DB: {} as never,
+        TELEGRAM_BOT_TOKEN: "test-token",
+        OANDA_API_TOKEN: "test-oanda-token",
+        OFF04_FORWARD_TEST_CHAT_ID: "-100999321",
+        OFF04_FORWARD_ENABLED: "true",
+      },
+      now: utc(13, 15) + 30_000,
+      fetchFn,
+      storeOverride: store,
+    });
+
+    expect(summary.state).toBe("missing_configuration");
+    expect(summary.configurationIssue).toBe("test_channel_matches_existing_destination");
+    expect(oandaRequests).toBe(0);
   });
 
   it("sends one fresh paper signal only to the dedicated channel and keeps it out of production alerts", async () => {
